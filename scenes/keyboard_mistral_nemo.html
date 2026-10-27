@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mechanical Keyboard Showcase</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      perspective: 1000px;
+      transform-style: preserve-3d;
+    }
+    #scene {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      transform-style: preserve-3d;
+    }
+    .keyboard-part {
+      position: absolute;
+      transform-style: preserve-3d;
+    }
+    .key {
+      position: absolute;
+      transform-style: preserve-3d;
+    }
+    .keycap,
+    .switch,
+    .plate,
+    .foam,
+    .pcb {
+      position: absolute;
+      transform-style: preserve-3d;
+    }
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      z-index: 100;
+    }
+    #mute {
+      cursor: pointer;
+    }
+    #replay {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene">
+    <div class="keyboard-part pcb">
+      <mesh>
+        <boxGeometry args={[200, 100, 2]} />
+        <meshStandardMaterial color="#808080" />
+      </mesh>
+    </div>
+    <div class="keyboard-part foam">
+      <mesh>
+        <boxGeometry args={[200, 100, 1]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+    </div>
+    <div class="keyboard-part plate">
+      <mesh>
+        <boxGeometry args={[200, 100, 1]} />
+        <meshStandardMaterial color="#404040" />
+      </mesh>
+    </div>
+    <div class="keyboard-part switches">
+      <mesh>
+        <boxGeometry args={[200, 100, 1]} />
+        <meshStandardMaterial color="#000000" />
+      </mesh>
+    </div>
+    <div class="keyboard-part keycaps">
+      <mesh>
+        <boxGeometry args={[200, 100, 1]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+    </div>
+  </div>
+  <div id="controls">
+    <button id="mute">Mute</button>
+    <button id="replay">Replay</button>
+  </div>
+  <script src="https://unpkg.com/three@0.139.2/build/three.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    const container = document.getElementById('scene');
+    container.replaceChildren(renderer.domElement);
+    camera.position.set(0, -120, 300);
+    camera.lookAt(0, 0, 0);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(100, 150, 300);
+    scene.add(light);
+
+    const keyboardParts = ['pcb', 'foam', 'plate', 'switches', 'keycaps'];
+    const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', ' ', 'enter', 'backspace', 'shift', 'ctrl'];
+    let isMuted = false;
+    let isAnimating = false;
+
+    const partColors = [0x808080, 0xffffff, 0x404040, 0x000000, 0xffffff];
+    keyboardParts.forEach((part, index) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(200, 100, index === 0 ? 2 : 1),
+        new THREE.MeshStandardMaterial({ color: partColors[index] }));
+      mesh.name = part;
+      mesh.userData.assembledZ = index * 4;
+      mesh.position.set(0, 0, -50 - keyboardParts.indexOf(part) * 10);
+      scene.add(mesh);
+    });
+
+    keys.forEach((key, index) => {
+      const label = document.createElement('canvas');
+      label.width = label.height = 128;
+      const paint = label.getContext('2d');
+      paint.fillStyle = '#eeeeee';
+      paint.fillRect(0, 0, 128, 128);
+      paint.strokeStyle = '#777777';
+      paint.lineWidth = 8;
+      paint.strokeRect(4, 4, 120, 120);
+      paint.fillStyle = '#222222';
+      paint.font = '24px sans-serif';
+      paint.textAlign = 'center';
+      paint.fillText(key === ' ' ? 'space' : key, 64, 72);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 6),
+        new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(label) }));
+      mesh.name = key;
+      mesh.position.set((index % 10) * 19 - 85, 32 - Math.floor(index / 10) * 20, 22);
+      mesh.userData.restZ = 22;
+      scene.add(mesh);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    function assembleKeyboard() {
+      if (isAnimating) return;
+      isAnimating = true;
+      keyboardParts.forEach((part, index) => {
+        scene.getObjectByName(part).position.z = -50 - index * 10;
+      });
+      let currentPart = 0;
+      function animateAssembly() {
+        if (currentPart === keyboardParts.length) {
+          isAnimating = false;
+          return;
+        }
+        const part = keyboardParts[currentPart];
+        const obj = scene.getObjectByName(part);
+        obj.position.z += 10;
+        if (obj.position.z >= obj.userData.assembledZ) {
+          obj.position.z = obj.userData.assembledZ;
+          currentPart++;
+        }
+        requestAnimationFrame(animateAssembly);
+      }
+      animateAssembly();
+    }
+
+    let audio;
+    function playSound(key) {
+      if (isMuted) return;
+      audio ||= new AudioContext();
+      audio.resume();
+      const oscillator = audio.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(key === ' ' ? 200 : key === 'enter' || key === 'backspace' || key === 'shift' || key === 'ctrl' ? 400 : 800, audio.currentTime);
+      oscillator.connect(audio.destination);
+      oscillator.start();
+      oscillator.stop(audio.currentTime + 0.1);
+    }
+
+    function pressKey(key) {
+      const obj = scene.getObjectByName(key);
+      if (!obj) return;
+      obj.position.z = obj.userData.restZ - 5;
+      setTimeout(() => {
+        obj.position.z = obj.userData.restZ;
+      }, 50);
+      playSound(key);
+    }
+
+    document.addEventListener('keydown', event => {
+      pressKey(event.key.toLowerCase().replace('control', 'ctrl'));
+    });
+
+    document.getElementById('mute').addEventListener('click', () => {
+      isMuted = !isMuted;
+      document.getElementById('mute').innerText = isMuted ? 'Unmute' : 'Mute';
+    });
+
+    document.getElementById('replay').addEventListener('click', assembleKeyboard);
+
+    assembleKeyboard();
+    animate();
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>
