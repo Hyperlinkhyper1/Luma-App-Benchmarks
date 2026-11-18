@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kinetic — Mechanical Keyboard</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#07080b;color:#eef1f7;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}.hud{position:fixed;z-index:5;pointer-events:none}.top{top:22px;left:26px}.brand{font-size:11px;letter-spacing:.32em;color:#93a0b5;text-transform:uppercase}.title{margin-top:7px;font-size:clamp(20px,3vw,34px);font-weight:650;letter-spacing:-.04em}.title span{color:#7e90aa;font-weight:400}.sub{font-size:12px;color:#8c9aaf;margin-top:6px}.bottom{left:0;right:0;bottom:20px;display:flex;justify-content:center;align-items:center;gap:9px;pointer-events:auto}.btn{border:1px solid #354257;background:rgba(20,27,39,.78);backdrop-filter:blur(12px);color:#e5ecf8;border-radius:12px;padding:11px 16px;font-size:12px;letter-spacing:.03em;cursor:pointer;transition:.2s;box-shadow:0 8px 24px #0005}.btn:hover{background:#26354b;border-color:#60789d;transform:translateY(-2px)}.btn.active{color:#8ff0cb;border-color:#70bfa6}.hint{bottom:77px;left:0;right:0;text-align:center;color:#90a0b7;font-size:11px;line-height:1.8}.status{top:24px;right:26px;text-align:right;font-size:10px;letter-spacing:.2em;color:#8492a8}.status b{display:block;font-size:13px;color:#d9e5f5;margin-top:5px;letter-spacing:.05em}.rgb{width:72px;height:16px;margin:12px 0 0 auto;border:0;background:none;display:block}.rgb::-webkit-slider-runnable-track{height:3px;border-radius:9px;background:linear-gradient(90deg,#ff6b6b,#ffce63,#72ff9c,#70e6ff,#bf8bff,#ff6b6b)}.rgb::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;background:#fff;border-radius:50%;margin-top:-5px;box-shadow:0 0 10px #9ddbff}.rgb::-moz-range-track{height:3px;background:#728198}.rgb::-moz-range-thumb{background:white;border:0;width:13px;height:13px}@media(max-width:640px){.sub,.status .statusline{display:none}.top{top:15px;left:17px}.status{top:15px;right:17px}.bottom{bottom:12px;gap:6px}.btn{padding:10px 12px;font-size:11px}.hint{bottom:66px;padding:0 12px}}@media(prefers-reduced-motion:reduce){.btn{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Interactive three-dimensional mechanical keyboard"></canvas>
+<div class="hud top"><div class="brand">Custom Lab · 001</div><div class="title">Kinetic<span> / 75</span></div><div class="sub">Machined aluminum · gasket mounted · silent linear</div></div>
+<div class="hud status"><div class="statusline">LIVE ASSEMBLY</div><b id="stage">PREPARING</b><input id="hue" class="rgb" type="range" min="0" max="100" value="45" aria-label="RGB lighting color"></div>
+<div class="hud hint" id="hint">Drag to orbit · Scroll to zoom · Tap any key to type</div>
+<div class="hud bottom"><button class="btn" id="replay">↻ Replay assembly</button><button class="btn" id="sound">Sound: On</button><button class="btn" id="mute">Mute</button><button class="btn" id="view">Reset view</button></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+const $=id=>document.getElementById(id);
+const canvas=$('c'), renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x07080b);scene.fog=new THREE.FogExp2(0x07080b,.012);
+const camera=new THREE.PerspectiveCamera(37,1,.1,100);camera.position.set(16.4,19.8,23);
+const orbit=new OrbitControls(camera,canvas);orbit.target.set(0,.9,0);orbit.enableDamping=true;orbit.dampingFactor=.07;orbit.minDistance=17;orbit.maxDistance=39;orbit.minPolarAngle=.35;orbit.maxPolarAngle=1.24;orbit.enablePan=false;
+scene.add(new THREE.HemisphereLight(0xdce9ff,0x17201c,2.3));
+const keyLight=new THREE.DirectionalLight(0xfff3df,4.2);keyLight.position.set(-9,16,9);keyLight.castShadow=true;keyLight.shadow.mapSize.set(2048,2048);keyLight.shadow.camera.left=-15;keyLight.shadow.camera.right=15;keyLight.shadow.camera.top=12;keyLight.shadow.camera.bottom=-12;keyLight.shadow.camera.far=45;scene.add(keyLight);
+const fill=new THREE.DirectionalLight(0x7cb5ff,2);fill.position.set(13,8,-10);scene.add(fill);
+const rim=new THREE.PointLight(0x91ffcc,35,30);rim.position.set(0,4,-9);scene.add(rim);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(130,130),new THREE.MeshStandardMaterial({color:0x101218,roughness:.93,metalness:.08}));floor.rotation.x=-Math.PI/2;floor.position.y=-1.95;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(90,60,0x24303b,0x141c24);grid.position.y=-1.94;grid.material.transparent=true;grid.material.opacity=.22;scene.add(grid);
+
+const model=new THREE.Group();model.rotation.y=-.04;scene.add(model);
+const groups=[], allSwitches=[], keycaps=[];
+const mat={
+  case:new THREE.MeshStandardMaterial({color:0x303e49,metalness:.82,roughness:.27}),
+  inner:new THREE.MeshStandardMaterial({color:0x121821,metalness:.3,roughness:.55}),
+  pcb:new THREE.MeshStandardMaterial({color:0x234b42,metalness:.35,roughness:.56}),
+  foam:new THREE.MeshStandardMaterial({color:0x958878,roughness:1,metalness:0}),
+  plate:new THREE.MeshStandardMaterial({color:0xa2a7ab,metalness:.85,roughness:.31}),
+  switch:new THREE.MeshStandardMaterial({color:0x1e2730,roughness:.52,metalness:.15}),
+  stem:new THREE.MeshStandardMaterial({color:0xc0d48c,roughness:.6}),
+  white:new THREE.MeshStandardMaterial({color:0xe1e4de,metalness:.08,roughness:.64}),
+  mint:new THREE.MeshStandardMaterial({color:0x85bfae,metalness:.1,roughness:.56}),
+  dark:new THREE.MeshStandardMaterial({color:0x2d3946,metalness:.24,roughness:.5}),
+  amber:new THREE.MeshStandardMaterial({color:0xc69c69,metalness:.55,roughness:.37}),
+  stemDark:new THREE.MeshStandardMaterial({color:0xd7967b,roughness:.65}),
+  led:new THREE.MeshStandardMaterial({color:0x8affce,emissive:0x8affce,emissiveIntensity:.7}),
+  legend:new THREE.MeshBasicMaterial({color:0x30403e,transparent:true}),
+  legendDark:new THREE.MeshBasicMaterial({color:0xd3e2df,transparent:true})
+};
+function box(parent,w,h,d,m,x=0,y=0,z=0){let a=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);a.position.set(x,y,z);a.castShadow=true;a.receiveShadow=true;parent.add(a);return a}
+function cyl(parent,r,h,m,x=0,y=0,z=0,n=24){let a=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,n),m);a.position.set(x,y,z);a.castShadow=true;parent.add(a);return a}
+function layer(y){let g=new THREE.Group();g.position.y=y;model.add(g);groups.push(g);return g}
+const W=17.8,D=6.65;
+const caseG=layer(0), pcbG=layer(.2), foamG=layer(.52), plateG=layer(.82), swG=layer(1.23), capG=layer(1.92);
+
+// Sculpted, two-tone outer case with front lip and underside visible in orbit.
+box(caseG,W,.32,D,mat.inner,0,-1.52,0);
+box(caseG,W,.82,.38,mat.case,0,-1.02,D/2-.12);
+box(caseG,W,.82,.38,mat.case,0,-1.02,-D/2+.12);
+box(caseG,.4,.82,D-.56,mat.case,-W/2+.12,-1.02,0);
+box(caseG,.4,.82,D-.56,mat.case,W/2-.12,-1.02,0);
+box(caseG,W-.65,.12,D-.55,mat.dark,0,-.63,0);
+for(const x of [-W/2+1,W/2-1])for(const z of [-D/2+.9,D/2-.9]){
+  cyl(caseG,.15,.08,mat.amber,x,-1.7,z);
+  cyl(caseG,.38,.15,mat.inner,x,-1.79,z);
+}
+box(caseG,W-.1,.065,.09,mat.amber,0,-.59,D/2-.025);
+box(caseG,.13,.07,D-.4,mat.amber,-W/2+.02,-.59,0);
+// PCB has actual solder pads, a controller and USB daughterboard.
+box(pcbG,W-.55,.14,D-.48,mat.pcb,0,0,0);
+for(let i=0;i<16;i++)box(pcbG,.15,.025,.32,mat.amber,-W/2+.65+i*.92,.086,D/2-.44);
+box(pcbG,1.5,.12,1.15,mat.inner,-7.35,.12,2.28);
+box(pcbG,.75,.12,1.15,mat.inner,7.4,.12,2.28);
+box(pcbG,2.15,.085,.16,mat.inner,-7.7,-.05,-D/2-.06);
+// Foam is visibly inset, with its own edge and small mounting tabs.
+box(foamG,W-.82,.3,D-.73,mat.foam,0,.06,0);
+for(let i=0;i<10;i++)cyl(foamG,.08,.055,mat.inner,-7+i*1.55,.235,-D/2+.58);
+// Plate is perforated in real geometry, not a painted diagram.
+box(plateG,W-.68,.15,.28,mat.plate,0,0,D/2-.39);
+box(plateG,W-.68,.15,.28,mat.plate,0,0,-D/2+.39);
+box(plateG,.3,.15,D-.99,mat.plate,-W/2+.46,0,0);
+box(plateG,.3,.15,D-.99,mat.plate,W/2-.46,0,0);
+for(let i=0;i<5;i++)box(plateG,.17,.15,D-.99,mat.plate,-6.9+i*3.45,0,0);
+
+let keyIndex=0;
+function switchUnit(x,z,cap=true){
+ const sx=swG.children.length;
+ const s=new THREE.Group();s.position.set(x,0,z);swG.add(s);
+ box(s,.68,.34,.68,mat.switch,0,0,0);
+ box(s,.32,.17,.32,mat.stem,0,.22,0);
+ box(s,.43,.13,.08,mat.switch,0,-.03,.29);
+ for(const a of [-1,1]){box(s,.085,.085,.25,mat.amber,a*.21,.04,0);box(s,.11,.18,.1,mat.dark,a*.2,-.03,.27)}
+ s.userData={start:{x,y:2.7,z:z+2},final:new THREE.Vector3(x,0,z),delay:(keyIndex++)*.013};
+ allSwitches.push(s);if(cap)makeCap(x,z);
+}
+function makeCap(x,z,width=1){
+ const c=new THREE.Group();c.position.set(x,0,z);capG.add(c);
+ const color=(width>=6?mat.mint:mat.white);
+ const w=.96*width-.09, d=.91;
+ box(c,w,.18,d,color,0,.1,0);
+ box(c,w-.1,.19,d-.09,color,0,.265,0);
+ box(c,w-.22,.075,d-.22,color,0,.395,0);
+ // legends drawn as simple, purposeful segmented characters
+ c.userData={start:{x,y:3.5,z:z-1.6},final:new THREE.Vector3(x,0,z),delay:keyIndex*.002,press:0,label:'',width};
+ keycaps.push(c);return c;
+}
+// Geometry generated from the 75% layout. Wide modifier keys have separate caps and sounds.
+const rows=[
+ [['`',1],['1',1],['2',1],['3',1],['4',1],['5',1],['6',1],['7',1],['8',1],['9',1],['0',1],['-',1],['=',1],['BACK',2],['DEL',1]],
+ [['TAB',1.5],['Q',1],['W',1],['E',1],['R',1],['T',1],['Y',1],['U',1],['I',1],['O',1],['P',1],['[',1],[']',1],['\\',1.5],['PG',1]],
+ [['CAPS',1.75],['A',1],['S',1],['D',1],['F',1],['G',1],['H',1],['J',1],['K',1],['L',1],[';',1],["'",1],['ENTER',2.25],['HOME',1]],
+ [['SHIFT',2.25],['Z',1],['X',1],['C',1],['V',1],['B',1],['N',1],['M',1],[',',1],['.',1],['/',1],['SHIFT',1.75],['↑',1],['END',1]],
+ [['CTRL',1.25],['WIN',1.25],['ALT',1.25],['SPACE',6.25],['ALT',1],['FN',1],['CTRL',1],['←',1],['↓',1],['→',1]]
+];
+const unit=1.07, startX=-(15*unit)/2+unit/2, z0=-2.08;
+const specials={ENTER:0x28,SHIFT:0x2A,BACK:0x2A,DEL:0x2A,CAPS:0x39,TAB:0x2B,WIN:0xE3,ALT:0xE2,CTRL:0xE0,SPACE:0x2C,FN:0xFF};
+const codeMap={BACKSPACE:0x2A,DELETE:0x4C,ESCAPE:0x29,LEFT:0x50,UP:0x52,RIGHT:0x4F,DOWN:0x51,HOME:0x4A,END:0x4D,PAGEUP:0x4B,PAGEDOWN:0x4E,' ':0x2C,ENTER:0x28,SHIFT:0x2A,CONTROL:0xE0,ALT:0xE2,META:0xE3,CAPSLOCK:0x39,TAB:0x2B};
+for(const row of rows){let x=startX;for(const [label,w]of row){const kw=w>=6||w>=1.75||['BACK','TAB','CAPS','ENTER','SHIFT','CTRL','ALT','WIN','DEL','FN'].includes(label);switchUnit(x+(w-1)*unit/2,z0);makeCap(x+(w-1)*unit/2,z0,w);let cap=keycaps[keycaps.length-1];cap.userData.label=label;cap.userData.w=w;
+ if(w>=6){cap.userData.code=0x2C;switchUnit(x+(w-1)*unit/2,z0,false)}
+ x+=w*unit;z0+=1.05}
+}
+// Rotary encoder, inset OLED, indicator LEDs and case badge.
+const encoder=new THREE.Group();encoder.position.set(7.84,0,-2.55);capG.add(encoder);cyl(encoder,.45,.3,mat.switch,0,.17,0);cyl(encoder,.4,.22,mat.amber,0,.41,0);for(let i=0;i<20;i++){let a=i*Math.PI/10;box(encoder,.045,.16,.06,mat.inner,Math.sin(a)*.4,.42,Math.cos(a)*.4)}
+box(caseG,1.7,.06,.55,mat.inner,-7.25,-.53,D/2+.02);box(caseG,1.45,.07,.31,mat.led,-7.25,-.48,D/2+.04);
+for(let i=0;i<3;i++)cyl(caseG,.065,.055,i===0?mat.led:mat.dark,-7.95+i*.2,-.48,D/2+.24);
+// Procedural little legends using canvas textures are allowed; they are generated in-browser.
+function legend(text,x,y,z,cap){let c=document.createElement('canvas');c.width=128;c.height=128;let g=c.getContext('2d');g.clearRect(0,0,128,128);g.font='600 25px Inter,Arial';g.fillStyle='#33433e';g.textAlign='left';g.fillText(text,13,48);let tex=new THREE.CanvasTexture(c);let mesh=new THREE.Mesh(new THREE.PlaneGeometry(.29,.29),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false}));mesh.rotation.x=-Math.PI/2;mesh.position.set(x,y,z);cap.add(mesh)}
+for(const c of keycaps){const l=c.userData.label;let y=.44;if(l==='BACK')legend('←',-.47,y,0,c);else if(l==='ENTER')legend('↵',c.userData.w/2-.48,y,0,c);else if(l.length===1)legend(l.toUpperCase(),-.23,y,-.18,c);else if(l!=='SPACE')legend(l,-.25,y,-.18,c)}
+// Small through-case light bar, tinted with the on-page slider.
+const ledMats=[mat.led];const glowMat=new THREE.MeshStandardMaterial({color:0x85ffcb,emissive:0x85ffcb,emissiveIntensity:.5,metalness:.2,roughness:.3});
+
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let assemblyTime=0, replaying=true, finished=false, hue=.45;
+const baseLayers=groups.map(g=>g.position.y);
+const capStart=keycaps.map(c=>({...c.userData.start}));const swStart=allSwitches.map(c=>({...c.userData.start}));
+const animDefs=groups.map((g,i)=>({start:[3.5,5.4,6.1,7.6,9.5,11.5][i],delay:[0,.55,1.1,1.55,2.2,3.15][i],duration:reduce?.1:1.05}));
+
+let audio=null, muted=false, soundEnabled=false, master=null;
+function initAudio(){if(!audio){audio=new(window.AudioContext||window.webkitAudioContext)();master=audio.createGain();master.gain.value=.18;master.connect(audio.destination)}if(audio.state==='suspended')audio.resume();soundEnabled=true;if(muted){muted=false;$('mute').textContent='Mute';$('sound').textContent='Sound: On'}}
+function playKey(label){
+ if(!soundEnabled||muted)return;initAudio();const t=audio.currentTime;const big=['SPACE'].includes(label)||['ENTER'].includes(label);const mod=['SHIFT','BACK','CTRL','ALT','CAPS','TAB','WIN','FN'].includes(label);
+ const dur=big?.14:mod?.095:.065;
+ const buf=audio.createBuffer(1,Math.ceil(audio.sampleRate*dur),audio.sampleRate);let data=buf.getChannelData(0);
+ for(let i=0;i<data.length;i++){let u=i/data.length;data[i]=(Math.random()*2-1)*Math.exp(-u*(big?8:22))*(1+Math.sin(u*55)*.18)}
+ let n=audio.createBufferSource();n.buffer=buf;let f=audio.createBiquadFilter();f.type='bandpass';f.frequency.value=big?600:mod?1400:2200;f.Q.value=big?.6:1.1;let ng=audio.createGain();ng.gain.setValueAtTime(big?.75:.48,t);ng.gain.exponentialRampToValueAtTime(.001,t+dur);n.connect(f).connect(ng).connect(master);n.start(t);
+ const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.setValueAtTime(big?105:mod?210:420,t);o.frequency.exponentialRampToValueAtTime(big?52:mod?100:190,t+dur);g.gain.setValueAtTime(big?.55:.15,t);g.gain.exponentialRampToValueAtTime(.001,t+dur*.8);o.connect(g).connect(master);o.start(t);o.stop(t+dur);
+}
+function pressCap(c){if(!finished||c.userData.press>0)return;c.userData.press=1;playKey(c.userData.label);setTimeout(()=>{c.userData.press=0},reduce?70:130)}
+const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();let down=null;
+canvas.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};initAudio()});
+canvas.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>7||!finished)return;pointer.x=e.clientX/innerWidth*2-1;pointer.y=-e.clientY/innerHeight*2+1;ray.setFromCamera(pointer,camera);const hits=ray.intersectObjects(keycaps,true);if(hits.length){let c=hits[0].object;while(c.parent&&c.parent!==capG)c=c.parent;if(keycaps.includes(c))pressCap(c)}down=null});
+addEventListener('keydown',e=>{if(e.repeat||!finished)return;let k=e.key;let label=k==='Backspace'?'BACK':k===' '?'SPACE':k==='Enter'?'ENTER':k==='Escape'?'ESC':k.toUpperCase();let hit=keycaps.find(c=>c.userData.label===label)||keycaps.find(c=>c.userData.label===label&&c.userData.code===codeMap[e.code]);if(hit){e.preventDefault();pressCap(hit)}});
+$('replay').onclick=()=>{assemblyTime=0;replaying=true;finished=false;groups.forEach((g,i)=>g.position.y=baseLayers[i]+animDefs[i].start);keycaps.forEach((c,i)=>{c.position.y=3.5;c.position.z=c.userData.final.z-1.6;c.position.x=c.userData.final.x});allSwitches.forEach((c,i)=>{c.position.y=2.7;c.position.z=c.userData.final.z+2});$('stage').textContent='PCB';initAudio()};
+$('sound').onclick=()=>{initAudio();soundEnabled=!soundEnabled;$('sound').textContent='Sound: '+(soundEnabled?'On':'Off');$('hint').textContent=soundEnabled?'Sound enabled · Click a key or start typing':'Sound disabled · Tap to enable'};
+$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'Unmute':'Mute';if(master)master.gain.setTargetAtTime(muted?0:.18,audio.currentTime,.02);if(!muted)initAudio()};
+$('view').onclick=()=>{camera.position.set(16.4,19.8,23);orbit.target.set(0,.9,0);orbit.update()};
+$('hue').oninput=e=>{hue=+e.target.value/100;let color=new THREE.Color().setHSL(hue,.75,.65);glowMat.color.copy(color);glowMat.emissive.copy(color);mat.led.color.copy(color);mat.led.emissive.copy(color);rim.color.copy(color);rim.intensity=25+Math.sin(hue*Math.PI*6)*8};
+
+const ease=t=>1-Math.pow(1-t,3), clamp=t=>Math.min(1,Math.max(0,t));
+let last=performance.now();
+function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.05);last=now;
+ if(replaying){assemblyTime+=dt;let done=true;
+  groups.forEach((g,i)=>{const a=animDefs[i],t=clamp((assemblyTime-a.delay)/a.duration);g.position.y=baseLayers[i]+a.start*(1-ease(t));if(t<1)done=false;});
+  const tCap=(assemblyTime-3.15)/1.15,tSw=(assemblyTime-2.2)/1.15;
+  allSwitches.forEach((s,i)=>{let t=clamp(tSw*allSwitches.length-i);s.position.y=2.7*(1-ease(t));s.position.z=s.userData.final.z+2*(1-ease(t));s.position.x=s.userData.final.x;if(t<1)done=false});
+  keycaps.forEach((c,i)=>{let t=clamp(tCap*keycaps.length-i);c.position.y=3.5*(1-ease(t));c.position.z=c.userData.final.z-1.6*(1-ease(t));c.position.x=c.userData.final.x;if(t<1)done=false});
+  $('stage').textContent=assemblyTime<1?'PCB':assemblyTime<2.2?'FOAM':assemblyTime<2.7?'PLATE':assemblyTime<3.15?'SWITCHES':assemblyTime<5.1?'KEYCAPS':'ASSEMBLED';
+  if(done){replaying=false;finished=true;$('stage').textContent='READY TO TYPE'}
+ }
+ keycaps.forEach(c=>{let target=c.userData.press?-.32:0;c.position.y=baseLayers[5]+(replaying?c.position.y-baseLayers[5]:0)+THREE.MathUtils.damp(c.userData.press?0:c.position.y,target,0,dt);});
+ // settle each cap with its own press, keeping assembly offsets independent
+ keycaps.forEach(c=>{const pressY=c.userData.press?-.28:0;c.userData.current=THREE.MathUtils.damp(c.userData.current||0,pressY,24,dt);if(!replaying)c.position.y=baseLayers[5]+c.userData.current;});
+ model.position.y=Math.sin(now*.0003)*.035;model.rotation.x=THREE.MathUtils.damp(model.rotation.x,-.025,3,dt);
+ orbit.update();renderer.render(scene,camera);
+}
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();requestAnimationFrame(frame);
+setTimeout(()=>{if(!finished)$('hint').textContent='Building the layers · Drag to inspect the assembly'},400);
+</script>
+</body>
+</html>

@@ -1,0 +1,2340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRIMSON VESPER — Aurum & Ash</title>
+<style>
+  @import url('data:text/css,');
+  :root{
+    --red:#c8101c; --red-deep:#7a0710; --gold:#d9b26a; --gold-dim:#8a6b3a;
+    --ink:#07070a; --panel:rgba(10,10,13,.72); --line:rgba(217,178,106,.28);
+    --txt:#e9e2d4; --dim:#8d8577;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;background:#000;color:var(--txt);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;letter-spacing:.02em;
+    user-select:none;cursor:default}
+  #app{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+
+  /* ---------- loader / webgl ---------- */
+  #boot{position:fixed;inset:0;background:#050507;z-index:200;display:flex;
+    align-items:center;justify-content:center;flex-direction:column;gap:14px;
+    transition:opacity .7s ease}
+  #boot.gone{opacity:0;pointer-events:none}
+  .bootmark{width:74px;height:74px;position:relative}
+  .bootmark i{position:absolute;inset:0;border:1px solid rgba(217,178,106,.55);transform:rotate(45deg)}
+  .bootmark i:nth-child(2){inset:10px;border-color:rgba(200,16,28,.8)}
+  .bootmark i:nth-child(3){inset:20px;border-color:rgba(217,178,106,.35)}
+  #boot p{font-size:10px;letter-spacing:.52em;color:var(--gold);text-transform:uppercase}
+  #bootbar{width:210px;height:1px;background:rgba(255,255,255,.09);overflow:hidden}
+  #bootbar b{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--red),var(--gold));
+    transition:width .35s ease}
+  #nogl{position:fixed;inset:0;z-index:300;display:none;align-items:center;justify-content:center;
+    background:#050507;text-align:center;padding:40px}
+  #nogl div{max-width:420px}
+  #nogl h1{font-size:15px;letter-spacing:.35em;color:var(--gold);margin-bottom:14px;text-transform:uppercase}
+  #nogl p{font-size:12px;line-height:1.7;color:var(--dim)}
+
+  /* ---------- generic panel ---------- */
+  .panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);position:absolute;z-index:40}
+  .plabel{font-size:8.5px;letter-spacing:.34em;color:var(--gold);text-transform:uppercase;
+    opacity:.85;margin-bottom:9px}
+
+  /* ---------- brand ---------- */
+  #brand{left:26px;top:22px;padding:14px 18px 13px;border-left:2px solid var(--red);
+    border-right:none;border-top:none;border-bottom:none;background:linear-gradient(90deg,rgba(8,8,11,.82),rgba(8,8,11,0))}
+  #brand .mk{font-size:13px;letter-spacing:.42em;color:#fff;text-transform:uppercase;font-weight:600}
+  #brand .sub{font-size:9px;letter-spacing:.3em;color:var(--gold);margin-top:5px}
+  #brand .est{font-size:8px;letter-spacing:.28em;color:var(--dim);margin-top:8px}
+
+  /* ---------- moves ---------- */
+  #moves{left:26px;top:50%;transform:translateY(-50%);width:196px;padding:15px 13px 13px}
+  #moves .row{display:flex;align-items:center;gap:9px}
+  .mv{display:flex;align-items:center;gap:9px;width:100%;padding:7px 8px;border:none;
+    background:transparent;color:var(--dim);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+    cursor:pointer;text-align:left;border-left:1px solid rgba(255,255,255,.07);transition:all .18s}
+  .mv:hover{color:#fff;background:rgba(200,16,28,.1);border-left-color:var(--red)}
+  .mv.on{color:#fff;border-left-color:var(--gold);background:linear-gradient(90deg,rgba(217,178,106,.16),transparent)}
+  .mv kbd{font-size:8px;min-width:14px;height:14px;line-height:14px;text-align:center;color:var(--gold);
+    border:1px solid rgba(217,178,106,.32);border-radius:1px;background:rgba(217,178,106,.06)}
+  .mv.on kbd{color:#000;background:var(--gold);border-color:var(--gold)}
+  .mvsig{color:var(--gold)!important;opacity:.8}
+  #moves hr{border:none;height:1px;background:rgba(255,255,255,.07);margin:8px 4px}
+
+  /* ---------- controls ---------- */
+  #ctrl{right:26px;top:22px;width:206px;padding:14px}
+  .grp{margin-bottom:13px}
+  .grp:last-child{margin-bottom:0}
+  .grph{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+  .grph span{font-size:8px;letter-spacing:.28em;color:var(--gold);text-transform:uppercase}
+  .grph b{font-size:9px;letter-spacing:.1em;color:#cfc6b6;font-weight:400}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:14px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:2px;background:rgba(255,255,255,.16)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;margin-top:-4px;
+    background:var(--gold);border-radius:0;transform:rotate(45deg);border:none}
+  input[type=range]::-moz-range-track{height:2px;background:rgba(255,255,255,.16)}
+  input[type=range]::-moz-range-thumb{width:9px;height:9px;background:var(--gold);border-radius:0;
+    border:none;transform:rotate(45deg)}
+  .tg{display:flex;align-items:center;justify-content:space-between;padding:5px 0;cursor:pointer}
+  .tg span{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);transition:color .2s}
+  .tg.on span{color:#fff}
+  .tg i{width:26px;height:13px;border:1px solid rgba(255,255,255,.2);position:relative;
+    transition:all .2s;flex:none}
+  .tg i:after{content:"";position:absolute;top:2px;left:2px;width:7px;height:7px;background:rgba(255,255,255,.3);transition:all .2s}
+  .tg.on i{border-color:var(--gold);background:rgba(217,178,106,.16)}
+  .tg.on i:after{left:15px;background:var(--gold)}
+  .swatches{display:flex;gap:7px}
+  .sw{width:30px;height:30px;border:1px solid rgba(255,255,255,.14);cursor:pointer;position:relative;
+    transition:transform .18s,border-color .18s}
+  .sw:hover{transform:translateY(-2px)}
+  .sw.on{border-color:var(--gold)}
+  .sw.on:after{content:"";position:absolute;inset:3px;border:1px solid rgba(217,178,106,.4)}
+  .sw span{position:absolute;left:-1px;bottom:-13px;font-size:6.5px;letter-spacing:.16em;color:var(--dim);
+    text-transform:uppercase;white-space:nowrap}
+  .btn{width:100%;padding:7px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.03);
+    color:var(--dim);font-size:8.5px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer;transition:all .2s}
+  .btn:hover{border-color:var(--gold);color:#fff;background:rgba(217,178,106,.09)}
+  .btn.on{border-color:var(--gold);color:#000;background:var(--gold)}
+
+  /* ---------- spec card ---------- */
+  #spec{left:26px;bottom:26px;width:262px;padding:15px 16px 14px;
+    border-top:1px solid var(--red);background:linear-gradient(180deg,rgba(12,12,16,.86),rgba(8,8,11,.7))}
+  #spec h2{font-size:16px;letter-spacing:.2em;color:#fff;font-weight:400;line-height:1.2}
+  #spec .mod{font-size:8.5px;letter-spacing:.32em;color:var(--gold);margin-top:6px;text-transform:uppercase}
+  #spec .desc{font-size:9.5px;line-height:1.65;color:#9a9284;margin:11px 0 12px;font-weight:300}
+  #spec dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:8.5px;letter-spacing:.06em}
+  #spec dt{color:var(--gold);opacity:.7;text-transform:uppercase;letter-spacing:.14em;white-space:nowrap}
+  #spec dd{color:#bdb4a5;text-align:right}
+  #spec .foot{display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:10px;
+    border-top:1px solid rgba(255,255,255,.07);font-size:7.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+  #spec .foot i{width:16px;height:16px;border:1px solid rgba(217,178,106,.5);transform:rotate(45deg);position:relative;flex:none}
+  #spec .foot i:after{content:"";position:absolute;inset:4px;background:var(--red)}
+
+  /* ---------- camera presets ---------- */
+  #cams{left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:0;padding:0;overflow:hidden}
+  .cam{padding:9px 15px;border:none;border-right:1px solid rgba(255,255,255,.08);background:transparent;
+    color:var(--dim);font-size:8px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;transition:all .2s;white-space:nowrap}
+  .cam:last-child{border-right:none}
+  .cam:hover{color:#fff;background:rgba(255,255,255,.05)}
+  .cam.on{color:#000;background:var(--gold)}
+
+  /* ---------- caption ---------- */
+  #cap{position:absolute;left:50%;top:calc(50% - 152px);transform:translate(-50%,0);z-index:20;
+    text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
+  #cap.on{opacity:1}
+  #cap .no{font-size:7.5px;letter-spacing:.4em;color:var(--gold);opacity:.7}
+  #cap .nm{font-size:17px;letter-spacing:.36em;color:#fff;text-transform:uppercase;margin-top:6px;
+    text-shadow:0 0 22px rgba(200,16,28,.85),0 2px 8px #000;font-weight:300}
+  #cap .sub{font-size:8px;letter-spacing:.28em;color:#8d8577;margin-top:7px;text-transform:uppercase}
+  #cap .bar{height:1px;background:rgba(255,255,255,.1);width:150px;margin:11px auto 0;overflow:hidden}
+  #cap .bar b{display:block;height:100%;width:0;background:var(--gold)}
+
+  /* ---------- hover label ---------- */
+  #hl{position:fixed;z-index:60;pointer-events:none;padding:6px 10px;background:rgba(8,8,11,.92);
+    border:1px solid rgba(217,178,106,.5);font-size:8px;letter-spacing:.2em;color:var(--gold);
+    text-transform:uppercase;opacity:0;transition:opacity .15s;transform:translate(14px,14px);white-space:nowrap}
+  #hl.on{opacity:1}
+
+  /* ---------- hint ---------- */
+  #hint{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);z-index:20;font-size:8px;
+    letter-spacing:.26em;color:rgba(255,255,255,.26);text-transform:uppercase;pointer-events:none;
+    transition:opacity .6s;white-space:nowrap}
+  #revealName{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);z-index:25;text-align:center;
+    pointer-events:none;opacity:0}
+  #revealName.on{animation:rev 4.6s ease forwards}
+  #revealName .a{font-size:10px;letter-spacing:.6em;color:var(--gold);text-transform:uppercase}
+  #revealName .b{font-size:42px;letter-spacing:.18em;color:#fff;margin-top:12px;font-weight:200;
+    text-shadow:0 0 60px rgba(200,16,28,.9)}
+  #revealName .c{font-size:9px;letter-spacing:.42em;color:#a49b8c;margin-top:14px;text-transform:uppercase}
+  @keyframes rev{
+    0%{opacity:0;filter:blur(14px);letter-spacing:.2em}
+    14%{opacity:1;filter:blur(0)}
+    72%{opacity:1;filter:blur(0)}
+    100%{opacity:0;filter:blur(5px)}
+  }
+  body.hideui .panel,body.hideui #cap,body.hideui #hint,body.hideui #brand{opacity:0;pointer-events:none}
+  .panel,#brand,#cap,#hint{transition:opacity .35s}
+  @media(max-width:980px){
+    #spec{display:none}
+    #moves{width:160px;left:14px;padding:11px 8px}
+    #ctrl{right:14px;top:14px;width:170px;padding:11px}
+    #brand{left:14px;top:14px;padding:10px 12px}
+    .mv{font-size:8px;gap:6px;padding:6px}
+    #cams{bottom:16px}
+    .cam{padding:8px 9px;font-size:7px}
+    #hint{display:none}
+  }
+  @media(max-width:640px){
+    #moves{top:auto;bottom:120px;transform:none;left:10px;width:138px}
+    #moves .grp3{display:none}
+    #ctrl{width:150px;right:10px;top:10px}
+    #brand .est{display:none}
+    .mv{font-size:7px;letter-spacing:.06em}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="boot">
+  <div class="bootmark"><i></i><i></i><i></i></div>
+  <p>Aurum &amp; Ash</p>
+  <div id="bootbar"><b></b></div>
+</div>
+
+<div id="nogl">
+  <div>
+    <h1>WebGL Unavailable</h1>
+    <p>This showcase needs WebGL 2 to render the 3D balisong. Try a current version of Chrome, Firefox, Safari or Edge with hardware acceleration enabled.</p>
+  </div>
+</div>
+
+<!-- ============ BRAND ============ -->
+<div id="brand" class="panel">
+  <div class="mk">Aurum &amp; Ash</div>
+  <div class="sub">Artisan Balisong Atelier</div>
+  <div class="est">Est. 1926 &nbsp;·&nbsp; Detroit</div>
+</div>
+
+<!-- ============ MOVE LIST ============ -->
+<div id="moves" class="panel">
+  <div class="plabel">Performance</div>
+  <div id="movelist"></div>
+  <hr>
+  <div class="plabel" style="margin:9px 4px 7px">Modes</div>
+  <button class="btn" id="comboBtn" style="margin-bottom:6px">Combo &nbsp;·&nbsp; C</button>
+  <button class="btn" id="freeBtn">Freestyle &nbsp;·&nbsp; F</button>
+</div>
+
+<!-- ============ CONTROLS ============ -->
+<div id="ctrl" class="panel">
+  <div class="grp">
+    <div class="grph"><span>Speed</span><b id="spdVal">1.00×</b></div>
+    <input id="spd" type="range" min="0.25" max="2" step="0.05" value="1">
+  </div>
+  <div class="grp">
+    <div class="grph"><span>Volume</span><b id="volVal">70%</b></div>
+    <input id="vol" type="range" min="0" max="1" step="0.01" value="0.7">
+  </div>
+  <div class="grp">
+    <div class="tg" data-t="slow"><span>Slow Motion</span><i></i></div>
+    <div class="tg on" data-t="trail"><span>Tip Trail</span><i></i></div>
+    <div class="tg" data-t="mute"><span>Mute</span><i></i></div>
+    <div class="tg" data-t="hand"><span>Hand &nbsp;·&nbsp; H</span><i></i></div>
+    <div class="tg" data-t="ui"><span>Hide UI &nbsp;·&nbsp; Tab</span><i></i></div>
+  </div>
+  <div class="grp">
+    <div class="plabel" style="margin-bottom:8px">Colourway</div>
+    <div class="swatches" id="swatches"></div>
+  </div>
+  <div class="grp">
+    <div class="row" style="display:flex;gap:6px">
+      <button class="btn" id="explBtn" style="flex:1">Explode &nbsp;·&nbsp; E</button>
+      <button class="btn" id="replayBtn" style="flex:1">Reveal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SPEC CARD ============ -->
+<div id="spec" class="panel">
+  <h2>CRIMSON VESPER</h2>
+  <div class="mod">Model CV-23 &nbsp;/&nbsp; Aurum &amp; Ash</div>
+  <p class="desc">Candy-apple lacquer over contoured titanium, a black tanto with a
+    polished secondary bevel, and a fan-milled handle carrying the atelier's
+    stepped sunburst.</p>
+  <dl>
+    <dt>Open</dt><dd>230 mm</dd>
+    <dt>Closed</dt><dd>131 mm</dd>
+    <dt>Blade</dt><dd>104 mm · CPM-154 black DLC</dd>
+    <dt>Handles</dt><dd>Ti-6Al-4V · candy lacquer</dd>
+    <dt>Hardware</dt><dd>Black DLC · anodised</dd>
+    <dt>Weight</dt><dd>182 g</dd>
+    <dt>Pivot</dt><dd>Bushing · 6 mm · rattle-tune</dd>
+    <dt>Latch</dt><dd>T-latch · stepped tread</dd>
+  </dl>
+  <div class="foot"><i></i> Signature — the Fan Spine</div>
+</div>
+
+<!-- ============ CAMERAS ============ -->
+<div id="cams" class="panel">
+  <button class="cam on" data-c="HERO">Hero</button>
+  <button class="cam" data-c="BLADE">Blade</button>
+  <button class="cam" data-c="PIVOT">Pivot</button>
+  <button class="cam" data-c="LATCH">Latch</button>
+  <button class="cam" data-c="TOP">Top</button>
+  <button class="cam" data-c="SIDE">Side</button>
+</div>
+
+<div id="cap">
+  <div class="no" id="capNo"></div>
+  <div class="nm" id="capNm"></div>
+  <div class="sub" id="capSub"></div>
+  <div class="bar"><b id="capBar"></b></div>
+</div>
+
+<div id="revealName"><div class="a">Aurum &amp; Ash presents</div><div class="b">CRIMSON VESPER</div>
+  <div class="c">CV-23 &nbsp;·&nbsp; The Fan Spine</div></div>
+
+<div id="hint">Drag a handle to flip · Scroll to zoom · Right-drag to pan</div>
+<div id="hl"></div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ============================================================
+   0. CONSTANTS / GEOMETRY LAYOUT
+   ============================================================ */
+const HALF_H = 1.15;      // half handle length
+const PIV_X  = 0.0;       // pivot x (local handle space)
+const PIV_Y  = 0.0;       // pivot y
+const BLADE_LEN = 2.72;
+const TAU = Math.PI * 2;
+const clamp = (v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+const smooth = t=>t*t*(3-2*t);
+const smoother = t=>t*t*t*(t*(t*6-15)+10);
+
+/* ============================================================
+   1. RENDERER / SCENE
+   ============================================================ */
+let renderer;
+try{
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
+}catch(e){
+  document.getElementById('nogl').style.display='flex';
+  document.getElementById('boot').classList.add('gone');
+  throw e;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.02;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030304);
+scene.fog = new THREE.FogExp2(0x030304, 0.048);
+
+const camera = new THREE.PerspectiveCamera(34, innerWidth/innerHeight, 0.1, 120);
+camera.position.set(3.2, 2.0, 9.4);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.15, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 2.2;
+controls.maxDistance = 24;
+controls.rotateSpeed = 0.7;
+controls.zoomSpeed = 0.8;
+
+/* --- environment: PMREM of a procedural room --- */
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+let envRT = pmrem.fromScene(new RoomEnvironment(), 0.045);
+scene.environment = envRT.texture;
+
+/* ============================================================
+   2. LIGHTS / STAGE
+   ============================================================ */
+const key = new THREE.DirectionalLight(0xfff0e0, 2.5);
+key.position.set(4.2, 5.0, 3.4);
+key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.near = 1; key.shadow.camera.far = 26;
+key.shadow.camera.left = -6; key.shadow.camera.right = 6;
+key.shadow.camera.top = 6; key.shadow.camera.bottom = -6;
+key.shadow.bias = -0.0009;
+key.shadow.radius = 3;
+scene.add(key);
+
+const rake = new THREE.SpotLight(0xffd9b0, 46, 22, 0.55, 0.55, 1.6);
+rake.position.set(-5.4, 2.4, 4.0);
+rake.target.position.set(0, 0, 0);
+scene.add(rake, rake.target);
+
+const rimA = new THREE.PointLight(0xff2233, 26, 26, 2.0);
+rimA.position.set(-3.4, 1.4, -2.2);
+scene.add(rimA);
+const rimB = new THREE.PointLight(0xd8b26a, 20, 24, 2.0);
+rimB.position.set(3.6, -1.1, -2.6);
+scene.add(rimB);
+const fillC = new THREE.PointLight(0x88aaff, 9, 18, 2.0);
+fillC.position.set(0, -3.0, 2.0);
+scene.add(fillC);
+
+/* --- neon ring light behind the knife (art-deco halo) --- */
+const ringGroup = new THREE.Group();
+ringGroup.position.set(0, 0.1, -3.1);
+scene.add(ringGroup);
+const ringMat = new THREE.MeshBasicMaterial({color:0xff3344});
+const ring1 = new THREE.Mesh(new THREE.TorusGeometry(2.32, 0.026, 12, 190), ringMat);
+const ring2 = new THREE.Mesh(new THREE.TorusGeometry(2.10, 0.008, 8, 190), ringMat.clone());
+ring2.material.color.set(0xffd9a0);
+const ring3 = new THREE.Mesh(new THREE.TorusGeometry(2.52, 0.006, 6, 190), ringMat.clone());
+ring3.material.color.set(0xd9b26a);
+ringGroup.add(ring1, ring2, ring3);
+// deco ticks around the halo
+{
+  const tickGeo = new THREE.BoxGeometry(0.012, 0.075, 0.012);
+  const tickMat = new THREE.MeshBasicMaterial({color:0xd9b26a});
+  const inst = new THREE.InstancedMesh(tickGeo, tickMat, 60);
+  const m = new THREE.Matrix4();
+  for(let i=0;i<60;i++){
+    const a = i/60*TAU;
+    const r = 2.41 + (i%5===0?0.02:0);
+    m.makeRotationZ(-a);
+    m.setPosition(Math.cos(a)*r, Math.sin(a)*r, 0);
+    inst.setMatrixAt(i,m);
+  }
+  ringGroup.add(inst);
+}
+
+/* --- stage floor --- */
+const floorMat = new THREE.MeshPhysicalMaterial({
+  color:0x050507, metalness:0.94, roughness:0.17, clearcoat:1, clearcoatRoughness:0.12,
+  envMapIntensity:0.55
+});
+const floor = new THREE.Mesh(new THREE.CircleGeometry(26,96), floorMat);
+floor.rotation.x = -Math.PI/2;
+floor.position.y = -1.62;
+floor.receiveShadow = true;
+scene.add(floor);
+// faint deco floor rings
+{
+  const g = new THREE.Group(); g.position.y=-1.615;
+  for(let i=0;i<3;i++){
+    const r = 1.9+i*0.85;
+    const t = new THREE.Mesh(new THREE.RingGeometry(r, r+0.008, 128),
+      new THREE.MeshBasicMaterial({color:0x6b5530, transparent:true, opacity:0.28 - i*0.07, side:THREE.DoubleSide}));
+    t.rotation.x = -Math.PI/2; g.add(t);
+  }
+  scene.add(g);
+}
+/* --- soft contact shadow blob --- */
+function shadowTex(){
+  const c = document.createElement('canvas'); c.width=c.height=256;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(128,128,0,128,128,128);
+  g.addColorStop(0,'rgba(0,0,0,0.85)'); g.addColorStop(0.45,'rgba(0,0,0,0.35)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g; x.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+}
+const blob = new THREE.Mesh(new THREE.PlaneGeometry(5.6,5.6),
+  new THREE.MeshBasicMaterial({map:shadowTex(), transparent:true, opacity:0.9, depthWrite:false}));
+blob.rotation.x = -Math.PI/2; blob.position.y=-1.607; scene.add(blob);
+
+/* --- backdrop gradient plane (art deco fan) --- */
+{
+  const c = document.createElement('canvas'); c.width=c.height=512;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(256,256,20,256,256,256);
+  g.addColorStop(0,'rgba(90,10,20,0.55)');
+  g.addColorStop(0.35,'rgba(30,5,10,0.3)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g; x.fillRect(0,0,512,512);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace;
+  const pl = new THREE.Mesh(new THREE.PlaneGeometry(22,22),
+    new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+  pl.position.set(0,0.4,-5.4); scene.add(pl);
+}
+
+/* ============================================================
+   3. PROCEDURAL TEXTURES
+   ============================================================ */
+function makeCanvas(w,h){ const c=document.createElement('canvas'); c.width=w;c.height=h; return c; }
+
+// brushed / metal-flake lacquer
+function metalFlakeTexture(base, flake, hi){
+  const w=1024,h=1024, c=makeCanvas(w,h), x=c.getContext('2d');
+  x.fillStyle = base; x.fillRect(0,0,w,h);
+  // flakes
+  for(let i=0;i<26000;i++){
+    const px=Math.random()*w, py=Math.random()*h;
+    const s = Math.random()<0.8 ? 1 : 1.6;
+    x.globalAlpha = 0.03 + Math.random()*0.22;
+    x.fillStyle = Math.random()<0.55 ? flake : (Math.random()<0.5? hi : '#ffffff');
+    x.fillRect(px,py,s,s);
+  }
+  // vertical brushed streaks
+  x.globalAlpha=1;
+  for(let i=0;i<420;i++){
+    const px=Math.random()*w;
+    x.strokeStyle = `rgba(255,255,255,${0.012+Math.random()*0.03})`;
+    x.lineWidth = 0.4+Math.random()*1.2;
+    x.beginPath(); x.moveTo(px,0);
+    x.bezierCurveTo(px+ (Math.random()-0.5)*6, h*0.33, px+(Math.random()-0.5)*6, h*0.66, px+(Math.random()-0.5)*4, h);
+    x.stroke();
+  }
+  // faint fan lines (art deco)
+  x.globalAlpha=0.05; x.strokeStyle=flake; x.lineWidth=1;
+  for(let i=0;i<24;i++){
+    x.beginPath(); x.moveTo(w*0.5, h*0.62);
+    const a=-Math.PI/2 + (i-12)*0.11;
+    x.lineTo(w*0.5+Math.cos(a)*w*1.2, h*0.62+Math.sin(a)*w*1.2); x.stroke();
+  }
+  x.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=8; return t;
+}
+function brushedRoughness(){
+  const w=512,h=512,c=makeCanvas(w,h),x=c.getContext('2d');
+  x.fillStyle='#8c8c8c'; x.fillRect(0,0,w,h);
+  for(let i=0;i<1800;i++){
+    const py=Math.random()*h;
+    x.strokeStyle=`rgba(${Math.random()<0.5?255:0},${Math.random()<0.5?255:0},255,${0.02+Math.random()*0.06})`;
+    x.lineWidth=0.5+Math.random()*1.4;
+    x.beginPath(); x.moveTo(0,py); x.lineTo(w,py+(Math.random()-0.5)*3); x.stroke();
+  }
+  const t=new THREE.CanvasTexture(c); return t;
+}
+const roughTex = brushedRoughness();
+
+// stonewash noise (for dark blade) — used as roughness map
+function stonewashRough(){
+  const w=512,h=512,c=makeCanvas(w,h),x=c.getContext('2d');
+  const img = x.createImageData(w,h);
+  for(let i=0;i<w*h;i++){
+    const v = 92 + Math.random()*90;
+    img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v; img.data[i*4+3]=255;
+  }
+  x.putImageData(img,0,0);
+  for(let i=0;i<260;i++){
+    x.globalAlpha=0.05; x.strokeStyle=Math.random()<0.5?'#fff':'#222';
+    x.lineWidth=1+Math.random()*3;
+    x.beginPath();
+    let px=Math.random()*w, py=Math.random()*h; x.moveTo(px,py);
+    for(let k=0;k<4;k++){ px+=(Math.random()-0.5)*90; py+=(Math.random()-0.5)*90; x.lineTo(px,py); }
+    x.stroke();
+  }
+  x.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c); return t;
+}
+const stoneTex = stonewashRough();
+
+/* ============================================================
+   4. MATERIALS
+   ============================================================ */
+const MAT = {};
+const colourways = {
+  VESPER: {
+    name:'Crimson Vesper', lacquer:'#a80c16', lacquerDeep:'#5c040b', flake:'#ff6a5e', flakeHi:'#ffd0a8',
+    metal:0xbfc4cc, blade:0x14161b, edge:0xeef2f8, gold:0xd9b26a, accent:0xc8101c, anod:0xc8101c
+  },
+  NOCTURNE: {
+    name:'Nocturne', lacquer:'#131a2c', lacquerDeep:'#070a13', flake:'#6f8cff', flakeHi:'#a8e0ff',
+    metal:0xc8ced8, blade:0x0e1118, edge:0xe8efff, gold:0x8fb6ff, accent:0x4d6dff, anod:0x3d4fff
+  },
+  GILDED: {
+    name:'Gilded Ash', lacquer:'#1a1209', lacquerDeep:'#0b0704', flake:'#e8c26a', flakeHi:'#fff0c0',
+    metal:0xd2c9b2, blade:0x1a1712, edge:0xfff4d8, gold:0xf0cf8a, accent:0xd9a441, anod:0xd9a441
+  }
+};
+let currentCW = 'VESPER';
+
+MAT.lacquer = new THREE.MeshPhysicalMaterial({
+  color:0xa80c16, metalness:0.42, roughness:0.24, clearcoat:1.0, clearcoatRoughness:0.055,
+  map: metalFlakeTexture('#a80c16','#ff6a5e','#ffd0a8'), envMapIntensity:1.5
+});
+MAT.lacquer.map.anisotropy = 8;
+MAT.lacquerDark = new THREE.MeshPhysicalMaterial({
+  color:0x6a040c, metalness:0.5, roughness:0.28, clearcoat:0.9, clearcoatRoughness:0.1, envMapIntensity:1.2
+});
+MAT.steel = new THREE.MeshPhysicalMaterial({
+  color:0xc6ccd4, metalness:1.0, roughness:0.17, envMapIntensity:1.9,
+  roughnessMap: roughTex, clearcoat:0.3, clearcoatRoughness:0.2
+});
+MAT.steelDark = new THREE.MeshPhysicalMaterial({
+  color:0x9aa1ab, metalness:1.0, roughness:0.28, envMapIntensity:1.6, roughnessMap: roughTex
+});
+MAT.blade = new THREE.MeshPhysicalMaterial({
+  color:0x14161b, metalness:0.98, roughness:0.31, roughnessMap: stoneTex,
+  envMapIntensity:1.35, clearcoat:0.55, clearcoatRoughness:0.25
+});
+MAT.edge = new THREE.MeshPhysicalMaterial({
+  color:0xeef2f8, metalness:1.0, roughness:0.055, envMapIntensity:2.3
+});
+MAT.black = new THREE.MeshPhysicalMaterial({
+  color:0x0c0d10, metalness:0.85, roughness:0.42, envMapIntensity:1.1
+});
+MAT.rubber = new THREE.MeshPhysicalMaterial({color:0x0a0a0b, metalness:0.1, roughness:0.85});
+MAT.gold = new THREE.MeshPhysicalMaterial({
+  color:0xd9b26a, metalness:1.0, roughness:0.22, envMapIntensity:2.0
+});
+MAT.goldDark = new THREE.MeshPhysicalMaterial({color:0x8a6b3a, metalness:1.0, roughness:0.38});
+MAT.ringAccent = new THREE.MeshPhysicalMaterial({
+  color:0xc8101c, metalness:0.4, roughness:0.1, clearcoat:1, envMapIntensity:1.6,
+  iridescence:0.5, iridescenceIOR:1.6, iridescenceThicknessRange:[120,420]
+});
+MAT.handSkin = new THREE.MeshPhysicalMaterial({color:0xb9855f, metalness:0.0, roughness:0.72,
+  clearcoat:0.15, clearcoatRoughness:0.8, sheen:0.4, sheenColor:new THREE.Color(0xffcbb0)});
+MAT.handSuit = new THREE.MeshPhysicalMaterial({color:0x15161c, metalness:0.05, roughness:0.72});
+MAT.cuff = new THREE.MeshPhysicalMaterial({color:0xe8e2d4, metalness:0.0, roughness:0.6});
+MAT.cuffLink = new THREE.MeshPhysicalMaterial({color:0xcaa94f, metalness:1.0, roughness:0.25});
+
+/* ============================================================
+   5. GEOMETRY BUILDERS
+   ============================================================ */
+// round-rect shape helper (x,y = centre, w,h size, r radius)
+function rrShape(w,h,r){
+  const s = new THREE.Shape();
+  const x=-w/2,y=-h/2;
+  s.moveTo(x+r,y); s.lineTo(x+w-r,y); s.quadraticCurveTo(x+w,y,x+w,y+r);
+  s.lineTo(x+w,y+h-r); s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  s.lineTo(x+r,y+h); s.quadraticCurveTo(x,y+h,x,y+h-r);
+  s.lineTo(x,y+r); s.quadraticCurveTo(x,y,x+r,y);
+  return s;
+}
+function rrPath(w,h,r){
+  const p = new THREE.Path();
+  const x=-w/2,y=-h/2;
+  p.moveTo(x+r,y); p.lineTo(x+w-r,y); p.quadraticCurveTo(x+w,y,x+w,y+r);
+  p.lineTo(x+w,y+h-r); p.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  p.lineTo(x+r,y+h); p.quadraticCurveTo(x,y+h,x,y+h-r);
+  p.lineTo(x,y+r); p.quadraticCurveTo(x,y,x+r,y);
+  return p;
+}
+function extrude(shape, depth, bevel=0.012, seg=3){
+  const g = new THREE.ExtrudeGeometry(shape,{depth, bevelEnabled:true, bevelThickness:bevel,
+    bevelSize:bevel, bevelSegments:seg, curveSegments:22});
+  g.center();
+  g.computeVertexNormals();
+  return g;
+}
+
+/* ---------------- BLADE PROFILE (tanto, local +x = toward tip) ------------- */
+function bladeShape(){
+  const s = new THREE.Shape();
+  // tang / base at x<0, cutting edge along bottom (y<0), spine along top (y>0)
+  s.moveTo(-0.62, 0.10);
+  s.lineTo(-0.62, -0.42);            // tang bottom
+  s.quadraticCurveTo(-0.58,-0.50, -0.46,-0.50); // choil fillet
+  s.lineTo(-0.34,-0.50);
+  s.quadraticCurveTo(-0.28,-0.50, -0.26,-0.44);  // choil notch start
+  s.lineTo(-0.20,-0.30);            // choil
+  s.quadraticCurveTo(-0.16,-0.26, -0.10,-0.26);
+  s.lineTo(1.42,-0.26);             // straight edge (primary bevel zone)
+  s.lineTo(2.14,-0.13);             // tanto secondary edge rise
+  s.lineTo(2.62, 0.10);             // angular tip
+  s.lineTo(2.28, 0.20);             // tip underside (secondary edge, straight angular)
+  s.lineTo(1.66, 0.30);             // yoshi/kissaki step
+  s.lineTo(0.10, 0.30);             // spine
+  s.lineTo(-0.62, 0.10);
+  return s;
+}
+// maker's mark canvas: art-deco sunburst + A monogram
+function makerMarkTex(color){
+  const s=512, c=makeCanvas(s,s), x=c.getContext('2d');
+  x.clearRect(0,0,s,s);
+  x.translate(s/2,s/2);
+  // sunburst fan
+  x.strokeStyle=color; x.lineCap='round';
+  const rays=19;
+  for(let i=0;i<rays;i++){
+    const a=-Math.PI*0.93 + i*(Math.PI*0.86/rays);
+    x.lineWidth = 3.2;
+    x.beginPath(); x.moveTo(Math.cos(a)*70, Math.sin(a)*70);
+    x.lineTo(Math.cos(a)*168, Math.sin(a)*168); x.stroke();
+  }
+  // arc
+  x.lineWidth=5; x.beginPath(); x.arc(0,0,172,Math.PI*1.03,Math.PI*1.97); x.stroke();
+  x.lineWidth=3; x.beginPath(); x.arc(0,0,182,Math.PI*1.09,Math.PI*1.91); x.stroke();
+  // A monogram
+  x.lineWidth=9; x.lineJoin='round';
+  x.beginPath(); x.moveTo(-46,52); x.lineTo(0,-58); x.lineTo(46,52); x.stroke();
+  x.lineWidth=7; x.beginPath(); x.moveTo(-22,14); x.lineTo(22,14); x.stroke();
+  // baseline ticks (stepped deco)
+  x.lineWidth=4;
+  for(let i=0;i<7;i++){
+    x.beginPath(); x.moveTo(-84+i*28, 92); x.lineTo(-84+i*28, 78 + (i%2?0:8)); x.stroke();
+  }
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8;
+  return t;
+}
+
+/* ---------------- HANDLE ---------------- */
+function handleProfile(side){
+  // side=+1 for bite (cutting edge side), -1 safe (spine side)
+  const s = new THREE.Shape();
+  s.moveTo(0.10, 0.0);
+  s.lineTo(0.10, side*0.20);
+  s.lineTo(-0.06, side*0.265);
+  s.lineTo(-0.62, side*0.285);              // straight
+  s.lineTo(-0.76, side*0.30);               // flare begins
+  s.quadraticCurveTo(-0.80, side*0.40, -0.74, side*0.47);
+  s.lineTo(-1.06, side*0.47);               // flared end pad
+  s.quadraticCurveTo(-1.14, side*0.47, -1.15, side*0.34);
+  s.lineTo(-1.15, -side*0.34);
+  s.quadraticCurveTo(-1.14, -side*0.47, -1.06, -side*0.47);
+  s.lineTo(-0.74, -side*0.47);
+  s.quadraticCurveTo(-0.80, -side*0.40, -0.76, -side*0.30);
+  s.lineTo(-0.62, -side*0.285);
+  s.lineTo(-0.06, -side*0.265);
+  s.lineTo(0.10, -side*0.20);
+  s.lineTo(0.10, 0.0);
+  return s;
+}
+function scaleShape(side){
+  const s = new THREE.Shape();
+  s.moveTo(0.04, 0.02);
+  s.lineTo(0.04, side*0.17);
+  s.lineTo(-0.10, side*0.225);
+  s.lineTo(-0.60, side*0.245);
+  s.quadraticCurveTo(-0.68, side*0.30, -0.76, side*0.34);
+  s.lineTo(-0.96, side*0.34);
+  s.quadraticCurveTo(-1.02, side*0.34, -1.02, side*0.28);
+  s.lineTo(-1.02, -side*0.28);
+  s.quadraticCurveTo(-1.02, -side*0.34, -0.96, -side*0.34);
+  s.lineTo(-0.76, -side*0.34);
+  s.quadraticCurveTo(-0.68, -side*0.30, -0.60, -side*0.245);
+  s.lineTo(-0.10, -side*0.225);
+  s.lineTo(0.04, -side*0.17);
+  s.lineTo(0.04, 0.02);
+  return s;
+}
+
+/* ============================================================
+   6. BUILD THE KNIFE
+   ============================================================ */
+const knife = new THREE.Group();       // world transform (position/quaternion)
+scene.add(knife);
+const knifeSpin = new THREE.Group();   // holds pose orientation
+knife.add(knifeSpin);
+
+const bladeGroup = new THREE.Group();
+const safeHandle = new THREE.Group();   // pivots on its own pin
+const biteHandle = new THREE.Group();
+knifeSpin.add(bladeGroup, safeHandle, biteHandle);
+
+/* ---- blade assembly ---- */
+const bladeGeo = extrude(bladeShape(), 0.085, 0.013, 2);
+const bladeMesh = new THREE.Mesh(bladeGeo, MAT.blade);
+bladeMesh.castShadow = true; bladeMesh.receiveShadow = true;
+bladeGroup.add(bladeMesh);
+
+// grind line: thin polished strip along upper blade
+{
+  const pts = [];
+  const yTop = 0.155, x0=-0.30, x1=2.34;
+  for(let i=0;i<=24;i++){
+    const t=i/24; const x=lerp(x0,x1,t);
+    const y = yTop + Math.sin(t*Math.PI)*0.018 + (t>0.8? (t-0.8)*0.35:0);
+    pts.push(new THREE.Vector3(x,y,0));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const g = new THREE.TubeGeometry(curve, 60, 0.0125, 6, false);
+  const m = new THREE.Mesh(g, MAT.edge);
+  m.scale.z = 1; m.position.z = 0.0;
+  bladeGroup.add(m);
+}
+// polished edge bevel: thin wedge along the cutting edge
+{
+  const sh = new THREE.Shape();
+  sh.moveTo(-0.20,-0.262); sh.lineTo(1.44,-0.262); sh.lineTo(2.13,-0.132);
+  sh.lineTo(2.56,0.085);  sh.lineTo(2.60,0.10);
+  sh.lineTo(2.13,-0.10);  sh.lineTo(1.44,-0.228); sh.lineTo(-0.20,-0.228);
+  const g = new THREE.ExtrudeGeometry(sh,{depth:0.052, bevelEnabled:false, curveSegments:16});
+  g.translate(0,0,-0.026);
+  const m = new THREE.Mesh(g, MAT.edge); m.castShadow=true;
+  bladeGroup.add(m);
+  // second bevel highlight (shinogi) — the tanto secondary edge plane
+  const sh2 = new THREE.Shape();
+  sh2.moveTo(1.42,-0.26); sh2.lineTo(2.14,-0.13); sh2.lineTo(2.62,0.10);
+  sh2.lineTo(2.56,0.02); sh2.lineTo(2.10,-0.20); sh2.lineTo(1.42,-0.30);
+  const g2 = new THREE.ExtrudeGeometry(sh2,{depth:0.070, bevelEnabled:false, curveSegments:16});
+  g2.translate(0,0,-0.035);
+  bladeGroup.add(new THREE.Mesh(g2, MAT.edge));
+}
+// jimping on spine near tang
+{
+  const jg = new THREE.BoxGeometry(0.026, 0.036, 0.075);
+  for(let i=0;i<7;i++){
+    const m = new THREE.Mesh(jg, MAT.black);
+    m.position.set(-0.52+i*0.062, 0.30, 0);
+    m.rotation.z = 0.0;
+    bladeGroup.add(m);
+  }
+}
+// choil notch pin (small)
+{
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.032,0.10,16), MAT.black);
+  p.rotation.x = Math.PI/2; p.position.set(-0.20,-0.30,0); bladeGroup.add(p);
+}
+// maker's mark (etched decal on blade flat)
+const markTex = makerMarkTex('#d9b26a');
+const markMat = new THREE.MeshBasicMaterial({map:markTex, transparent:true, opacity:0.9,
+  depthWrite:false, blending:THREE.NormalBlending});
+const mark = new THREE.Mesh(new THREE.PlaneGeometry(0.44,0.44), markMat);
+mark.position.set(0.42, 0.02, 0.049); mark.rotation.z = 0.0;
+bladeGroup.add(mark);
+const mark2 = mark.clone(); mark2.position.z = -0.049; mark2.rotation.y = Math.PI; bladeGroup.add(mark2);
+
+// pivot hardware (shared tang hardware sits on blade group)
+const pivotCollars = [];
+{
+  for(const sx of [0, 1]){
+    const zOff = sx===0? -1:1;
+    const collar = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.135,0.028,12,40), MAT.ringAccent);
+    collar.add(ring);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.085,0.009,8,32), MAT.gold);
+    collar.add(ring2);
+    collar.position.set(-0.52, -0.22 + sx*0.44, zOff*0.052);
+    bladeGroup.add(collar); pivotCollars.push(collar);
+  }
+}
+
+/* ---- handles ---- */
+function buildHandle(side, isBite){
+  const g = new THREE.Group();
+  const parts = {};
+  // liners (dark steel frame)
+  const linerShape = handleProfile(side);
+  const lg = extrude(linerShape, 0.036, 0.008, 2);
+  for(const s of [-1,1]){
+    const m = new THREE.Mesh(lg, MAT.steelDark);
+    m.position.z = s*0.052; m.castShadow=true; m.receiveShadow=true;
+    g.add(m);
+  }
+  // scales (lacquer)
+  const sc = extrude(scaleShape(side), 0.052, 0.014, 3);
+  for(const s of [-1,1]){
+    const m = new THREE.Mesh(sc, MAT.lacquer);
+    m.position.z = s*0.080; m.castShadow = true; m.receiveShadow = true;
+    g.add(m);
+  }
+  // inner spacer / frame web
+  const web = extrude(handleProfile(side), 0.062, 0.004, 1);
+  {
+    const m = new THREE.Mesh(web, MAT.black); g.add(m);
+  }
+  // finger groove scallops (inner face) — machined crescents
+  for(let i=0;i<3;i++){
+    const cg = new THREE.TorusGeometry(0.115, 0.022, 10, 28, Math.PI*1.05);
+    const m = new THREE.Mesh(cg, MAT.lacquerDark);
+    m.rotation.z = side>0? Math.PI*0.02 : Math.PI*1.02;
+    m.position.set(-0.30 - i*0.26, side*0.19, 0.052*(i%2?1:-1));
+    g.add(m);
+  }
+  // THE SIGNATURE — "Fan Spine": 9 stepped deco fins milled into outer scale
+  const fan = new THREE.Group();
+  for(let i=0;i<9;i++){
+    const w = 0.085 - i*0.004;
+    const h = 0.20 + i*0.026;
+    const shp = rrShape(w, h, 0.012);
+    const gg = new THREE.ExtrudeGeometry(shp,{depth:0.016, bevelEnabled:true, bevelThickness:0.004,
+      bevelSize:0.004, bevelSegments:1, curveSegments:6});
+    gg.center();
+    const fin = new THREE.Mesh(gg, i===0?MAT.gold:MAT.goldDark);
+    const ang = -0.62 + i*0.155;
+    fin.position.set(-0.42 - i*0.042, side*(0.10 + i*0.012), 0.112);
+    fin.rotation.z = side*(ang);
+    fan.add(fin);
+    const fin2 = fin.clone(); fin2.position.z = -0.112; fin2.rotation.y = Math.PI; fan.add(fin2);
+  }
+  g.add(fan);
+  // pivot screw + washer at pivot
+  {
+    const wg = new THREE.CylinderGeometry(0.155,0.155,0.012,32);
+    for(const s of [-1,1]){
+      const w = new THREE.Mesh(wg, MAT.gold);
+      w.rotation.x = Math.PI/2; w.position.set(0,0,s*0.118); g.add(w);
+    }
+    const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.098,0.098,0.30,28), MAT.black);
+    screw.rotation.x=Math.PI/2; g.add(screw);
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.115,0.098,0.05,6), MAT.black);
+    head.rotation.x=Math.PI/2; head.rotation.z=0.0; head.position.z=0.17; g.add(head);
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(0.13,0.018,0.012), MAT.goldDark);
+    slot.position.z = 0.197; g.add(slot);
+    const h2 = head.clone(); h2.position.z=-0.17; g.add(h2);
+  }
+  // zen pin at far end
+  {
+    const zp = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,0.30,20), MAT.steel);
+    shaft.rotation.x = Math.PI/2; zp.add(shaft);
+    for(const s of [-1,1]){
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.072,0.072,0.03,20), MAT.gold);
+      cap.rotation.x=Math.PI/2; cap.position.z = s*0.158; zp.add(cap);
+    }
+    zp.position.set(-0.93, side*0.20, 0);
+    g.add(zp);
+  }
+  // lanyard / flare end detail
+  {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.085,0.024,10,32), MAT.black);
+    ring.position.set(-1.08, 0, 0); ring.rotation.y = 0; g.add(ring);
+    const inner = new THREE.Mesh(new THREE.CylinderGeometry(0.042,0.042,0.20,16), MAT.black);
+    inner.rotation.x = Math.PI/2; inner.position.set(-1.06,0,0); g.add(inner);
+  }
+  return {group:g, fan};
+}
+const biteBuilt = buildHandle(1, true);
+const safeBuilt = buildHandle(-1, false);
+biteHandle.add(biteBuilt.group);
+safeHandle.add(safeBuilt.group);
+// store fan refs for animation
+const fanBite = biteBuilt.fan, fanSafe = safeBuilt.fan;
+
+/* ---- latch on the bite handle ---- */
+const latchGroup = new THREE.Group();
+latchGroup.position.set(-1.02, 0.30, 0.14);   // pivot at flare end of bite handle
+biteHandle.add(latchGroup);
+{
+  // T-latch: shaft along -Y then cross T
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.045,0.42,0.045), MAT.black);
+  shaft.position.set(0,-0.21,0); latchGroup.add(shaft);
+  const T = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.055,0.055), MAT.black);
+  T.add(bar);
+  // stepped deco tread on T bar (signature-ish)
+  for(let i=0;i<5;i++){
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.032,0.022,0.062), MAT.gold);
+    s.position.set(-0.11+i*0.055, 0.032, 0); T.add(s);
+  }
+  // notch pins to hook handles
+  for(const s of [-1,1]){
+    const n = new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.026,0.07,12), MAT.steel);
+    n.rotation.x = Math.PI/2; n.position.set(s*0.135,0,0); T.add(n);
+  }
+  T.position.set(0,-0.44,0);
+  latchGroup.add(T);
+  const pivot = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.09,18), MAT.goldDark);
+  pivot.rotation.x = Math.PI/2; latchGroup.add(pivot);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.06,0.035,12), MAT.gold);
+  cap.rotation.x=Math.PI/2; cap.position.z=0.06; latchGroup.add(cap);
+}
+// latch capture hooks on the handles (bite: at end of safe handle, safe: end of bite)
+const latchSeatA = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.20,14), MAT.steelDark);
+latchSeatA.rotation.x = Math.PI/2; latchSeatA.position.set(-1.03, 0.30, 0);
+safeHandle.add(latchSeatA);
+const latchSeatB = latchSeatA.clone(); latchSeatB.position.set(-1.03, 0.20, 0);
+biteHandle.add(latchSeatB);
+
+/* ============================================================
+   7. KINEMATIC POSE RIG
+   ============================================================ */
+// helper: multiply quaternion lists
+function qmul(a,b){ return a.clone().multiply(b); }
+
+const POSES = {
+  // closed: blade folded into the channel between handles
+  closed: {
+    bladeRotZ: 0, bladeT: new THREE.Vector3(0,0,0),
+    safeZ: 0, biteZ: Math.PI,
+    knifeQ: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, 0.0, -0.30)),
+    knifeP: new THREE.Vector3(0, 0.10, 0),
+    latch: 1.0
+  },
+  // open, forward grip
+  open: {
+    bladeRotZ: 0, bladeT: new THREE.Vector3(0,0,0),
+    safeZ: Math.PI, biteZ: Math.PI,
+    knifeQ: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.10, 0.0, 0.34)),
+    knifeP: new THREE.Vector3(0, 0.05, 0),
+    latch: 1.0
+  }
+};
+function makePose(o={}){
+  return {
+    bladeRotZ: o.bladeRotZ ?? 0,
+    bladePos: (o.bladePos||new THREE.Vector3()).clone(),
+    safeZ: o.safeZ ?? Math.PI,
+    biteZ: o.biteZ ?? Math.PI,
+    q: (o.q||new THREE.Quaternion()).clone(),
+    p: (o.p||new THREE.Vector3()).clone(),
+    s: o.s ?? 1,
+    latch: o.latch ?? 1
+  };
+}
+function poseFrom(key){
+  const P = POSES[key];
+  return makePose({bladeRotZ:P.bladeRotZ, bladePos:P.bladeT, safeZ:P.safeZ, biteZ:P.biteZ, q:P.knifeQ, p:P.knifeP, s:1, latch:P.latch});
+}
+// Hand anchor — for held poses, this is the hand transform in knife-local space
+// we instead keep the HAND in world space and drive the knife from it via inverse.
+let handPos = new THREE.Vector3(1.9, 0.05, 0);
+let handQuat = new THREE.Quaternion();
+let handVisible = true;
+let holdMode = 'safe'; // 'safe' | 'bite'
+
+/* ============================================================
+   8. AUDIO (Web Audio synthesis)
+   ============================================================ */
+class Sound {
+  constructor(){
+    this.ctx=null; this.master=null; this.enabled=true; this.vol=0.7; this.noiseBuf=null;
+  }
+  init(){
+    if(this.ctx) return;
+    const AC = window.AudioContext||window.webkitAudioContext;
+    if(!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.vol*0.9;
+    this.comp = this.ctx.createDynamicsCompressor();
+    this.comp.threshold.value=-16; this.comp.knee.value=12; this.comp.ratio.value=6;
+    this.comp.attack.value=0.002; this.comp.release.value=0.14;
+    this.master.connect(this.comp); this.comp.connect(this.ctx.destination);
+    // shared noise buffer
+    const len = this.ctx.sampleRate*1.2;
+    const b = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    this.noiseBuf = b;
+    // swish chain (continuous)
+    this.swishSrc = this.ctx.createBufferSource();
+    this.swishSrc.buffer=b; this.swishSrc.loop=true;
+    this.swishBP = this.ctx.createBiquadFilter();
+    this.swishBP.type='bandpass'; this.swishBP.frequency.value=900; this.swishBP.Q.value=0.9;
+    this.swishHP = this.ctx.createBiquadFilter();
+    this.swishHP.type='highpass'; this.swishHP.frequency.value=380;
+    this.swishGain = this.ctx.createGain(); this.swishGain.gain.value=0;
+    this.swishSrc.connect(this.swishBP); this.swishBP.connect(this.swishHP);
+    this.swishHP.connect(this.swishGain); this.swishGain.connect(this.master);
+    this.swishSrc.start();
+  }
+  setVol(v){ this.vol=v; if(this.master) this.master.gain.setTargetAtTime(this.enabled? v*0.9:0, this.ctx.currentTime, 0.03); }
+  resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); }
+  setSwish(amount, freq){
+    if(!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.swishGain.gain.setTargetAtTime(this.enabled? amount : 0, t, 0.05);
+    this.swishBP.frequency.setTargetAtTime(clamp(freq,180,3200), t, 0.06);
+  }
+  // metallic clack at pin
+  clack(strength=1, bright=1.0, thock=false){
+    if(!this.ctx||!this.enabled) return;
+    const t=this.ctx.currentTime;
+    const g=this.ctx.createGain();
+    const amp = clamp(0.09+strength*0.28,0.05,0.42);
+    g.gain.setValueAtTime(amp, t);
+    g.gain.exponentialRampToValueAtTime(0.0008, t+0.16+strength*0.08);
+    g.connect(this.master);
+    // inharmonic partials
+    const base = thock? 168 : 320*bright;
+    const parts = thock? [1,1.71,2.63] : [1,1.83,2.61,3.42,4.97];
+    parts.forEach((p,i)=>{
+      const o=this.ctx.createOscillator();
+      o.type = thock? 'sine' : (i<2?'triangle':'sine');
+      o.frequency.value = base*p*(1+(Math.random()-0.5)*0.03);
+      const gg=this.ctx.createGain();
+      gg.gain.value = 1/(i+1.6);
+      o.connect(gg); gg.connect(g);
+      o.start(t); o.stop(t+0.22+strength*0.1);
+    });
+    // noise tick
+    const ns=this.ctx.createBufferSource(); ns.buffer=this.noiseBuf;
+    const bp=this.ctx.createBiquadFilter(); bp.type='bandpass';
+    bp.frequency.value = thock? 420 : 2600*bright; bp.Q.value=1.6;
+    const ng=this.ctx.createGain();
+    ng.gain.setValueAtTime(0.5,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+    ns.connect(bp); bp.connect(ng); ng.connect(this.master);
+    ns.start(t, Math.random()*0.6, 0.07);
+  }
+  latch(open=true){
+    if(!this.ctx||!this.enabled) return;
+    const t=this.ctx.currentTime;
+    const ns=this.ctx.createBufferSource(); ns.buffer=this.noiseBuf;
+    const bp=this.ctx.createBiquadFilter(); bp.type='bandpass';
+    bp.frequency.value = open? 3400:2400; bp.Q.value=3.4;
+    const g=this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.32,t+0.004);
+    g.gain.exponentialRampToValueAtTime(0.0008,t+0.075);
+    ns.connect(bp); bp.connect(g); g.connect(this.master);
+    ns.start(t, Math.random()*0.5, 0.1);
+    const o=this.ctx.createOscillator(); o.type='square';
+    o.frequency.setValueAtTime(open?1750:1180, t);
+    o.frequency.exponentialRampToValueAtTime(open?760:520, t+0.05);
+    const og=this.ctx.createGain();
+    og.gain.setValueAtTime(0.11,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.06);
+    o.connect(og); og.connect(this.master); o.start(t); o.stop(t+0.08);
+  }
+  ring(){
+    if(!this.ctx||!this.enabled) return;
+    const t=this.ctx.currentTime;
+    const freqs=[523,784,1046,1567,2093];
+    freqs.forEach((f,i)=>{
+      const o=this.ctx.createOscillator(); o.type='sine'; o.frequency.value=f*(1+ (Math.random()-0.5)*0.004);
+      const g=this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.075/(i+1), t+0.004);
+      g.gain.exponentialRampToValueAtTime(0.0004, t+0.75-i*0.08);
+      o.connect(g); g.connect(this.master);
+      o.start(t); o.stop(t+0.9);
+    });
+  }
+  rattle(intensity){
+    if(!this.ctx||!this.enabled) return;
+    const t=this.ctx.currentTime;
+    for(let i=0;i<2+Math.floor(Math.random()*3);i++){
+      const d=i*(0.012+Math.random()*0.016);
+      const ns=this.ctx.createBufferSource(); ns.buffer=this.noiseBuf;
+      const bp=this.ctx.createBiquadFilter(); bp.type='bandpass';
+      bp.frequency.value=1400+Math.random()*2600; bp.Q.value=8;
+      const g=this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001,t+d);
+      g.gain.exponentialRampToValueAtTime(0.05*intensity,t+d+0.003);
+      g.gain.exponentialRampToValueAtTime(0.0005,t+d+0.04);
+      ns.connect(bp); bp.connect(g); g.connect(this.master);
+      ns.start(t+d, Math.random()*0.5, 0.06);
+    }
+  }
+}
+const SFX = new Sound();
+
+/* ============================================================
+   9. STATE + POSE ENGINE
+   ============================================================ */
+const state = {
+  pos: new THREE.Vector3(0,0.12,0),
+  quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1,0,0.35)),
+  safeZ: Math.PI, biteZ: Math.PI,
+  latch: 1,               // 1 = latched (closed), 0 = swung clear
+  latchAngle: 0,          // visual angle of latch (0 = resting/hooked)
+  prevSafeZ: Math.PI, prevBiteZ: Math.PI,
+  vel: 0,
+  exploded: 0, targetExplode: 0,
+  phaseName: 'idle',
+  spinExtra: 0
+};
+
+// pose object mutated by each move; blending handled by tween list
+let tweenList = []; // {dur, t, apply(u)}
+let curMove = null;
+let moveTime = 0;
+
+function pushTween(dur, apply, opts={}){
+  const tw = {dur: Math.max(0.001,dur), t:0, apply, done:false, onDone:opts.onDone};
+  tweenList.push(tw);
+  return tw;
+}
+function killTweens(){ tweenList.length = 0; }
+function updateTweens(dt){
+  for(let i=tweenList.length-1;i>=0;i--){
+    const tw=tweenList[i];
+    tw.t += dt;
+    let u = clamp(tw.t/tw.dur,0,1);
+    tw.apply(u);
+    if(u>=1){
+      tweenList.splice(i,1);
+      if(tw.onDone) tw.onDone();
+    }
+  }
+}
+
+/* --- latch driver --- */
+let latchTargetAngle = 0;   // 0 hooked, 1 swung clear
+function setLatch(open){
+  // open === true means swung clear
+  latchTargetAngle = open? 1.05 : 0;
+  SFX.latch(open);
+}
+
+/* --- pose blending from a stored pose --- */
+function applyPoseNow(P){
+  state.pos.copy(P.p);
+  state.quat.copy(P.q);
+  state.safeZ = P.safeZ;
+  state.biteZ = P.biteZ;
+  state.latch = P.latch;
+}
+function capturePose(){
+  return { p: state.pos.clone(), q: state.quat.clone(),
+           safeZ: state.safeZ, biteZ: state.biteZ, latch: state.latch };
+}
+function lerpPoseAtoB(A,B,u,ease=true){
+  const e = ease? smoother(u):u;
+  state.pos.lerpVectors(A.p,B.p,e);
+  state.quat.slerpQuaternions(A.q,B.q,e);
+  state.safeZ = lerp(A.safeZ,B.safeZ,e);
+  state.biteZ = lerp(A.biteZ,B.biteZ,e);
+  state.latch = lerp(A.latch,B.latch,e);
+}
+
+/* --- generic tween of pose components --- */
+function animPose(dur, fn, opts={}){
+  pushTween(dur, u=>fn(u, dur), opts);
+}
+
+/* ============================================================
+   10. MOVES
+   ============================================================ */
+let currentMoveName='';
+const moveRegistry = {};
+
+function setCaption(no,name,sub){
+  const cap=document.getElementById('cap');
+  document.getElementById('capNo').textContent=no;
+  document.getElementById('capNm').textContent=name;
+  document.getElementById('capSub').textContent=sub||'';
+  document.getElementById('capBar').style.width='0%';
+  cap.classList.add('on');
+  currentMoveName=name;
+  // highlight button
+  document.querySelectorAll('.mv').forEach(b=>b.classList.remove('on'));
+  const btn=[...document.querySelectorAll('.mv')].find(b=>b.dataset.name===name);
+  if(btn) btn.classList.add('on');
+}
+function clearCaption(){
+  document.getElementById('cap').classList.remove('on');
+  document.querySelectorAll('.mv').forEach(b=>b.classList.remove('on'));
+}
+
+// pin / stop detector: fires when a handle decelerates hard near a stop
+let prevHandleVel = {safe:0, bite:0};
+function detectPins(dt){
+  const now = performance.now();
+  for(const k of ['safe','bite']){
+    const z = k==='safe'? state.safeZ : state.biteZ;
+    const pz = k==='safe'? state.prevSafeZ : state.prevBiteZ;
+    const v = dt>0 ? (z-pz)/dt : 0;
+    const pv = prevHandleVel[k];
+    // stop = velocity flips sign or magnitude drops sharply
+    const crossedStop = (Math.abs(v) < Math.abs(pv)*0.35) && Math.abs(pv) > 1.6;
+    const nearStop = (Math.abs(Math.sin(z*0.5))<0.42);
+    if(crossedStop && nearStop){
+      const s = clamp(Math.abs(pv)/14, 0.12, 1.1);
+      SFX.clack(s, k==='bite'?1.12:0.94, false);
+    }
+    prevHandleVel[k]=v;
+  }
+  state.prevSafeZ = state.safeZ;
+  state.prevBiteZ = state.biteZ;
+}
+
+/* ---------- 1. BASIC OPEN ---------- */
+moveRegistry['BASIC OPEN'] = (speedScale=1)=>{
+  killTweens(); clearCaption(); setCaption('01','Basic Open','Unlatch · Drop safe · Catch bite');
+  setLatch(true);
+  const A = capturePose();
+  const closedQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.30,0.12,-0.26));
+  const closedP = new THREE.Vector3(-0.05,0.18,0);
+  // Phase 1: rotate into closed presentation
+  animPose(0.34, u=>{
+    const e=smoother(u);
+    state.pos.lerpVectors(A.p,closedP,e);
+    state.quat.slerpQuaternions(A.q,closedQ,e);
+    state.latch = lerp(A.latch, 1, e);
+  });
+  // Phase 2: safe handle drops
+  const s0 = Math.PI; // state after phase1 might differ; we use absolute
+  pushTween(0.001, ()=>{});
+  animPose(0.30, u=>{
+    const e = smoother(u);
+    // swing safe from 0 to PI (blade is at rot 0 => blade points +x)
+    state.safeZ = lerp(0, Math.PI, e);
+    state.bladeSpinHold = null;
+    // tiny anticipation lift
+    state.pos.y = closedP.y + Math.sin(u*Math.PI)*0.05;
+  }, {onDone:()=>{ SFX.clack(0.9,0.94); }});
+  // Phase 3: bite swings over, knife lifts & turns to forward grip
+  pushTween(0.001, ()=>{});
+  const qOpen = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.05,0.05,0.30));
+  animPose(0.40, u=>{
+    const e = u<0.72? Math.pow(u/0.72,1.7)*0.55 : 0.55 + (1-Math.pow(1-(u-0.72)/0.28,2))*0.45;
+    const ee = clamp(e,0,1);
+    state.biteZ = lerp(Math.PI, 2*Math.PI, ee);
+    // knife rotates so blade ends forward
+    state.quat.slerpQuaternions(closedQ, qOpen, smoother(u));
+    state.pos.lerpVectors(closedP, new THREE.Vector3(0.05,0.05,0), smoother(u));
+    state.pos.y += Math.sin(u*Math.PI)*0.10;
+  }, {onDone:()=>{
+    state.safeZ = Math.PI; state.biteZ = 2*Math.PI;
+    SFX.clack(1.0,1.12); SFX.ring();
+    pushTween(0.001, ()=>{});
+    animPose(0.30, u=>{
+      setLatch(false);
+      state.latch = lerp(1,1,smoother(u));
+    }, {onDone:()=>{
+      // settle bounce
+      animPose(0.18, u=>{
+        const b=Math.sin(u*Math.PI*3)*Math.exp(-u*4);
+        state.quat.copy(qOpen).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,b*0.09,0)));
+        state.pos.y = 0.05 + b*0.035;
+      }, {onDone:()=>{
+        state.safeZ=Math.PI; state.biteZ=2*Math.PI;
+        clearCaption();
+      }});
+    }});
+  }});
+};
+
+/* ---------- 2. BASIC CLOSE ---------- */
+moveRegistry['BASIC CLOSE'] = ()=>{
+  killTweens(); clearCaption(); setCaption('02','Basic Close','Catch · Swing both · Latch');
+  const A = capturePose();
+  setLatch(true);
+  // ensure open
+  const qOpen = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.05,0.05,0.30));
+  animPose(0.22, u=>{
+    const e=smoother(u);
+    state.quat.slerpQuaternions(A.q,qOpen,e);
+    state.pos.lerpVectors(A.p,new THREE.Vector3(0.05,0.08,0),e);
+    state.safeZ = lerp(A.safeZ, Math.PI, e);
+    state.biteZ = lerp(A.biteZ, Math.PI*2, e);
+  });
+  const qClosed = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.26,0.05,-0.22));
+  animPose(0.34, u=>{
+    const e = smoother(u);
+    state.biteZ = lerp(Math.PI*2, Math.PI, e);   // bite swings back
+    state.pos.y = 0.08 + Math.sin(u*Math.PI)*0.06;
+  }, {onDone:()=>{ SFX.clack(0.85,1.0); }});
+  animPose(0.30, u=>{
+    const e = smoother(u);
+    state.safeZ = lerp(Math.PI, 0, e);
+    state.quat.slerpQuaternions(qOpen, qClosed, e);
+    state.pos.lerpVectors(new THREE.Vector3(0.05,0.08,0), new THREE.Vector3(0,0.10,0), e);
+  }, {onDone:()=>{
+    state.safeZ=0; state.biteZ=Math.PI;
+    SFX.clack(0.95,0.9);
+    animPose(0.28, u=>{
+      setLatch(false);
+      state.latch = 1;
+    }, {onDone:()=>clearCaption()});
+  }});
+};
+
+/* ---------- 3. CHAPLIN ---------- */
+moveRegistry['CHAPLIN'] = ()=>{
+  killTweens(); clearCaption(); setCaption('03','Chaplin','Flips over the hand · Handles swap');
+  setLatch(true);
+  // hold safe handle: the safe handle stays at a fixed world position;
+  // the whole knife rotates about the wrist axis so handles swap sides.
+  const A = capturePose();
+  const pivotWorld = new THREE.Vector3(1.05, -0.55, 0); // where the hand holds
+  const qStart = A.q.clone();
+  // phase 1: lift
+  animPose(0.26, u=>{
+    const e=smoother(u);
+    state.pos.lerpVectors(A.p, pivotWorld.clone().add(new THREE.Vector3(-1.0,0.15,0)), e);
+    state.quat.slerpQuaternions(qStart, new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15,0,0.2)), e);
+    state.safeZ = lerp(A.safeZ, Math.PI, e);
+    state.biteZ = lerp(A.biteZ, Math.PI, e);
+  });
+  // phase 2: flip over the hand — rotate the whole rig about Z by ~2π
+  const baseQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15,0,0.2));
+  const baseP = pivotWorld.clone().add(new THREE.Vector3(-1.0,0.15,0));
+  animPose(0.55, u=>{
+    const e = smoother(u);
+    const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -TAU*e);
+    state.quat.copy(baseQ).multiply(spin);
+    // handle angles relative to world: they swap sides, so both flip by ~π relative
+    state.safeZ = lerp(Math.PI, 2*Math.PI, e);
+    state.biteZ = lerp(Math.PI, 0, e);
+    state.pos.copy(baseP);
+    state.pos.y += Math.sin(u*Math.PI)*0.06;
+  }, {onDone:()=>{
+    SFX.clack(0.95,1.1); SFX.ring();
+    animPose(0.20, u=>{
+      state.quat.copy(baseQ);
+      state.safeZ = 2*Math.PI; state.biteZ=0;
+      state.pos.y = baseP.y - Math.sin(u*Math.PI)*0.03;
+    }, {onDone:()=>{
+      state.safeZ=2*Math.PI; state.biteZ=0;
+      clearCaption();
+    }});
+  }});
+};
+
+/* ---------- 4. ZEN ROLLOVER ---------- */
+moveRegistry['ZEN ROLLOVER'] = ()=>{
+  killTweens(); clearCaption(); setCaption('04','Zen Rollover','Across the back of the hand');
+  setLatch(true);
+  const A = capturePose();
+  const baseQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.0,0.1,0.1));
+  const handPos = new THREE.Vector3(0.75,-0.75,0);
+  animPose(0.30, u=>{
+    const e=smoother(u);
+    state.quat.slerpQuaternions(A.q, baseQ, e);
+    state.pos.lerpVectors(A.p, handPos.clone().add(new THREE.Vector3(0.6,0.5,0)), e);
+  });
+  // roll across: rotate about the blade's long axis (X) so the knife rolls over the back of the hand
+  animPose(0.75, u=>{
+    const e = smoother(u);
+    const roll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), Math.PI*2*e);
+    state.quat.copy(baseQ).multiply(roll);
+    // travel across the hand
+    state.pos.lerpVectors(handPos.clone().add(new THREE.Vector3(0.6,0.5,0)),
+                          handPos.clone().add(new THREE.Vector3(-0.6,0.5,0.1)), e);
+    state.pos.y += Math.sin(e*Math.PI)*0.18;
+    // handles swing while rolling
+    state.safeZ = Math.PI + Math.sin(e*Math.PI)*0.55;
+    state.biteZ  = Math.PI*2 - Math.sin(e*Math.PI)*0.75;
+  }, {onDone:()=>{
+    SFX.clack(0.7,1.05);
+    animPose(0.24, u=>{
+      state.quat.copy(baseQ);
+      state.safeZ = Math.PI; state.biteZ = 2*Math.PI;
+      state.pos.copy(handPos.clone().add(new THREE.Vector3(-0.6,0.5,0.1)));
+    }, {onDone:()=>clearCaption()});
+  }});
+};
+
+/* ---------- 5. FAN ---------- */
+moveRegistry['FAN'] = ()=>{
+  killTweens(); clearCaption(); setCaption('05','Fan','Handle spins on the index finger');
+  setLatch(true);
+  const A = capturePose();
+  // fan: blade held static; one handle (safe) spins rapidly around the pivot while the
+  // knife is pinned by the other handle at the index finger.
+  const baseQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.18,0.0,0.28));
+  const baseP = new THREE.Vector3(0.15,0.05,0);
+  const spins = 5.5;
+  animPose(0.34, u=>{
+    const e=smoother(u);
+    state.quat.slerpQuaternions(A.q, baseQ, e);
+    state.pos.lerpVectors(A.p, baseP, e);
+  });
+  animPose(1.30, u=>{
+    // fan: the handle makes many revolutions; blade stays still
+    const e = u<0.18? (u/0.18)*0.12 : 0.12 + (u-0.18)/0.82*0.88;
+    const ee = clamp(e,0,1);
+    const ease = ee*ee*(3-2*ee)*0.25 + ee*0.75;
+    state.biteZ = lerp(Math.PI, Math.PI + TAU*spins*ease, 1);
+    state.safeZ = Math.PI;
+    state.pos.y = baseP.y + Math.sin(u*Math.PI*2)*0.012;
+    if(Math.random()<0.06) SFX.rattle(0.5);
+  }, {onDone:()=>{
+    state.biteZ = Math.PI + TAU*spins;
+    SFX.clack(0.75,1.15);
+    animPose(0.22, u=>{
+      state.quat.copy(baseQ).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.sin(u*Math.PI*3)*0.05*Math.exp(-u*3))));
+    }, {onDone:()=>clearCaption()});
+  }});
+};
+
+/* ---------- 6. HELIX ---------- */
+moveRegistry['HELIX'] = ()=>{
+  killTweens(); clearCaption(); setCaption('06','Helix','Twirls on the long axis while it flips');
+  setLatch(true);
+  const A = capturePose();
+  const baseQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.06,0.0,0.16));
+  const c = new THREE.Vector3(0.0, 0.12, 0);
+  animPose(0.28, u=>{
+    const e=smoother(u);
+    state.quat.slerpQuaternions(A.q, baseQ, e);
+    state.pos.lerpVectors(A.p, c, e);
+  });
+  animPose(0.95, u=>{
+    const e = smoother(u);
+    // flip about the knife's long axis (local X) — a helix: 2.5 turns
+    const helix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), TAU*2.5*e);
+    // plus a slow tumble about Z so it reads as a helix not a flat spin
+    const tum = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), Math.sin(e*Math.PI)*0.5);
+    state.quat.copy(baseQ).multiply(helix).multiply(tum);
+    state.pos.copy(c);
+    state.pos.y += Math.sin(e*Math.PI)*0.30;
+    state.safeZ = Math.PI + Math.sin(e*Math.PI)*0.35;
+    state.biteZ  = 2*Math.PI - Math.sin(e*Math.PI)*0.55;
+  }, {onDone:()=>{
+    SFX.clack(0.85,1.1);
+    animPose(0.20, u=>{
+      state.quat.copy(baseQ);
+      state.pos.copy(c);
+      state.safeZ=Math.PI; state.biteZ=2*Math.PI;
+    }, {onDone:()=>clearCaption()});
+  }});
+};
+
+/* ---------- 7. AERIAL ---------- */
+moveRegistry['AERIAL'] = ()=>{
+  killTweens(); clearCaption(); setCaption('07','Aerial','Tossed · full turn · caught by the bite');
+  setLatch(true);
+  const A = capturePose();
+  const lift = new THREE.Vector3(-0.10, 2.05, 0);
+  const c = new THREE.Vector3(0.0, 0.15, 0);
+  // toss
+  animPose(0.26, u=>{
+    const e = smoother(u);
+    state.pos.lerpVectors(A.p, c, e);
+    state.quat.slerpQuaternions(A.q, new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1,0,0.2)), e);
+  });
+  // airborne
+  animPose(1.05, u=>{
+    const e = u;
+    const h = Math.sin(e*Math.PI);
+    state.pos.set(
+      lerp(c.x, c.x+0.10, e),
+      lerp(c.y, c.y, e) + h*1.75,
+      lerp(c.z, 0.05, e)
+    );
+    // full spin about Z + half about Y for 3D read
+    const spinZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), TAU*1.0*easeAir(e));
+    const spinY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI*easeAir(e));
+    const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12,0.1,0.2));
+    state.quat.copy(tilt).multiply(spinY).multiply(spinZ);
+    // handles open mid-air
+    const open = smooth(clamp((e-0.18)/0.6,0,1));
+    state.safeZ = lerp(Math.PI, 0, open*0.0);       // stays open
+    state.biteZ  = lerp(Math.PI, Math.PI*2, open);  // bite swings out
+    if(e>0.3 && e<0.85 && Math.random()<0.08) SFX.rattle(0.4);
+  }, {onDone:()=>{
+    // catch
+    const catchQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.05,0.05,0.28));
+    animPose(0.24, u=>{
+      const e = smoother(u);
+      state.quat.slerpQuaternions(state.quat.clone(), catchQ, e);
+      state.pos.lerpVectors(state.pos.clone(), new THREE.Vector3(0.02,0.02,0), e);
+      state.safeZ=Math.PI; state.biteZ=Math.PI*2;
+    }, {onDone:()=>{
+      SFX.clack(1.1,1.15); SFX.ring();
+      animPose(0.22, u=>{
+        const b=Math.sin(u*Math.PI*3)*Math.exp(-u*4);
+        state.quat.copy(catchQ).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,b*0.12,0)));
+        state.pos.y = 0.02 + b*0.04;
+      }, {onDone:()=>clearCaption()});
+    }});
+  }});
+};
+function easeAir(e){ return e<0.85? e*1.06 : 0.901+ (e-0.85)*0.66; }
+
+/* ---------- 8. SIGNATURE: "VESPER FALL" ---------- */
+moveRegistry['VESPER FALL'] = ()=>{
+  killTweens(); clearCaption(); setCaption('08','Vesper Fall','Signature · sunburst cant · drop & catch');
+  setLatch(true);
+  const A = capturePose();
+  // Raise the knife in a ceremonial cant (edge up, art-deco), release the latch,
+  // let it pivot around the bite finger, then snap it upright into a fan pose.
+  const baseQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.0, 0.0, -0.95));
+  const baseP = new THREE.Vector3(0.55, 0.62, 0);
+  animPose(0.42, u=>{
+    const e = smoother(u);
+    state.quat.slerpQuaternions(A.q, baseQ, e);
+    state.pos.lerpVectors(A.p, baseP, e);
+    state.safeZ = lerp(A.safeZ, Math.PI, e);
+    state.biteZ = lerp(A.biteZ, Math.PI*0.55, e);   // bite opens part-way (blade tilts up)
+  }, {onDone:()=>SFX.clack(0.45,1.1)});
+  // the fall: bite handle becomes pivot, knife rotates 1.5 turns around the index finger
+  animPose(0.95, u=>{
+    const e = u;
+    const ease = e<0.35? Math.pow(e/0.35,2)*0.18 : 0.18+(e-0.35)/0.65*0.82;
+    const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -TAU*1.5*ease);
+    state.quat.copy(baseQ).multiply(spin);
+    // orbit around the finger pivot
+    const ang = -Math.PI/2 - Math.PI*1.5*ease;
+    const r = 1.05;
+    state.pos.set(
+      baseP.x + Math.cos(ang)*0.0 + Math.sin(ease*Math.PI)*0.0,
+      baseP.y + Math.sin(ease*Math.PI)*0.55 - ease*0.35,
+      baseP.z + Math.sin(ease*TAU)*0.12
+    );
+    state.pos.x = 0.55 + Math.sin(ease*Math.PI*2)*0.30;
+    // handles swap during the fall
+    state.safeZ = Math.PI + Math.PI*ease;
+    state.biteZ = Math.PI*0.55 + Math.PI*1.2*ease;
+  }, {onDone:()=>{
+    // catch into an open forward grip, handles spread
+    const catchQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.10,0.0,0.42));
+    const catchP = new THREE.Vector3(0.0, 0.02, 0);
+    const q0 = state.quat.clone(); const p0 = state.pos.clone();
+    SFX.clack(1.0,1.15);
+    animPose(0.30, u=>{
+      const e = smoother(u);
+      state.quat.slerpQuaternions(q0, catchQ, e);
+      state.pos.lerpVectors(p0, catchP, e);
+      state.safeZ = lerp(Math.PI*2, Math.PI, e);
+      state.biteZ  = lerp(Math.PI*0.55+Math.PI*1.2, 2*Math.PI, e);
+    }, {onDone:()=>{
+      state.safeZ=Math.PI; state.biteZ=2*Math.PI;
+      SFX.clack(0.9,1.1); SFX.ring();
+      // final flourish: fan fins catch light — brief glint + slow settle
+      animPose(0.5, u=>{
+        state.quat.copy(catchQ).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.sin(u*Math.PI)*0.05)));
+        state.pos.y = catchP.y + Math.sin(u*Math.PI)*0.06;
+      }, {onDone:()=>clearCaption()});
+    }});
+  }});
+};
+
+/* ---------- COMBO ---------- */
+const comboList = ['BASIC OPEN','CHAPLIN','ZEN ROLLOVER','FAN','HELIX','AERIAL','BASIC CLOSE','VESPER FALL'];
+let comboIndex = 0, comboActive=false, comboRunning=false;
+function runCombo(){
+  comboActive = true; comboRunning=true; comboIndex=0;
+  const next = ()=>{
+    if(!comboRunning){ comboActive=false; return; }
+    const name = comboList[comboIndex%comboList.length];
+    comboIndex++;
+    setCaption('CMB', 'Combo '+comboIndex, name);
+    const prevDone = tweenList.length;
+    moveRegistry[name]();
+    // schedule chain
+    setTimeout(()=>{
+      if(comboRunning) next();
+    }, comboDuration(name));
+  };
+  next();
+}
+function comboDuration(name){
+  const base = {
+    'BASIC OPEN':1.34,'BASIC CLOSE':1.16,'CHAPLIN':1.01,'ZEN ROLLOVER':1.29,
+    'FAN':1.86,'HELIX':1.43,'AERIAL':1.55,'VESPER FALL':2.19
+  }[name]||1.2;
+  return base*1000/speedScale + 90;
+}
+function stopCombo(){ comboRunning=false; comboActive=false; }
+
+/* ---------- FREESTYLE ---------- */
+let freeActive=false, freeTimer=null, lastFree='';
+function runFree(){
+  freeActive=true; stopCombo();
+  const keys = Object.keys(moveRegistry);
+  const next = ()=>{
+    if(!freeActive) return;
+    let pick = keys[Math.floor(Math.random()*keys.length)];
+    let guard=0;
+    while(pick===lastFree && guard++<8) pick = keys[Math.floor(Math.random()*keys.length)];
+    lastFree = pick;
+    moveRegistry[pick]();
+    freeTimer = setTimeout(next, 1150/speedScale + Math.random()*420);
+  };
+  next();
+}
+function stopFree(){ freeActive=false; clearTimeout(freeTimer); freeTimer=null; }
+
+/* ============================================================
+   11. EXPLODED VIEW
+   ============================================================ */
+const explodeParts = []; // {obj, base, dir, dist}
+function registerExplode(obj, dir, dist){
+  explodeParts.push({obj, base:obj.position.clone(), dir:dir.clone().normalize(), dist, t:0});
+}
+// collect parts
+function buildExplodeRegistry(){
+  // blade moves up along +Y (out of the handles' channel)
+  registerExplode(bladeGroup, new THREE.Vector3(0,1,0), 1.45);
+  // handles separate along ±Z (pivot axis)
+  registerExplode(safeHandle, new THREE.Vector3(0,0,-1), 1.15);
+  registerExplode(biteHandle, new THREE.Vector3(0,0,1), 1.15);
+  // scales: top & bottom (per handle children indices 2..5)
+  for(const [hgn, hnd] of [['safe',safeBuilt],['bite',biteBuilt]]){
+    const g = hnd.group;
+    // child 0,1 = liners; 2,3 = scales; 4 = web
+    const dir = hgn==='safe'? -1:1;
+    const s0 = g.children[2], s1 = g.children[3];
+    if(s0) registerExplode(s0, new THREE.Vector3(0,0,dir*1), 1.9);
+    if(s1) registerExplode(s1, new THREE.Vector3(0,0,dir*-1), 1.9);
+    // fan (child 5) flies out
+    if(g.children[5]) registerExplode(g.children[5], new THREE.Vector3(0,dir*0.7,dir*0.6), 1.1);
+    // pivot screw group is child 6 — find it by name-ish
+    for(const c of g.children){
+      if(c===g.children[6]) registerExplode(c, new THREE.Vector3(0,0,dir*1.2), 2.2);
+      if(c.position && Math.abs(c.position.x+0.93)<0.05 && c.type==='Group') registerExplode(c, new THREE.Vector3(-1,0,0), 1.2);
+    }
+  }
+  // latch
+  registerExplode(latchGroup, new THREE.Vector3(-0.5,0.8,0.6), 1.5);
+  // zen pins handled above
+}
+
+/* labels for exploded parts */
+const labels = [
+  {key:'blade', name:'BLADE · CPM-154 TANTO'},
+  {key:'safe', name:'SAFE HANDLE · CONTOURED TI'},
+  {key:'bite', name:'BITE HANDLE · CONTOURED TI'},
+  {key:'scale', name:'LACQUER SCALE · CANDY APPLE'},
+  {key:'fan', name:'FAN SPINE · MILLED DECO'},
+  {key:'pivot', name:'PIVOT · BUSHED 6 mm'},
+  {key:'zen', name:'ZEN PIN'},
+  {key:'latch', name:'T-LATCH · STEPPED TREAD'},
+  {key:'washer', name:'PIVOT WASHER · DLC'}
+];
+
+/* ============================================================
+   12. HAND (procedural, low-poly articulated)
+   ============================================================ */
+const hand = new THREE.Group();
+scene.add(hand);
+const handRig = {};
+{
+  // palm
+  const palmGeo = new THREE.CapsuleGeometry(0.20,0.42,4,12);
+  const palm = new THREE.Mesh(palmGeo, MAT.handSkin);
+  palm.rotation.x = Math.PI/2; palm.rotation.z = 0;
+  palm.scale.set(1.0,1.0,0.72);
+  palm.castShadow=true; hand.add(palm);
+  handRig.palm = palm;
+
+  // fingers: 4 fingers curled around a handle + thumb
+  const fingerSpecs = [
+    {i:0, x:0.30, len:[0.24,0.19,0.16], spread:0.02},
+    {i:1, x:0.11, len:[0.27,0.21,0.17], spread:0.00},
+    {i:2, x:-0.09,len:[0.25,0.20,0.16], spread:-0.01},
+    {i:3, x:-0.28,len:[0.21,0.16,0.14], spread:-0.03}
+  ];
+  handRig.fingers=[];
+  for(const f of fingerSpecs){
+    const root = new THREE.Group();
+    root.position.set(f.x, 0.0, 0.13);
+    hand.add(root);
+    let parent = root;
+    const joints=[];
+    for(let j=0;j<3;j++){
+      const seg = new THREE.Group();
+      const g = new THREE.CapsuleGeometry(0.062-j*0.008, f.len[j], 4, 8);
+      const m = new THREE.Mesh(g, MAT.handSkin);
+      m.position.y = f.len[j]/2;
+      m.castShadow = true;
+      seg.add(m);
+      seg.position.y = (j===0? 0 : f.len[j-1]);
+      parent.add(seg); parent = seg; joints.push(seg);
+      // knuckle
+      const kn = new THREE.Mesh(new THREE.SphereGeometry(0.066-j*0.008,10,8), MAT.handSkin);
+      kn.position.y = f.len[j]; seg.add(kn);
+    }
+    handRig.fingers.push({root, joints, spec:f});
+  }
+  // thumb
+  {
+    const root = new THREE.Group();
+    root.position.set(0.34, -0.13, 0.05);
+    root.rotation.z = -0.9;
+    hand.add(root);
+    const joints=[]; let parent=root;
+    const lens=[0.26,0.20];
+    for(let j=0;j<2;j++){
+      const seg=new THREE.Group();
+      const m=new THREE.Mesh(new THREE.CapsuleGeometry(0.075-j*0.012, lens[j],4,8), MAT.handSkin);
+      m.position.y=lens[j]/2; m.castShadow=true;
+      seg.add(m); seg.position.y = j===0?0:lens[j-1];
+      parent.add(seg); parent=seg; joints.push(seg);
+    }
+    handRig.thumb={root,joints};
+  }
+  // forearm + cuff + suit sleeve (tuxedo: art deco)
+  {
+    const arm = new THREE.Group();
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.155,0.72,4,12), MAT.handSkin);
+    fore.rotation.z = Math.PI/2; fore.position.set(0.55,0,0); fore.castShadow=true;
+    arm.add(fore);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.20,0.185,0.16,20), MAT.cuff);
+    cuff.rotation.z = Math.PI/2; cuff.position.set(0.24,0,0); cuff.castShadow=true;
+    arm.add(cuff);
+    // art-deco cufflink (small gold sunburst)
+    const cl = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.035,16), MAT.cuffLink);
+    cl.rotation.z=Math.PI/2; cl.position.set(0.26,0.14,0.09); arm.add(cl);
+    const suit = new THREE.Mesh(new THREE.CapsuleGeometry(0.20,0.86,4,12), MAT.handSuit);
+    suit.rotation.z=Math.PI/2; suit.position.set(1.28,0,0); suit.castShadow=true;
+    arm.add(suit);
+    hand.add(arm);
+    handRig.arm = arm;
+  }
+}
+// default hand pose: relaxed curl
+function setHandCurl(amount){
+  for(const f of handRig.fingers){
+    const curl = amount * (1.0 + f.spec.i*0.06);
+    f.joints[0].rotation.x = -0.35 - curl*0.85;
+    f.joints[1].rotation.x = -0.55 - curl*1.05;
+    f.joints[2].rotation.x = -0.42 - curl*0.95;
+  }
+  handRig.thumb.joints[0].rotation.x = -0.5 - amount*0.55;
+  handRig.thumb.joints[1].rotation.x = -0.6 - amount*0.8;
+}
+setHandCurl(0.8);
+
+/* hand placement driven by the animation:
+   the hand is placed so it always holds the currently-held handle. */
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q1 = new THREE.Quaternion();
+let handTargetPos = new THREE.Vector3(2.6,-0.1,0.5);
+let handTargetQuat = new THREE.Quaternion();
+
+function updateHand(dt, heldKind){
+  hand.visible = handVisible;
+  if(!handVisible) return;
+  // which handle is being held in this frame
+  let localGrip = null, gripGroup = null;
+  if(heldKind === 'safe'){ localGrip = new THREE.Vector3(-0.55, 0, 0); gripGroup = safeHandle; }
+  else if(heldKind === 'bite'){ localGrip = new THREE.Vector3(-0.55, 0, 0); gripGroup = biteHandle; }
+  else if(heldKind === 'latch'){ localGrip = new THREE.Vector3(-1.0,0.35,0); gripGroup = biteHandle; }
+
+  if(gripGroup){
+    // world position of the grip point
+    gripGroup.updateWorldMatrix(true,false);
+    _v1.copy(localGrip).applyMatrix4(gripGroup.matrixWorld);
+    // hand sits behind/below the grip; palm faces the camera-ish
+    handTargetPos.lerp(_v1.clone().add(new THREE.Vector3(0.30,-0.06,0.16)), 1-Math.pow(0.0001,dt));
+    // orientation: align hand's -X with the handle direction
+    const dir = new THREE.Vector3(0,1,0).applyQuaternion(
+      new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().extractRotation(gripGroup.matrixWorld)));
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1,0,0), dir.clone().normalize());
+    handTargetQuat.slerp(q, 1-Math.pow(0.0004,dt));
+  }
+  hand.position.lerp(handTargetPos, 1-Math.pow(0.002,dt));
+  hand.quaternion.slerp(handTargetQuat, 1-Math.pow(0.004,dt));
+}
+
+/* ============================================================
+   13. POSE APPLICATION / FRAME LOOP
+   ============================================================ */
+let speedScale = 1;
+let slowMo = false;
+let trailOn = true;
+let showHandToggle = true;
+let explodeT = 0;
+const spin = {v:0};
+
+// trail
+const trailCount = 46;
+const trailGeo = new THREE.BufferGeometry();
+const trailPos = new Float32Array(trailCount*3);
+const trailCol = new Float32Array(trailCount*3);
+const trailAlp = new Float32Array(trailCount);
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos,3));
+trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCol,3));
+trailGeo.setAttribute('aAlpha', new THREE.BufferAttribute(trailAlp,1));
+const trailMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+  vertexShader:`attribute float aAlpha; varying float vA; varying vec3 vC;
+    void main(){ vA=aAlpha; vC=color; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying float vA; varying vec3 vC;
+    void main(){ gl_FragColor=vec4(vC*1.6, vA*0.85); }`,
+  vertexColors:true
+});
+const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+trailMesh.frustumCulled = false;
+scene.add(trailMesh);
+const trailHistory = [];
+for(let i=0;i<trailCount;i++) trailHistory.push(new THREE.Vector3());
+
+let bladeTipWorld = new THREE.Vector3();
+
+function updateTrail(dt){
+  // sample the blade tip in world space
+  bladeTipWorld.set(2.62, 0.10, 0).applyMatrix4(bladeGroup.matrixWorld);
+  trailHistory.unshift(bladeTipWorld.clone());
+  trailHistory.length = Math.min(trailHistory.length, trailCount);
+  for(let i=0;i<trailCount;i++){
+    const p = trailHistory[Math.min(i,trailHistory.length-1)] || bladeTipWorld;
+    trailPos[i*3]=p.x; trailPos[i*3+1]=p.y; trailPos[i*3+2]=p.z;
+    const a = Math.max(0, 1 - i/(trailCount*0.7));
+    trailAlp[i] = trailOn? a*a*0.75 : 0;
+    // colour: gold at head fading to red
+    const k = i/trailCount;
+    trailCol[i*3]   = lerp(1.0, 0.85, k);
+    trailCol[i*3+1] = lerp(0.82, 0.15, k);
+    trailCol[i*3+2] = lerp(0.50, 0.28, k);
+  }
+  trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.attributes.aAlpha.needsUpdate = true;
+  trailGeo.attributes.color.needsUpdate = true;
+}
+
+/* --- ribbon mesh (flat strip) for a better trail --- */
+const ribbonN = 52;
+const ribbonGeo = new THREE.BufferGeometry();
+const rPos = new Float32Array(ribbonN*2*3);
+const rA = new Float32Array(ribbonN*2);
+const rC = new Float32Array(ribbonN*2*3);
+const rIdx = [];
+for(let i=0;i<ribbonN-1;i++){
+  const a=i*2,b=i*2+1,c=(i+1)*2,d=(i+1)*2+1;
+  rIdx.push(a,b,c, b,d,c);
+}
+ribbonGeo.setAttribute('position', new THREE.BufferAttribute(rPos,3));
+ribbonGeo.setAttribute('aAlpha', new THREE.BufferAttribute(rA,1));
+ribbonGeo.setAttribute('color', new THREE.BufferAttribute(rC,3));
+ribbonGeo.setIndex(rIdx);
+const ribbonMat = new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide,
+  vertexColors:true,
+  vertexShader:`attribute float aAlpha; varying float vA; varying vec3 vC;
+    void main(){ vA=aAlpha; vC=color; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying float vA; varying vec3 vC;
+    void main(){ if(vA<0.004) discard; gl_FragColor=vec4(vC*1.8, vA*0.9); }`
+});
+const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
+ribbon.frustumCulled = false;
+scene.add(ribbon);
+const ribbonHist = [];
+for(let i=0;i<ribbonN;i++) ribbonHist.push({p:new THREE.Vector3(), up:new THREE.Vector3(0,1,0)});
+
+function updateRibbon(dt){
+  bladeTipWorld.set(2.62, 0.10, 0).applyMatrix4(bladeGroup.matrixWorld);
+  const upv = new THREE.Vector3(0,1,0).applyQuaternion(knife.getWorldQuaternion(new THREE.Quaternion()));
+  ribbonHist.unshift({p:bladeTipWorld.clone(), up:upv.clone()});
+  ribbonHist.length = Math.min(ribbonHist.length, ribbonN);
+  const dir = new THREE.Vector3();
+  for(let i=0;i<ribbonN;i++){
+    const cur = ribbonHist[Math.min(i,ribbonHist.length-1)];
+    const nxt = ribbonHist[Math.min(i+1,ribbonHist.length-1)];
+    dir.subVectors(cur.p, nxt.p);
+    if(dir.lengthSq()<1e-8) dir.set(0,1,0);
+    const side = new THREE.Vector3().crossVectors(dir.normalize(), cur.up).normalize();
+    const w = (1-i/ribbonN)*0.030 * (trailOn?1:0);
+    const a = cur.p.clone().addScaledVector(side, w);
+    const b = cur.p.clone().addScaledVector(side, -w);
+    rPos[i*6]=a.x; rPos[i*6+1]=a.y; rPos[i*6+2]=a.z;
+    rPos[i*6+3]=b.x; rPos[i*6+4]=b.y; rPos[i*6+5]=b.z;
+    const al = trailOn? Math.pow(1-i/ribbonN, 1.8)*0.95 : 0;
+    rA[i*2]=al; rA[i*2+1]=al;
+    const k=i/ribbonN;
+    const cr=lerp(1.0,0.75,k), cg=lerp(0.80,0.06,k), cb=lerp(0.45,0.16,k);
+    for(let j=0;j<2;j++){
+      rC[i*6+j*3]=cr; rC[i*6+j*3+1]=cg; rC[i*6+j*3+2]=cb;
+    }
+  }
+  ribbonGeo.attributes.position.needsUpdate = true;
+  ribbonGeo.attributes.aAlpha.needsUpdate = true;
+  ribbonGeo.attributes.color.needsUpdate = true;
+}
+
+/* --- swish audio driver --- */
+let prevAngular = 0;
+function driveSwish(dt){
+  // approximate angular speed from handle velocities
+  let v = 0;
+  if(dt>0.0001){
+    const ds = state.safeZ - (state._psafe??state.safeZ);
+    const db = state.biteZ - (state._pbite??state.biteZ);
+    const q = state.quat;
+    const ang = 2*Math.acos(clamp(Math.abs(state._pq? q.dot(state._pq):1),0,1));
+    v = (Math.abs(ds)+Math.abs(db))/dt*0.20 + ang/dt*0.55;
+    state._psafe=state.safeZ; state._pbite=state.biteZ;
+    state._pq = q.clone();
+  }
+  state.vel = lerp(state.vel, v, 0.35);
+  const amt = clamp(state.vel*0.052, 0, 0.30);
+  const freq = clamp(420 + state.vel*95, 300, 2800);
+  SFX.setSwish(amt, freq);
+}
+
+/* --- master animate --- */
+let clock = new THREE.Clock();
+let started = false;
+let elapsed = 0;
+let dragging = false, dragKind = null, dragStart = null;
+let heldKind = 'safe';
+
+const camPresets = {
+  HERO:  {pos:new THREE.Vector3(2.6,1.5,8.4), tgt:new THREE.Vector3(0,0.15,0)},
+  BLADE: {pos:new THREE.Vector3(1.15,0.35,3.5), tgt:new THREE.Vector3(1.25,0.05,0)},
+  PIVOT: {pos:new THREE.Vector3(-0.55,0.30,2.3), tgt:new THREE.Vector3(-0.52,0.0,0)},
+  LATCH: {pos:new THREE.Vector3(-1.65,0.20,2.0), tgt:new THREE.Vector3(-1.25,-0.30,0)},
+  TOP:   {pos:new THREE.Vector3(0.02,7.2,0.35), tgt:new THREE.Vector3(0,0,0)},
+  SIDE:  {pos:new THREE.Vector3(0.2,0.4,7.6), tgt:new THREE.Vector3(0,0.1,0)}
+};
+let camTween = null;
+function flyTo(name){
+  const P = camPresets[name]; if(!P) return;
+  camTween = {t:0, dur:0.95, p0:camera.position.clone(), p1:P.pos.clone(),
+              t0:controls.target.clone(), t1:P.tgt.clone()};
+  document.querySelectorAll('.cam').forEach(b=>b.classList.toggle('on', b.dataset.c===name));
+}
+function updateCamTween(dt){
+  if(!camTween) return;
+  camTween.t += dt;
+  const u = clamp(camTween.t/camTween.dur,0,1);
+  const e = smoother(u);
+  camera.position.lerpVectors(camTween.p0, camTween.p1, e);
+  controls.target.lerpVectors(camTween.t0, camTween.t1, e);
+  if(u>=1) camTween=null;
+}
+
+/* --- explode animation --- */
+function updateExplode(dt){
+  explodeT = lerp(explodeT, state.targetExplode, 1-Math.pow(0.002,dt));
+  for(const p of explodeParts){
+    p.obj.position.copy(p.base).addScaledVector(p.dir, p.dist*explodeT);
+  }
+  // hide latch/hardware when exploded? keep visible
+}
+
+/* --- latch visual --- */
+function updateLatchVisual(dt){
+  state.latchAngle = lerp(state.latchAngle, latchTargetAngle, 1-Math.pow(0.0008,dt));
+  latchGroup.rotation.z = state.latchAngle * -1.15;
+  latchGroup.position.y = 0.30 + Math.abs(state.latchAngle)*0.05;
+}
+
+/* ============================================================
+   14. SHOWCASE / REVEAL
+   ============================================================ */
+let showcase = true;
+let revealTime = 0;
+let revealActive = true;
+
+function startReveal(){
+  killTweens();
+  state.pos.set(0.0, 0.4, 0);
+  state.quat.setFromEuler(new THREE.Euler(0.3, 0.2, -0.55));
+  state.safeZ = 0; state.biteZ = Math.PI; state.latch = 1;
+  latchTargetAngle = 1.0;
+  showcase = true;
+  document.getElementById('revealName').classList.remove('on');
+  void document.getElementById('revealName').offsetWidth;
+  document.getElementById('revealName').classList.add('on');
+  revealActive = true; revealTime = 0;
+  camTween=null;
+  camera.position.set(2.4,1.4,9.2); controls.target.set(0,0.2,0);
+  // hero flip
+  const qClosed = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.28,0.25,-0.55));
+  const qHero   = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.06,0.28,0.30));
+  pushTween(0.01, ()=>{});
+  // slight anticipation, then open
+  animPose(1.05, u=>{
+    state.quat.slerpQuaternions(qClosed, qHero, smoother(clamp((u-0.25)/0.75,0,1)));
+    state.pos.lerpVectors(new THREE.Vector3(0,0.4,0), new THREE.Vector3(0,0.08,0), smoother(u));
+    state.safeZ = lerp(0, Math.PI, smooth(clamp((u-0.3)/0.7,0,1)));
+    state.biteZ = lerp(Math.PI, Math.PI*2, smoother(clamp((u-0.42)/0.58,0,1)));
+    state.latch = 1;
+    latchTargetAngle = 1;
+  }, {onDone:()=>{
+    SFX.clack(1.1,1.1); SFX.ring();
+    showcase = true;
+    revealActive = false;
+    animPose(0.5, u=>{
+      state.quat.copy(qHero).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.sin(u*Math.PI*4)*0.04*Math.exp(-u*3))));
+      state.pos.y = 0.08 + Math.sin(u*Math.PI)*0.05;
+    });
+  }});
+}
+
+/* showcase idle motion: slow turn, gentle bob */
+function updateShowcase(dt, t){
+  if(!showcase) return;
+  if(revealActive) return;
+  // slow turn around Y
+  const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), dt*0.28);
+  state.quat.multiply(turn);
+  state.pos.y = 0.08 + Math.sin(t*0.9)*0.035;
+  state.pos.x = Math.sin(t*0.45)*0.04;
+}
+
+/* ============================================================
+   15. INTERACTION — DRAG A HANDLE
+   ============================================================ */
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let hoverObj = null;
+
+function pickHandle(ev){
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((ev.clientX-rect.left)/rect.width)*2-1;
+  pointer.y = -((ev.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(pointer, camera);
+  const objs = [safeBuilt.group, biteBuilt.group, latchGroup];
+  const hits = raycaster.intersectObjects(objs, true);
+  if(!hits.length) return null;
+  let o = hits[0].object;
+  while(o){
+    if(o===safeBuilt.group) return 'safe';
+    if(o===biteBuilt.group) return 'bite';
+    if(o===latchGroup) return 'latch';
+    o=o.parent;
+  }
+  return null;
+}
+renderer.domElement.addEventListener('pointerdown', ev=>{
+  SFX.init(); SFX.resume();
+  const h = pickHandle(ev);
+  if(h){
+    dragging = true; dragKind = h;
+    dragStart = {x:ev.clientX, y:ev.clientY, safeZ:state.safeZ, biteZ:state.biteZ, latch:state.latchAngle};
+    controls.enabled = false;
+    showcase = false;
+    renderer.domElement.setPointerCapture(ev.pointerId);
+    stopFree(); stopCombo();
+  }
+});
+renderer.domElement.addEventListener('pointermove', ev=>{
+  if(!dragging){ hoverObj = pickHandle(ev); return; }
+  const dx = (ev.clientX - dragStart.x)/innerWidth;
+  const dy = (ev.clientY - dragStart.y)/innerHeight;
+  const delta = (dx*1.6 + dy*2.2) * Math.PI * 1.5;
+  if(dragKind==='latch'){
+    latchTargetAngle = clamp(dragStart.latch + delta*0.9, 0, 1.05);
+    state.latch = clamp(1 - latchTargetAngle, 0, 1);
+  } else if(dragKind==='safe'){
+    state.safeZ = dragStart.safeZ + delta;
+  } else {
+    state.biteZ = dragStart.biteZ + delta;
+  }
+  // keep the latch physically following: open when handles apart
+  const apart = Math.min(Math.abs(Math.sin(state.safeZ/2)), Math.abs(Math.sin(state.biteZ/2))) < 0.55;
+  if(apart && latchTargetAngle < 0.4) { latchTargetAngle = 1.0; SFX.latch(true); }
+  showcase = false;
+  killTweens();
+});
+renderer.domElement.addEventListener('pointerup', ev=>{
+  if(dragging){
+    dragging=false;
+    const v = Math.abs(state.biteZ-dragStart.biteZ)+Math.abs(state.safeZ-dragStart.safeZ);
+    if(v>0.25) SFX.clack(clamp(v*0.25,0.2,1),1.05);
+    controls.enabled=true;
+  }
+});
+renderer.domElement.addEventListener('pointercancel', ()=>{dragging=false; controls.enabled=true;});
+
+// hover label
+const hlEl = document.getElementById('hl');
+renderer.domElement.addEventListener('pointermove', ev=>{
+  if(dragging) return;
+  if(state.targetExplode>0.35 && hoverObj){
+    const map = {safe:'SAFE HANDLE · CONTOURED TI', bite:'BITE HANDLE · CONTOURED TI', latch:'T-LATCH · STEPPED TREAD'};
+    hlEl.textContent = map[hoverObj];
+    hlEl.style.left = ev.clientX+'px'; hlEl.style.top = ev.clientY+'px';
+    hlEl.classList.add('on');
+  } else hlEl.classList.remove('on');
+});
+
+/* ============================================================
+   16. UI WIRING
+   ============================================================ */
+const speedEl = document.getElementById('spd');
+const spdVal = document.getElementById('spdVal');
+speedEl.addEventListener('input', ()=>{
+  const v = parseFloat(speedEl.value);
+  speedScale = v;
+  spdVal.textContent = v.toFixed(2)+'×';
+});
+const volEl = document.getElementById('vol');
+const volVal = document.getElementById('volVal');
+volEl.addEventListener('input', ()=>{
+  const v = parseFloat(volEl.value);
+  SFX.setVol(v);
+  volVal.textContent = Math.round(v*100)+'%';
+});
+document.querySelectorAll('.tg').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    const k = t.dataset.t;
+    if(k==='mute'){ SFX.enabled = !SFX.enabled; SFX.setVol(parseFloat(volEl.value)); t.classList.toggle('on',!SFX.enabled); }
+    if(k==='slow'){ slowMo = !slowMo; t.classList.toggle('on',slowMo); }
+    if(k==='trail'){ trailOn = !trailOn; t.classList.toggle('on',trailOn); }
+    if(k==='hand'){ showHandToggle = !showHandToggle; handVisible = showHandToggle; t.classList.toggle('on',showHandToggle); }
+    if(k==='ui'){ document.body.classList.toggle('hideui'); t.classList.toggle('on',document.body.classList.contains('hideui')); }
+  });
+});
+// colourways
+const swWrap = document.getElementById('swatches');
+const swDefs = [
+  {k:'VESPER', label:'Vesper', c1:'#b00d17', c2:'#4a0308'},
+  {k:'NOCTURNE',label:'Nocturne',c1:'#1a2440', c2:'#070a13'},
+  {k:'GILDED',  label:'Gilded', c1:'#241a0c', c2:'#0b0704'}
+];
+for(const s of swDefs){
+  const b=document.createElement('div');
+  b.className='sw'+(s.k==='VESPER'?' on':'');
+  b.innerHTML=`<div style="position:absolute;inset:0;background:linear-gradient(135deg,${s.c1},${s.c2})"></div><span>${s.label}</span>`;
+  b.addEventListener('click', ()=>applyColourway(s.k, b));
+  swWrap.appendChild(b);
+}
+function applyColourway(k, btn){
+  currentCW = k;
+  document.querySelectorAll('.sw').forEach(b=>b.classList.remove('on'));
+  if(btn) btn.classList.add('on');
+  const c = colourways[k];
+  MAT.lacquer.color.set(c.lacquer);
+  MAT.lacquer.map = metalFlakeTexture(c.lacquer, c.flake, c.flakeHi);
+  MAT.lacquer.map.anisotropy=8;
+  MAT.lacquer.needsUpdate=true;
+  MAT.lacquerDark.color.set(c.lacquerDeep);
+  MAT.ringAccent.color.set(c.accent);
+  MAT.gold.color.set(c.gold);
+  MAT.gold.emissive = new THREE.Color(0x000000);
+  MAT.edge.color.set(c.edge);
+  MAT.blade.color.set(c.blade);
+  MAT.steel.color.set(c.metal);
+  ring1.material.color.set(c.accent);
+  ring3.material.color.set(c.gold);
+  rimA.color.set(c.accent);
+  rimB.color.set(c.gold);
+  document.documentElement.style.setProperty('--red', '#'+c.accent.toString(16).padStart(6,'0'));
+}
+
+// moves list
+const moveListEl = document.getElementById('movelist');
+const moveDefs = [
+  {n:'01', name:'BASIC OPEN',  key:'1'},
+  {n:'02', name:'BASIC CLOSE', key:'2'},
+  {n:'03', name:'CHAPLIN',     key:'3'},
+  {n:'04', name:'ZEN ROLLOVER',key:'4'},
+  {n:'05', name:'FAN',         key:'5'},
+  {n:'06', name:'HELIX',       key:'6'},
+  {n:'07', name:'AERIAL',      key:'7'},
+  {n:'08', name:'VESPER FALL', key:'8', sig:true}
+];
+for(const d of moveDefs){
+  const b=document.createElement('button');
+  b.className='mv'+(d.sig?' mvsig':'');
+  b.dataset.name=d.name;
+  b.innerHTML=`<kbd>${d.key}</kbd><span>${d.name}</span>`;
+  b.addEventListener('click', ()=>{
+    SFX.init(); SFX.resume(); showcase=false; stopFree(); stopCombo();
+    moveRegistry[d.name]();
+  });
+  moveListEl.appendChild(b);
+}
+document.getElementById('comboBtn').addEventListener('click', ()=>{
+  SFX.init(); SFX.resume(); showcase=false; stopFree();
+  if(comboRunning) stopCombo(); else runCombo();
+});
+document.getElementById('freeBtn').addEventListener('click', ()=>{
+  SFX.init(); SFX.resume(); showcase=false; stopCombo();
+  if(freeActive) stopFree(); else runFree();
+});
+document.getElementById('explBtn').addEventListener('click', e=>{
+  state.targetExplode = state.targetExplode>0.5? 0:1;
+  e.currentTarget.classList.toggle('on', state.targetExplode>0.5);
+  showcase=false;
+});
+document.getElementById('replayBtn').addEventListener('click', ()=>{ stopFree(); stopCombo(); startReveal(); });
+document.querySelectorAll('.cam').forEach(b=>{
+  b.addEventListener('click', ()=>{ flyTo(b.dataset.c); });
+});
+addEventListener('keydown', ev=>{
+  if(ev.key>='1'&&ev.key<='8'){
+    const d = moveDefs[parseInt(ev.key)-1];
+    if(d){ SFX.init(); SFX.resume(); showcase=false; stopFree(); stopCombo(); moveRegistry[d.name](); }
+  }
+  const k = ev.key.toLowerCase();
+  if(k==='c'){ SFX.init(); SFX.resume(); showcase=false; stopFree(); comboRunning?stopCombo():runCombo(); }
+  if(k==='f'){ SFX.init(); SFX.resume(); showcase=false; stopCombo(); freeActive?stopFree():runFree(); }
+  if(k==='e'){ state.targetExplode = state.targetExplode>0.5?0:1; document.getElementById('explBtn').classList.toggle('on',state.targetExplode>0.5); }
+  if(k==='h'){ showHandToggle=!showHandToggle; handVisible=showHandToggle; }
+  if(k==='tab'){ ev.preventDefault(); document.body.classList.toggle('hideui'); }
+  if(k==='r'){ stopFree(); stopCombo(); startReveal(); }
+});
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+});
+
+/* ============================================================
+   17. MAIN LOOP
+   ============================================================ */
+let frameCount=0;
+const bootBar = document.querySelector('#bootbar b');
+
+function animate(){
+  requestAnimationFrame(animate);
+  let dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  elapsed += dt;
+  const simDt = dt * speedScale * (slowMo? 0.25:1);
+
+  // boot progress
+  if(frameCount<8){ bootBar.style.width = Math.min(100, (frameCount+1)*13)+'%'; }
+  if(frameCount===8){
+    document.getElementById('boot').classList.add('gone');
+  }
+
+  if(!dragging) updateTweens(simDt);
+  else updateTweens(0);
+
+  // pin detection using real (non-scaled) angles
+  detectPins(simDt);
+
+  // apply transform
+  knife.position.copy(state.pos);
+  knife.quaternion.copy(state.quat);
+  safeHandle.rotation.z = state.safeZ;
+  biteHandle.rotation.z = state.biteZ;
+
+  updateLatchVisual(dt);
+  updateExplode(dt);
+  updateCamTween(dt);
+
+  if(showcase && !revealActive) updateShowcase(dt, t);
+  if(revealActive){ revealTime += dt; }
+
+  // hand: which handle is held this frame
+  let held = 'safe';
+  if(!showcase){
+    if(currentMoveName==='AERIAL'||currentMoveName==='VESPER FALL') held='bite';
+    else if(currentMoveName==='FAN'||currentMoveName==='ZEN ROLLOVER'||currentMoveName==='HELIX') held='safe';
+    else held='safe';
+  }
+  updateHand(dt, held);
+  // hand curls more when gripping harder during fast moves
+  const curl = 0.65 + clamp(state.vel*0.03,0,0.25);
+  if(frameCount%2===0) setHandCurl(curl);
+
+  // trail + swish
+  knife.updateMatrixWorld(true);
+  updateRibbon(dt);
+  updateTrail(dt);
+  driveSwish(dt);
+
+  // ambient stage motion
+  ringGroup.rotation.z += dt*0.04;
+  ringGroup.position.y = 0.1 + Math.sin(t*0.5)*0.02;
+  rimA.intensity = 24 + Math.sin(t*1.3)*3;
+  rimB.intensity = 18 + Math.sin(t*0.9+1.2)*3;
+  // caustic-ish rake sweep during reveal
+  if(revealActive){
+    rake.position.x = -5.4 + Math.sin(revealTime*1.3)*2.4;
+    rake.intensity = 46 + Math.sin(revealTime*2.0)*10;
+  } else {
+    rake.position.x = -5.4 + Math.sin(t*0.35)*0.9;
+  }
+  // shadow blob follows knife height
+  blob.position.x = state.pos.x*0.6;
+  blob.position.z = state.pos.z*0.6;
+  const hh = clamp(1 - (state.pos.y+0.1)*0.25, 0.15, 1);
+  blob.material.opacity = 0.35 + hh*0.5;
+  blob.scale.setScalar(lerp(1.5, 0.85, hh));
+
+  // caption progress bar
+  if(document.getElementById('cap').classList.contains('on')){
+    // rough progress: use tween remaining
+    let prog = 0;
+    if(tweenList.length){
+      let total=0, cur=0;
+      for(const tw of tweenList){ total += tw.dur; cur += Math.min(tw.t, tw.dur); }
+      prog = total>0? cur/total : 0;
+    }
+    document.getElementById('capBar').style.width = clamp(prog*100,0,100)+'%';
+  }
+
+  // pin state → latch physicality
+  // (latch forced open whenever handles are apart, handled in updateLatchVisual target)
+
+  controls.update();
+  composer.render();
+  frameCount++;
+}
+
+/* ============================================================
+   18. COMPOSER
+   ============================================================ */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.52, 0.72, 0.82);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+/* ============================================================
+   19. BOOT
+   ============================================================ */
+function boot(){
+  buildExplodeRegistry();
+  startReveal();
+  // let renderer warm up
+  renderer.compile(scene, camera);
+  animate();
+}
+boot();
+</script>
+</body>
+</html>
