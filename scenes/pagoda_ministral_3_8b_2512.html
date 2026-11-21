@@ -6,8 +6,8 @@
     <title>VOXEL GARDEN</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
-        #info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; font-family: monospace; zIndex: 100; }
-        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: white; font-family: monospace; zIndex: 100; }
+        #info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; font-family: monospace; z-index: 100; }
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: white; font-family: monospace; z-index: 100; }
         .control { display: inline-block; margin: 0 10px; }
     </style>
 </head>
@@ -22,7 +22,6 @@
         </div>
     </div>
 
-    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
     </script>
@@ -31,10 +30,24 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+
+        // Patch InstancedMesh.setMatrixAt to auto-expand instance matrix buffer
+        const _origSetMatrixAt = THREE.InstancedMesh.prototype.setMatrixAt;
+        THREE.InstancedMesh.prototype.setMatrixAt = function (index, matrix) {
+            const instanceMatrix = this.instanceMatrix;
+            const needed = (index + 1) * 16;
+            if (instanceMatrix.array.length < needed) {
+                const oldArray = instanceMatrix.array;
+                const newLength = Math.max(needed, oldArray.length * 2 || 16);
+                const newArray = new Float32Array(newLength);
+                if (oldArray.length > 0) newArray.set(oldArray);
+                this.instanceMatrix = new THREE.InstancedBufferAttribute(newArray, 16);
+            }
+            _origSetMatrixAt.call(this, index, matrix);
+            this.instanceMatrix.needsUpdate = true;
+        };
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-        import { ACESFilmicToneMapping } from 'three';
-
         // Scene setup
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000);
@@ -48,8 +61,6 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        renderer.shadowMap.width = 2048;
-        renderer.shadowMap.height = 2048;
         document.body.appendChild(renderer.domElement);
 
         // Controls
@@ -136,7 +147,7 @@
             const width = 144;
             const height = 128;
             const depth = 32;
-            const terrain = new THREE.InstancedBufferGeometry();
+            const terrain = new THREE.BufferGeometry();
 
             // Create heightmap
             const heightmap = new Float32Array(width * height);
@@ -1390,7 +1401,7 @@
         });
 
         // Handle lantern clicks
-        renderer.domElement.addEventListener('click', (event) {
+        renderer.domElement.addEventListener('click', (event) => {
             const mouse = new THREE.Vector2();
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
