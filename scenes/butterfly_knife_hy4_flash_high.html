@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sirocco Forge - Aethelred Balisong</title>
+<style>
+    body { margin: 0; overflow: hidden; background: #0b101a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #e0e8f0; user-select: none; }
+    #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+    .panel { pointer-events: auto; background: rgba(12, 18, 28, 0.85); border: 1px solid rgba(100, 150, 200, 0.2); backdrop-filter: blur(8px); padding: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    #left-panel { position: absolute; top: 20px; left: 20px; width: 250px; }
+    #right-panel { position: absolute; top: 20px; right: 20px; width: 240px; max-height: 90vh; overflow-y: auto; }
+    #caption { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 300; letter-spacing: 3px; color: #dfb77a; text-shadow: 0 2px 10px rgba(0,0,0,1); opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+    .btn { display: block; width: 100%; padding: 8px 10px; margin: 4px 0; background: rgba(40, 55, 70, 0.6); border: 1px solid rgba(120, 160, 200, 0.3); color: #dde; cursor: pointer; border-radius: 4px; text-align: left; font-size: 12px; transition: all 0.2s; }
+    .btn:hover { background: rgba(70, 100, 130, 0.8); border-color: rgba(180, 210, 240, 0.6); }
+    .btn.active { background: rgba(100, 150, 200, 0.4); border-color: #dfb77a; color: #fff; }
+    h1 { font-size: 22px; margin: 0 0 2px 0; color: #dfb77a; letter-spacing: 1px; }
+    h2 { font-size: 12px; margin: 0 0 15px 0; font-weight: normal; color: #8ab; text-transform: uppercase; letter-spacing: 2px; }
+    .spec { font-size: 11px; color: #8a9aa8; margin-bottom: 3px; }
+    .spec span { color: #cde; float: right; }
+    .color-swatch { width: 28px; height: 28px; border-radius: 50%; display: inline-block; margin: 0 5px 5px 0; cursor: pointer; border: 2px solid transparent; transition: transform 0.2s; }
+    .color-swatch:hover { transform: scale(1.1); }
+    .color-swatch.active { border-color: #dfb77a; }
+    .row { display: flex; justify-content: space-between; align-items: center; margin: 8px 0; font-size: 11px; color: #aab; }
+    input[type=range] { width: 120px; accent-color: #dfb77a; }
+    .toggle { cursor: pointer; display: flex; align-items: center; gap: 5px; }
+    .toggle input { accent-color: #dfb77a; }
+    #tooltip { position: absolute; pointer-events: none; background: rgba(0,0,0,0.85); border: 1px solid #456; padding: 5px 10px; border-radius: 4px; font-size: 11px; color: #dfb77a; display: none; z-index: 10; transform: translate(10px, 10px); }
+    #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0b101a; z-index: 100; display: flex; align-items: center; justify-content: center; flex-direction: column; transition: opacity 1s; color: #dfb77a; letter-spacing: 2px; font-size: 14px; }
+    .spinner { width: 40px; height: 40px; border: 2px solid #234; border-top-color: #dfb77a; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .section-title { font-size: 10px; color: #678; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid #234; padding-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    #webgl-error { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; color: #f55; z-index: 200; }
+</style>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="loading"><div class="spinner"></div><div>FORGING THE AETHELRED...</div></div>
+<div id="webgl-error"><h2>WebGL is not available in your browser.</h2></div>
+<div id="canvas-container"></div>
+<div id="tooltip"></div>
+<div id="caption"></div>
+
+<div id="ui-layer">
+    <div id="left-panel" class="panel">
+        <h1>Sirocco Forge</h1>
+        <h2>Model: Aethelred</h2>
+        <div class="spec">Overall Length <span>230 mm</span></div>
+        <div class="spec">Blade <span>100 mm Damascus</span></div>
+        <div class="spec">Handles <span>Stabilised Wood</span></div>
+        <div class="spec">Weight <span>115 g</span></div>
+        <div class="spec">Pivot System <span>Bronze Washers</span></div>
+        
+        <div class="section-title">Colourways</div>
+        <div id="colorways">
+            <div class="color-swatch active" style="background: linear-gradient(135deg, #8a8f96 50%, #4a3020 50%)" data-cw="0" title="Dune Damascus"></div>
+            <div class="color-swatch" style="background: linear-gradient(135deg, #5a6070 50%, #111 50%)" data-cw="1" title="Midnight"></div>
+            <div class="color-swatch" style="background: linear-gradient(135deg, #9a6b5a 50%, #6a1b12 50%)" data-cw="2" title="Oasis"></div>
+        </div>
+        
+        <div class="section-title">Camera Presets</div>
+        <button class="btn cam-btn" data-cam="HERO">Hero View</button>
+        <button class="btn cam-btn" data-cam="BLADE">Blade Close-up</button>
+        <button class="btn cam-btn" data-cam="PIVOT">Pivot Detail</button>
+        <button class="btn cam-btn" data-cam="LATCH">Latch Detail</button>
+        <button class="btn cam-btn" data-cam="TOP">Top Down</button>
+        <button class="btn" id="explode-btn">Exploded View</button>
+    </div>
+    
+    <div id="right-panel" class="panel">
+        <div class="section-title">Moves</div>
+        <button class="btn move-btn" data-move="BASIC OPEN">1. Basic Open</button>
+        <button class="btn move-btn" data-move="BASIC CLOSE">2. Basic Close</button>
+        <button class="btn move-btn" data-move="CHAPLIN">3. Chaplin</button>
+        <button class="btn move-btn" data-move="ZEN ROLLOVER">4. Zen Rollover</button>
+        <button class="btn move-btn" data-move="FAN">5. Fan</button>
+        <button class="btn move-btn" data-move="HELIX">6. Helix</button>
+        <button class="btn move-btn" data-move="AERIAL">7. Aerial</button>
+        <button class="btn move-btn" data-move="DUNE SPIN">8. Dune Spin</button>
+        <button class="btn" id="combo-btn">Combo Sequence</button>
+        <button class="btn" id="freestyle-btn">Freestyle Flow</button>
+        
+        <div class="section-title">Controls</div>
+        <div class="row">Speed <input type="range" id="speed" min="0.25" max="2" step="0.25" value="1"></div>
+        <div class="row">Volume <input type="range" id="volume" min="0" max="1" step="0.05" value="0.5"></div>
+        <div class="row"><label class="toggle"><input type="checkbox" id="mute"> Mute Audio</label></div>
+        <div class="row"><label class="toggle"><input type="checkbox" id="slowmo"> Slow-Motion</label></div>
+        <div class="row"><label class="toggle"><input type="checkbox" id="trail" checked> Blade Trail</label></div>
+        <div class="row"><label class="toggle"><input type="checkbox" id="hideui"> Hide UI</label></div>
+    </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// WebGL Check
+if (!window.WebGLRenderingContext) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('webgl-error').style.display = 'block';
+    throw new Error("WebGL not supported");
+}
+
+// --- PROCEDURAL TEXTURES ---
+function createDamascusNormal() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(512, 512);
+    for(let y=0; y<512; y++) {
+        for(let x=0; x<512; x++) {
+            const idx = (y*512 + x)*4;
+            const h = (x,y) => Math.sin(x*0.05 + Math.sin(y*0.03)*15)*Math.cos(y*0.02);
+            const dx = h(x+1,y) - h(x-1,y);
+            const dy = h(x,y+1) - h(x,y-1);
+            const len = Math.sqrt(dx*dx + dy*dy + 1);
+            imgData.data[idx] = (dx/len * 0.5 + 0.5) * 255;
+            imgData.data[idx+1] = (dy/len * 0.5 + 0.5) * 255;
+            imgData.data[idx+2] = (1/len * 0.5 + 0.5) * 255;
+            imgData.data[idx+3] = 255;
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+function createWoodTexture(colorStr = '#2a1b12') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = colorStr; ctx.fillRect(0,0,512,512);
+    ctx.lineWidth = 2;
+    for(let i=0; i<60; i++) {
+        ctx.beginPath();
+        ctx.strokeStyle = (Math.random()>0.5) ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)';
+        for(let y=0; y<=512; y+=8) {
+            const x = y*0.3 + Math.sin(y*0.04 + i)*30 + i*8 - 100;
+            if(y===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+function createWovenTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#5a4030'; ctx.fillRect(0,0,128,128);
+    ctx.strokeStyle = '#dfb77a'; ctx.lineWidth = 3;
+    for(let i=0; i<128; i+=16) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 128); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(128, i); ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
+
+function createMarkTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,128,128);
+    ctx.strokeStyle = '#1a1008';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    // Stylised Sirocco Swirl
+    ctx.beginPath();
+    ctx.arc(64, 64, 35, 0.2, Math.PI*1.8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(45, 85); ctx.lineTo(85, 85);
+    ctx.stroke();
+    return new THREE.CanvasTexture(canvas);
+}
+
+// --- SCENE SETUP ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0b101a, 0.08);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 0.2;
+controls.maxDistance = 5;
+
+// --- LIGHTING & STAGE ---
+const keyLight = new THREE.DirectionalLight(0xffffff, 4);
+keyLight.position.set(5, 5, 5);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.width = 2048;
+keyLight.shadow.mapSize.height = 2048;
+keyLight.shadow.camera.near = 0.1;
+keyLight.shadow.camera.far = 20;
+keyLight.shadow.camera.left = -2; keyLight.shadow.camera.right = 2;
+keyLight.shadow.camera.top = 2; keyLight.shadow.camera.bottom = -2;
+scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight(0x66aaff, 3);
+rimLight.position.set(-5, 2, -5);
+scene.add(rimLight);
+scene.add(new THREE.AmbientLight(0x112233, 1));
+
+// Snowy Rock Stage
+const rockGeo = new THREE.IcosahedronGeometry(2, 4);
+const rockPos = rockGeo.attributes.position;
+for(let i=0; i<rockPos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(rockPos, i);
+    const noise = (Math.sin(v.x*8)*Math.cos(v.y*8)*Math.sin(v.z*8)) * 0.15;
+    v.normalize().multiplyScalar(2 + noise);
+    rockPos.setXYZ(i, v.x, v.y, v.z);
+}
+rockGeo.computeVertexNormals();
+const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({color: 0xddeeff, roughness: 0.9, flatShading: true}));
+rock.position.y = -2.2;
+rock.receiveShadow = true;
+scene.add(rock);
+
+// Falling Snow
+const snowCount = 1500;
+const snowGeo = new THREE.BufferGeometry();
+const snowArr = new Float32Array(snowCount*3);
+for(let i=0; i<snowCount; i++) {
+    snowArr[i*3] = (Math.random()-0.5)*10;
+    snowArr[i*3+1] = (Math.random()-0.5)*10;
+    snowArr[i*3+2] = (Math.random()-0.5)*10;
+}
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowArr, 3));
+const snowMat = new THREE.PointsMaterial({color: 0xffffff, size: 0.02, transparent: true, opacity: 0.5});
+const snow = new THREE.Points(snowGeo, snowMat);
+scene.add(snow);
+
+// --- MATERIALS ---
+const texDamascusN = createDamascusNormal();
+const texWood1 = createWoodTexture('#251610');
+const texWood2 = createWoodTexture('#050505');
+const texWood3 = createWoodTexture('#4a100a');
+const texWoven = createWovenTexture();
+const texMark = createMarkTexture();
+
+const matDamascus = new THREE.MeshPhysicalMaterial({ color: 0xaab0b8, metalness: 1.0, roughness: 0.25, normalMap: texDamascusN, normalScale: new THREE.Vector2(0.6,0.6), clearcoat: 0.3 });
+const matWood = new THREE.MeshPhysicalMaterial({ map: texWood1, metalness: 0.05, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.2 });
+const matBronze = new THREE.MeshPhysicalMaterial({ color: 0xb87333, metalness: 1.0, roughness: 0.3, map: texWoven });
+const matSteel = new THREE.MeshPhysicalMaterial({ color: 0xcccccc, metalness: 1.0, roughness: 0.15 });
+const matSilver = new THREE.MeshPhysicalMaterial({ color: 0xe0e0e0, metalness: 1.0, roughness: 0.2 });
+const matCopper = new THREE.MeshPhysicalMaterial({ color: 0xb87374, metalness: 1.0, roughness: 0.25 });
+
+const colorways = [
+    { name: 'Dune Damascus', blade: matDamascus, handle: matWood, hw: matBronze },
+    { name: 'Midnight', blade: matDamascus, handle: new THREE.MeshPhysicalMaterial({map:texWood2, metalness:0.1, roughness:0.4}), hw: matSilver },
+    { name: 'Oasis', blade: matDamascus, handle: new THREE.MeshPhysicalMaterial({map:texWood3, metalness:0.0, roughness:0.5}), hw: matCopper }
+];
+
+// --- GEOMETRY & ASSEMBLY ---
+const performer = new THREE.Group();
+scene.add(performer);
+
+const knifeRoot = new THREE.Group();
+performer.add(knifeRoot);
+
+const bladeGroup = new THREE.Group();
+knifeRoot.add(bladeGroup);
+
+const L = 1.2; // handle length
+const BL = 1.0; // blade length
+const BW = 0.04; // blade width
+
+// Blade Shape (Spear point, kicker, choil)
+const bShape = new THREE.Shape();
+bShape.moveTo(-0.015, -0.025); // tang bottom
+bShape.lineTo(0.015, -0.025);
+bShape.lineTo(0.015, 0);       // tang top right
+bShape.lineTo(0.02, 0.008);    // choil right
+bShape.lineTo(0.00, BL + 0.01);// tip
+bShape.lineTo(-0.02, 0.012);   // spine
+bShape.lineTo(-0.018, 0.006);  // kicker
+bShape.lineTo(-0.015, 0);      // tang top left
+bShape.lineTo(-0.015, -0.025);
+
+const bExtrude = new THREE.ExtrudeGeometry(bShape, { depth: 0.004, bevelEnabled: true, bevelThickness: 0.001, bevelSize: 0.001, bevelSegments: 3 });
+bExtrude.translate(0, 0, -0.002);
+const bladeMesh = new THREE.Mesh(bExtrude, matDamascus);
+bladeMesh.castShadow = true;
+bladeMesh.userData.label = "Damascus Spear Point Blade";
+bladeGroup.add(bladeMesh);
+
+// Maker's Mark
+const markMat = new THREE.MeshBasicMaterial({ map: texMark, transparent: true, opacity: 0.8, depthWrite: false });
+const markGeo = new THREE.PlaneGeometry(0.035, 0.035);
+const mark1 = new THREE.Mesh(markGeo, markMat);
+mark1.position.set(0, 0.05, 0.0021);
+bladeGroup.add(mark1);
+const mark2 = new THREE.Mesh(markGeo, markMat);
+mark2.position.set(0, 0.05, -0.0021);
+mark2.rotation.y = Math.PI;
+bladeGroup.add(mark2);
+
+// Zen Pins
+const zenGeo = new THREE.CylinderGeometry(0.004, 0.004, 0.02, 8);
+zenGeo.rotateZ(Math.PI/2);
+const zenSafe = new THREE.Mesh(zenGeo, matBronze);
+zenSafe.position.set(-0.022, 0, -0.003);
+zenSafe.userData.label = "Safe Zen Pin";
+bladeGroup.add(zenSafe);
+const zenBite = new THREE.Mesh(zenGeo, matBronze);
+zenBite.position.set(0.022, 0, 0.003);
+zenBite.userData.label = "Bite Zen Pin";
+bladeGroup.add(zenBite);
+
+// Handle Shape (Slim with slot)
+const hShape = new THREE.Shape();
+hShape.moveTo(0.01, -0.018);
+hShape.lineTo(L-0.02, -0.015);
+hShape.lineTo(L, 0);
+hShape.lineTo(L-0.02, 0.015);
+hShape.lineTo(0.01, 0.018);
+hShape.lineTo(0.01, -0.018);
+const hole = new THREE.Path();
+hole.moveTo(0.08, -0.005);
+hole.lineTo(L-0.06, -0.005);
+hole.lineTo(L-0.06, 0.005);
+hole.lineTo(0.08, 0.005);
+hole.lineTo(0.08, -0.005);
+hShape.holes.push(hole);
+
+const hExtrude = new THREE.ExtrudeGeometry(hShape, { depth: 0.003, bevelEnabled: true, bevelThickness: 0.0005, bevelSize: 0.0005, bevelSegments: 2 });
+
+const safeHandleGroup = new THREE.Group();
+safeHandleGroup.position.set(-0.02, 0, -0.006);
+knifeRoot.add(safeHandleGroup);
+const biteHandleGroup = new THREE.Group();
+biteHandleGroup.position.set(0.02, 0, 0.006);
+knifeRoot.add(biteHandleGroup);
+
+function buildHandle(parent, isBite) {
+    // Frame
+    const frame = new THREE.Mesh(hExtrude, matSteel);
+    frame.castShadow = true;
+    frame.userData.label = (isBite?"Bite":"Safe") + " Handle Frame";
+    parent.add(frame);
+    
+    // Scale
+    const scaleMesh = new THREE.Mesh(hExtrude, matWood);
+    scaleMesh.scale.set(0.98, 0.98, 0.8);
+    scaleMesh.position.z = isBite ? 0.0035 : -0.0035;
+    scaleMesh.castShadow = true;
+    scaleMesh.userData.label = "Stabilised Wood Scale";
+    parent.add(scaleMesh);
+
+    // Pivot Collar (Woven theme)
+    const collarGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.002, 16);
+    collarGeo.rotateX(Math.PI/2);
+    const collar = new THREE.Mesh(collarGeo, matBronze);
+    collar.position.set(0, 0, isBite ? 0.001 : -0.001);
+    collar.userData.label = "Woven Bronze Pivot Collar";
+    parent.add(collar);
+    
+    // Pivot Screw
+    const screwGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.012, 16);
+    screwGeo.rotateX(Math.PI/2);
+    const screw = new THREE.Mesh(screwGeo, matSilver);
+    screw.position.set(0, 0, 0);
+    screw.userData.label = "Pivot Screw";
+    parent.add(screw);
+
+    return { frame, scale: scaleMesh, collar, screw };
+}
+const safeParts = buildHandle(safeHandleGroup, false);
+const biteParts = buildHandle(biteHandleGroup, true);
+
+// Latch on Bite Handle
+const latchGroup = new THREE.Group();
+latchGroup.position.set(0, 1.12, 0);
+biteHandleGroup.add(latchGroup);
+const lShape = new THREE.Shape();
+lShape.moveTo(-0.015, 0);
+lShape.lineTo(0.015, 0);
+lShape.lineTo(0.015, 0.12);
+lShape.lineTo(0.00, 0.12);
+lShape.lineTo(0.00, 0.04);
+lShape.lineTo(-0.015, 0.04);
+lShape.lineTo(-0.015, 0);
+const lExtrude = new THREE.ExtrudeGeometry(lShape, {depth:0.004, bevelEnabled:true, bevelThickness:0.001, bevelSize:0.001, bevelSegments:2});
+lExtrude.translate(0,0,-0.002);
+const latchMesh = new THREE.Mesh(lExtrude, matBronze);
+latchMesh.castShadow = true;
+latchMesh.userData.label = "Crescent Dune Latch";
+latchGroup.add(latchMesh);
+
+// Stylized Hand
+const handGroup = new THREE.Group();
+performer.add(handGroup);
+const skinMat = new THREE.MeshStandardMaterial({color: 0xd2a679, roughness: 0.8, flatShading: true});
+const palm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.06), skinMat);
+palm.position.set(0, 0, 0);
+handGroup.add(palm);
+for(let i=0; i<4; i++) {
+    const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.07, 3, 6), skinMat);
+    finger.position.set(-0.045 + i*0.03, 0.12, 0);
+    handGroup.add(finger);
+}
+const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.015, 0.06, 3, 6), skinMat);
+thumb.position.set(0.08, 0.05, 0.02);
+thumb.rotation.z = -Math.PI/3;
+handGroup.add(thumb);
+
+// Explode Vectors
+const explodableParts = [];
+function addExplode(mesh, v) {
+    mesh.userData.basePos = mesh.position.clone();
+    mesh.userData.explodeVec = new THREE.Vector3(...v);
+    explodableParts.push(mesh);
+}
+addExplode(bladeMesh, [0,0,0]);
+addExplode(safeParts.frame, [-0.3, 0, -0.2]);
+addExplode(safeParts.scale, [-0.3, 0, -0.4]);
+addExplode(biteParts.frame, [0.3, 0, 0.2]);
+addExplode(biteParts.scale, [0.3, 0, 0.4]);
+addExplode(safeParts.collar, [-0.15, -0.2, -0.3]);
+addExplode(biteParts.collar, [0.15, -0.2, 0.3]);
+addExplode(safeParts.screw, [-0.1, 0.2, -0.5]);
+addExplode(biteParts.screw, [0.1, 0.2, 0.5]);
+addExplode(latchMesh, [0.2, 0.4, 0.3]);
+
+// Trail
+const bladeTip = new THREE.Object3D();
+bladeTip.position.set(0, BL+0.01, 0);
+bladeGroup.add(bladeTip);
+const trailPts = [];
+const maxTrail = 40;
+const trailGeo = new THREE.BufferGeometry();
+const trailMat = new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:0.8, blending:THREE.AdditiveBlending});
+const trailLine = new THREE.Line(trailGeo, trailMat);
+scene.add(trailLine);
+
+// --- AUDIO SYSTEM ---
+let audioCtx, masterGain, swishGain, swishFilter;
+function initAudio() {
+    if(audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = document.getElementById('mute').checked ? 0 : parseFloat(document.getElementById('volume').value);
+    masterGain.connect(audioCtx.destination);
+    
+    const bSize = audioCtx.sampleRate * 2;
+    const nBuf = audioCtx.createBuffer(1, bSize, audioCtx.sampleRate);
+    const out = nBuf.getChannelData(0);
+    for(let i=0; i<bSize; i++) out[i] = Math.random()*2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = nBuf; noise.loop = true;
+    
+    swishFilter = audioCtx.createBiquadFilter();
+    swishFilter.type = 'bandpass';
+    swishFilter.frequency.value = 1000;
+    swishGain = audioCtx.createGain();
+    swishGain.gain.value = 0;
+    noise.connect(swishFilter).connect(swishGain).connect(masterGain);
+    noise.start();
+}
+
+function playClack(vel) {
+    if(!audioCtx) return;
+    const v = Math.min(Math.max(vel*15, 0.05), 1);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(500 + Math.random()*200, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.06);
+    gain.gain.setValueAtTime(v * 0.4, audioCtx.currentTime); // damped woody hit
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.06);
+    osc.connect(gain).connect(masterGain);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.06);
+}
+
+function playClick() {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.03);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.03);
+    osc.connect(gain).connect(masterGain);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.03);
+}
+
+function playRing() {
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2500, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(2400, audioCtx.currentTime + 0.5);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+    osc.connect(gain).connect(masterGain);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+}
+
+window.addEventListener('click', initAudio, {once:true});
+
+// --- ANIMATION ENGINE ---
+function Q(x,y,z) { return new THREE.Quaternion().setFromEuler(new THREE.Euler(x,y,z)); }
+const state = {
+    bite: Math.PI, safe: Math.PI, latch: 0,
+    pos: new THREE.Vector3(0, 0, 0),
+    quat: new THREE.Quaternion()
+};
+let startState = { bite:0, safe:0, latch:0, pos:new THREE.Vector3(), quat:new THREE.Quaternion() };
+
+function S(b, s, l, p, q) {
+    return {
+        bite: b!==undefined?b:Math.PI, safe: s!==undefined?s:Math.PI, latch: l!==undefined?l:0,
+        pos: p?new THREE.Vector3(...p):new THREE.Vector3(0,0,0),
+        quat: q?q.clone():new THREE.Quaternion()
+    };
+}
+
+const moves = {
+    'BASIC OPEN': [
+        { t:0, fs: S(Math.PI, Math.PI, 0) },
+        { t:0.2, fs: S(Math.PI, Math.PI, Math.PI/2) },
+        { t:0.6, fs: S(Math.PI, 0, Math.PI/2) },
+        { t:1.0, fs: S(0, 0, Math.PI/2), ev:'ring' }
+    ],
+    'BASIC CLOSE': [
+        { t:0, fs: S(0, 0, Math.PI/2) },
+        { t:0.5, fs: S(0, Math.PI, Math.PI/2) },
+        { t:1.0, fs: S(Math.PI, Math.PI, Math.PI/2) },
+        { t:1.2, fs: S(Math.PI, Math.PI, 0), ev:'click' }
+    ],
+    'CHAPLIN': [
+        { t:0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0,0,0)) },
+        { t:0.4, fs: S(Math.PI, Math.PI, Math.PI/2, [0,0.5,0], Q(Math.PI,0,0)) },
+        { t:0.8, fs: S(0, 0, Math.PI/2, [0,0,0], Q(Math.PI*2,0,0)), ev:'clack' }
+    ],
+    'ZEN ROLLOVER': [
+        { t:0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0,0,0)) },
+        { t:0.4, fs: S(Math.PI, 0, Math.PI/2, [0,0,0], Q(0,Math.PI,0)) },
+        { t:0.8, fs: S(Math.PI, Math.PI, Math.PI/2, [0,0,0], Q(0,Math.PI*2,0)), ev:'clack' },
+        { t:1.0, fs: S(0, 0, Math.PI/2) }
+    ],
+    'FAN': [
+        { t:0, fs: S(0, 0, Math.PI/2) },
+        { t:0.25, fs: S(Math.PI, 0, Math.PI/2) },
+        { t:0.5, fs: S(0, 0, Math.PI/2) },
+        { t:0.75, fs: S(Math.PI, 0, Math.PI/2) },
+        { t:1.0, fs: S(0, 0, Math.PI/2) }
+    ],
+    'HELIX': [
+        { t:0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0,0,0)) },
+        { t:0.5, fs: S(0, 0, Math.PI/2, [0,0.2,0], Q(Math.PI, Math.PI, 0)) },
+        { t:1.0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0, Math.PI*2, 0)), ev:'clack' }
+    ],
+    'AERIAL': [
+        { t:0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0,0,0)) },
+        { t:0.4, fs: S(Math.PI, Math.PI, Math.PI/2, [0, 0.8, 0], Q(Math.PI, 0, 0)) },
+        { t:0.8, fs: S(0, 0, Math.PI/2, [0, 0, 0], Q(Math.PI*2, 0, 0)), ev:'clack' }
+    ],
+    'DUNE SPIN': [
+        { t:0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0,0,0)) },
+        { t:0.5, fs: S(0, 0, Math.PI/2, [0,-0.8,0], Q(0, Math.PI*2, 0)) },
+        { t:1.0, fs: S(0, 0, Math.PI/2, [0,0,0], Q(0, Math.PI*4, 0)), ev:'ring' }
+    ]
+};
+const moveNames = Object.keys(moves);
+
+let currentMove = null;
+let currentTime = 0;
+let comboQueue = [];
+let freestyle = false;
+
+function lerpS(s1, s2, t) {
+    return {
+        bite: THREE.MathUtils.lerp(s1.bite, s2.bite, t),
+        safe: THREE.MathUtils.lerp(s1.safe, s2.safe, t),
+        latch: THREE.MathUtils.lerp(s1.latch, s2.latch, t),
+        pos: s1.pos.clone().lerp(s2.pos, t),
+        quat: s1.quat.clone().slerp(s2.quat, t)
+    };
+}
+function easeInOut(t) { return t<0.5 ? 2*t*t : -1+(4-2*t)*t; }
+
+function playMove(name) {
+    if(exploded || revealActive) return;
+    initAudio();
+    startState = JSON.parse(JSON.stringify(state)); // deep copy basically
+    startState.pos = state.pos.clone();
+    startState.quat = state.quat.clone();
+    currentMove = name;
+    currentTime = 0;
+    document.querySelectorAll('.move-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`.move-btn[data-move="${name}"]`);
+    if(btn) btn.classList.add('active');
+    showCaption(name);
+}
+
+function showCaption(text) {
+    const cap = document.getElementById('caption');
+    cap.innerText = text;
+    cap.style.opacity = 1;
+    clearTimeout(capTimeout);
+    capTimeout = setTimeout(() => { if(!freestyle && comboQueue.length===0) cap.style.opacity = 0; }, 2500);
+}
+let capTimeout;
+
+// --- INTERACTION ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let dragging = false;
+let dragHandle = null;
+let exploded = false;
+
+window.addEventListener('mousedown', (e) => {
+    if(e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+    if(exploded || revealActive) return;
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects([biteParts.frame, safeParts.frame, biteParts.scale, safeParts.scale]);
+    if(intersects.length > 0) {
+        dragging = true;
+        dragHandle = (intersects[0].object.parent === biteHandleGroup) ? 'bite' : 'safe';
+        controls.enabled = false;
+        currentMove = null;
+        freestyle = false;
+        comboQueue = [];
+    }
+});
+window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    if(dragging) {
+        raycaster.setFromCamera(mouse, camera);
+        const plane = new THREE.Plane(new THREE.Vector3(0,0,1), 0);
+        const target = new THREE.Vector3();
+        raycaster.ray.intersectPlane(plane, target);
+        const pivot = new THREE.Vector3();
+        (dragHandle==='bite'?biteHandleGroup:safeHandleGroup).getWorldPosition(pivot);
+        let ang = Math.atan2(target.y - pivot.y, target.x - pivot.x) - Math.PI/2;
+        ang = Math.max(0, Math.min(Math.PI, ang));
+        if(dragHandle==='bite') state.bite = ang;
+        else state.safe = ang;
+        if(state.bite > 0.1 || state.safe > 0.1) state.latch = Math.PI/2;
+        else state.latch = 0;
+    } else if (exploded) {
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(explodableParts);
+        const tip = document.getElementById('tooltip');
+        if(intersects.length > 0) {
+            tip.style.display = 'block';
+            tip.style.left = e.clientX + 'px';
+            tip.style.top = e.clientY + 'px';
+            tip.innerText = intersects[0].object.userData.label;
+        } else {
+            tip.style.display = 'none';
+        }
+    }
+});
+window.addEventListener('mouseup', () => { dragging = false; controls.enabled = true; });
+
+// UI Listeners
+document.querySelectorAll('.move-btn').forEach(b => b.addEventListener('click', (e) => { freestyle=false; comboQueue=[]; playMove(e.target.dataset.move); }));
+document.getElementById('combo-btn').addEventListener('click', () => { freestyle=false; comboQueue = [...moveNames]; playMove(comboQueue.shift()); });
+document.getElementById('freestyle-btn').addEventListener('click', () => { freestyle=true; comboQueue=[]; playMove(moveNames[Math.floor(Math.random()*moveNames.length)]); });
+
+document.getElementById('explode-btn').addEventListener('click', (e) => {
+    exploded = !exploded;
+    e.target.classList.toggle('active', exploded);
+    if(exploded) { currentMove=null; freestyle=false; handGroup.visible=false; trailLine.visible=false; }
+    else { handGroup.visible=true; trailLine.visible=document.getElementById('trail').checked; }
+});
+
+document.querySelectorAll('.cam-btn').forEach(b => b.addEventListener('click', (e) => {
+    const p = e.target.dataset.cam;
+    const presets = {
+        HERO: [[0,0.3,2.2],[0,0,0]], BLADE: [[0,0.6,0.6],[0,0.6,0]], PIVOT: [[0.2,0,0.4],[0,0,0]], LATCH: [[0.2,-1.2,0.5],[0,-1.2,0]], TOP: [[0,2.5,0.01],[0,0,0]]
+    };
+    camTargetPos.set(...presets[p][0]);
+    camTargetLook.set(...presets[p][1]);
+}));
+
+document.querySelectorAll('.color-swatch').forEach(sw => sw.addEventListener('click', (e) => {
+    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    e.target.classList.add('active');
+    const idx = parseInt(e.target.dataset.cw);
+    matDamascus.color.copy(colorways[idx].blade.color);
+    matWood.map = colorways[idx].handle.map;
+    matWood.color.copy(colorways[idx].handle.color);
+    matBronze.color.copy(colorways[idx].hw.color);
+    matWood.needsUpdate = true;
+}));
+
+document.getElementById('mute').addEventListener('change', e => { if(masterGain) masterGain.gain.value = e.target.checked ? 0 : parseFloat(document.getElementById('volume').value); });
+document.getElementById('volume').addEventListener('input', e => { if(masterGain && !document.getElementById('mute').checked) masterGain.gain.value = parseFloat(e.target.value); });
+document.getElementById('trail').addEventListener('change', e => { trailLine.visible = e.target.checked && !exploded; });
+document.getElementById('hideui').addEventListener('change', e => { document.getElementById('ui-layer').style.display = e.target.checked ? 'none' : 'block'; });
+
+window.addEventListener('keydown', e => {
+    const map = {'1':'BASIC OPEN','2':'BASIC CLOSE','3':'CHAPLIN','4':'ZEN ROLLOVER','5':'FAN','6':'HELIX','7':'AERIAL','8':'DUNE SPIN'};
+    if(map[e.key]) { freestyle=false; comboQueue=[]; playMove(map[e.key]); }
+});
+
+const camTargetPos = new THREE.Vector3();
+const camTargetLook = new THREE.Vector3();
+
+// --- REVEAL ---
+let revealActive = true;
+let revealTime = 0;
+
+// --- MAIN LOOP ---
+let prevBite = state.bite;
+let prevSafe = state.safe;
+let prevQuat = state.quat.clone();
+const clock = new THREE.Clock();
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const time = clock.getElapsedTime();
+    
+    // Stage Anim
+    snowArr.forEach((v, i) => {
+        if(i%3 === 1) { snowArr[i] -= 0.01; if(snowArr[i] < -5) snowArr[i] = 5; }
+    });
+    snowGeo.attributes.position.needsUpdate = true;
+
+    // Explode Anim
+    if(exploded) {
+        explodableParts.forEach(p => {
+            const tar = p.userData.basePos.clone().add(p.userData.explodeVec);
+            p.position.lerp(tar, 0.1);
+            p.rotation.x += 0.01; p.rotation.y += 0.01;
+        });
+    } else {
+        explodableParts.forEach(p => {
+            p.position.lerp(p.userData.basePos, 0.1);
+            p.rotation.set(0,0,0);
+        });
+    }
+
+    if(revealActive) {
+        revealTime += dt;
+        if(revealTime < 2.0) {
+            keyLight.position.x = Math.sin(revealTime*1.5)*5;
+            camera.position.lerp(new THREE.Vector3(0, 0, 3), 0.05);
+        } else if(revealTime < 4.0) {
+            const t = (revealTime-2.0)/2.0;
+            state.safe = THREE.MathUtils.lerp(Math.PI, 0, t);
+            state.bite = THREE.MathUtils.lerp(Math.PI, 0, t);
+            state.latch = THREE.MathUtils.lerp(0, Math.PI/2, t);
+            keyLight.position.set(5,5,5);
+        } else {
+            revealActive = false;
+            showCaption('AETHELRED // READY');
+        }
+    }
+    else if (currentMove && !dragging && !exploded) {
+        const speed = document.getElementById('slowmo').checked ? 0.2 : parseFloat(document.getElementById('speed').value);
+        currentTime += dt * speed;
+        const frames = moves[currentMove];
+        if(currentTime >= frames[frames.length-1].t) {
+            if(comboQueue.length > 0) { currentMove = comboQueue.shift(); currentTime=0; startState = JSON.parse(JSON.stringify(state)); startState.pos=state.pos.clone(); startState.quat=state.quat.clone(); showCaption(currentMove); }
+            else if(freestyle) { let n; do { n=moveNames[Math.floor(Math.random()*moveNames.length)]; } while(n===currentMove); currentMove=n; currentTime=0; startState = JSON.parse(JSON.stringify(state)); startState.pos=state.pos.clone(); startState.quat=state.quat.clone(); showCaption(currentMove); }
+            else { currentTime = 0; startState = JSON.parse(JSON.stringify(state)); startState.pos=state.pos.clone(); startState.quat=state.quat.clone(); }
+        }
+        
+        let sStart = startState, sEnd = frames[frames.length-1].fs, tLocal = 1;
+        for(let i=0; i<frames.length-1; i++) {
+            if(currentTime >= frames[i].t && currentTime < frames[i+1].t) {
+                sStart = frames[i].fs;
+                sEnd = frames[i+1].fs;
+                tLocal = (currentTime - frames[i].t) / (frames[i+1].t - frames[i].t);
+                if(frames[i+1].ev === 'clack' && prevBite < 0.5 && sEnd.bite===0) playClack(0.5);
+                break;
+            }
+            if(currentTime < frames[0].t) { sEnd = frames[0].fs; tLocal = currentTime/frames[0].t; break; }
+        }
+        const eT = easeInOut(tLocal);
+        const ns = lerpS(sStart, sEnd, eT);
+        state.bite = ns.bite; state.safe = ns.safe; state.latch = ns.latch;
+        state.pos.copy(ns.pos); state.quat.copy(ns.quat);
+    }
+
+    // Apply State
+    if(!dragging && !exploded) {
+        safeHandleGroup.rotation.z = state.safe;
+        biteHandleGroup.rotation.z = state.bite;
+        latchGroup.rotation.z = state.latch;
+        knifeRoot.position.copy(state.pos);
+        knifeRoot.quaternion.copy(state.quat);
+        
+        handGroup.position.copy(state.pos).add(new THREE.Vector3(0,-0.15,-0.05));
+        handGroup.quaternion.copy(state.quat);
+    }
+
+    // Audio Dynamics
+    if(audioCtx) {
+        const dB = Math.abs(state.bite - prevBite);
+        const dS = Math.abs(state.safe - prevSafe);
+        const dQ = Math.abs(state.quat.dot(prevQuat)-1);
+        const maxV = Math.max(dB, dS, dQ*10);
+        
+        swishGain.gain.setTargetAtTime(Math.min(maxV*10, 0.3), audioCtx.currentTime, 0.05);
+        swishFilter.frequency.setTargetAtTime(600 + maxV*3000, audioCtx.currentTime, 0.05);
+        
+        if(state.bite===0 && prevBite>0.01) playClack(dB);
+        if(state.bite>=Math.PI-0.01 && prevBite<Math.PI-0.01) playClack(dB);
+        if(state.safe===0 && prevSafe>0.01) playClack(dS);
+        if(state.safe>=Math.PI-0.01 && prevSafe<Math.PI-0.01) playClack(dS);
+        
+        prevBite = state.bite; prevSafe = state.safe; prevQuat.copy(state.quat);
+    }
+
+    // Trail
+    if(trailLine.visible && !exploded && !revealActive) {
+        bladeTip.getWorldPosition(new THREE.Vector3());
+        const tp = new THREE.Vector3();
+        bladeTip.getWorldPosition(tp);
+        trailPts.unshift(tp);
+        if(trailPts.length > maxTrail) trailPts.pop();
+        trailGeo.setFromPoints(trailPts);
+        const cols = [];
+        for(let i=0; i<trailPts.length; i++) {
+            const a = Math.pow(1 - i/maxTrail, 2);
+            cols.push(new THREE.Color(0x88ccff).multiplyScalar(a).r,
+                      new THREE.Color(0x88ccff).multiplyScalar(a).g,
+                      new THREE.Color(0x88ccff).multiplyScalar(a).b);
+        }
+        trailGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    } else {
+        trailPts.length = 0;
+        trailGeo.setFromPoints([]);
+    }
+
+    // Camera
+    if(!revealActive) {
+        camera.position.lerp(camTargetPos, 0.05);
+        controls.target.lerp(camTargetLook, 0.05);
+    }
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Start
+setTimeout(() => {
+    document.getElementById('loading').style.opacity = 0;
+    setTimeout(() => document.getElementById('loading').style.display = 'none', 1000);
+    camTargetPos.set(0, 0.3, 2.2);
+    camTargetLook.set(0, 0, 0);
+    animate();
+}, 500);
+
+</script>
+</body>
+</html>
