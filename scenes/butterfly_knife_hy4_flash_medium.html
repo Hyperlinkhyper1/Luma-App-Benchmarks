@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KNIGHTFALL FORGE - FENRIR BALISONG</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #fff; user-select: none; }
+  #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+  #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+  .panel { background: rgba(10, 15, 20, 0.75); border: 1px solid rgba(183, 110, 121, 0.4); backdrop-filter: blur(8px); padding: 15px; border-radius: 8px; pointer-events: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+  #top-bar { display: flex; justify-content: space-between; align-items: flex-start; }
+  #spec-card { max-width: 320px; }
+  h1 { margin: 0 0 5px 0; font-size: 1.4rem; color: #ffd7a8; font-weight: 300; letter-spacing: 2px; }
+  .subtitle { font-style: italic; color: #b76e79; margin-bottom: 15px; font-size: 0.95rem; }
+  .spec-line { font-size: 0.8rem; margin-bottom: 6px; color: #aaa; display: flex; justify-content: space-between; }
+  .spec-line span { color: #fff; }
+  .signature-note { font-size: 0.75rem; margin-top: 15px; color: #8899aa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
+  
+  #controls { display: flex; flex-wrap: wrap; gap: 8px; max-width: 400px; justify-content: flex-end; }
+  .btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; transition: 0.2s; text-transform: uppercase; letter-spacing: 1px; }
+  .btn:hover { background: rgba(183, 110, 121, 0.4); border-color: #b76e79; }
+  .btn.active { background: #b76e79; color: #000; font-weight: bold; }
+  
+  #bottom-bar { display: flex; justify-content: space-between; align-items: flex-end; }
+  #moves-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 55%; }
+  #settings { display: flex; flex-direction: column; gap: 12px; width: 250px; }
+  .setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; }
+  input[type=range] { width: 120px; accent-color: #b76e79; }
+  
+  #caption { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 2.5rem; color: rgba(255,255,255,0.9); pointer-events: none; opacity: 0; transition: opacity 0.4s; text-shadow: 0 4px 20px rgba(0,0,0,0.8); font-weight: 300; letter-spacing: 4px; }
+  
+  #loading { position: absolute; top:0; left:0; width:100vw; height:100vh; background:#000; display:flex; flex-direction: column; justify-content:center; align-items:center; color:#ffd7a8; font-size:1.5rem; z-index: 1000; transition: opacity 0.8s; letter-spacing: 4px; }
+  .spinner { width: 50px; height: 50px; border: 3px solid rgba(183,110,121,0.2); border-top-color: #b76e79; border-radius: 50%; animation: spin 1s linear infinite; margin-top: 20px; }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+  
+  #error { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #ff6b6b; font-size: 1.2rem; }
+  #tooltip { position: absolute; background: rgba(0,0,0,0.8); color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 0.75rem; pointer-events: none; display: none; border: 1px solid #b76e79; z-index: 100; }
+</style>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+
+<div id="loading">
+  FORGING FENRIR
+  <div class="spinner"></div>
+</div>
+
+<div id="error">WebGL is unavailable in this browser. Please enable hardware acceleration.</div>
+<div id="tooltip"></div>
+<div id="caption"></div>
+
+<div id="canvas-container"></div>
+
+<div id="ui" style="display: none;">
+  <div id="top-bar">
+    <div id="spec-card" class="panel">
+      <h1>KNIGHTFALL FORGE</h1>
+      <div class="subtitle">Model: FENRIR "Arctic Wolf"</div>
+      <div class="spec-line">Overall Length <span>230 mm</span></div>
+      <div class="spec-line">Blade Length <span>100 mm</span></div>
+      <div class="spec-line">Materials <span>White Ceramic / Rose Gold</span></div>
+      <div class="spec-line">Weight <span>115 g</span></div>
+      <div class="spec-line">Pivot System <span>Bearing / Zen Pin</span></div>
+      <div class="signature-note">
+        Signature: Hand-milled frost pattern scales, custom T-latch, and Arctic Wolf etching.<br>
+        Maker's Mark: ☾
+      </div>
+    </div>
+    <div id="controls" class="panel">
+      <button class="btn" onclick="setCamera('HERO')">Hero</button>
+      <button class="btn" onclick="setCamera('BLADE')">Blade</button>
+      <button class="btn" onclick="setCamera('PIVOT')">Pivot</button>
+      <button class="btn" onclick="setCamera('LATCH')">Latch</button>
+      <button class="btn" onclick="setCamera('TOP')">Top</button>
+      <button class="btn" id="btn-explode">Explode</button>
+      <button class="btn" id="btn-cw">Colorway</button>
+      <button class="btn" id="btn-hide">Hide UI</button>
+    </div>
+  </div>
+  <div id="bottom-bar">
+    <div id="moves-grid" class="panel"></div>
+    <div id="settings" class="panel">
+      <div class="setting-row">Speed <input type="range" id="speed" min="0.25" max="2" step="0.25" value="1"></div>
+      <div class="setting-row">Volume <input type="range" id="volume" min="0" max="1" step="0.1" value="0.5"></div>
+      <div style="display:flex; gap:5px;">
+        <button class="btn" id="btn-trail" style="flex:1;">Trail: Off</button>
+        <button class="btn" id="btn-slowmo" style="flex:1;">Slow-Mo: Off</button>
+      </div>
+      <div style="display:flex; gap:5px;">
+        <button class="btn" id="btn-combo" style="flex:1;">Combo</button>
+        <button class="btn" id="btn-freestyle" style="flex:1;">Freestyle</button>
+      </div>
+      <button class="btn" id="btn-mute">Mute: Off</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+if (!WebGLRenderingContext) {
+  document.getElementById('error').style.display = 'block';
+  document.getElementById('loading').style.display = 'none';
+  throw new Error("WebGL not supported");
+}
+
+// ==========================================
+// GLOBALS & CONFIG
+// ==========================================
+let scene, camera, renderer, controls;
+let knifeRoot, bladeGroup, safePivot, bitePivot, latchPivot;
+let safeHandleGroup, biteHandleGroup;
+let safeScaleMat, biteScaleMat, safeLinerMat, biteLinerMat, latchMat;
+let handGroup, spotLight, trail, shadow;
+let audioCtx, whirGain;
+let clock = new THREE.Clock();
+
+const PI = Math.PI;
+const P_BITE = new THREE.Vector3(0.015, -0.01, -0.004);
+const P_SAFE = new THREE.Vector3(-0.015, -0.01, 0.004);
+
+let state = 'reveal'; // reveal, showcase, playing, freestyle, combo, exploded
+let revealTime = 0;
+let currentMove = null;
+let moveTime = 0;
+let prevBite = 0, prevSafe = 0;
+let moveStates = {};
+let comboQueue = [];
+let lastMove = '';
+let currentStateTracker = 1; // 0 = Closed, 1 = Open
+let speedMult = 1, slowmo = false, muted = false, trailOn = false, exploded = false;
+let explodeT = 0;
+let camTween = null;
+let explodeParts = [];
+
+const colorways = [
+  { name: 'Arctic Wolf', scale: 0xffffff, liner: 0xb76e79 },
+  { name: 'Midnight Howl', scale: 0x151520, liner: 0xff9100 },
+  { name: 'Aurora', scale: 0xe0f7fa, liner: 0x00e5ff }
+];
+let cwIdx = 0;
+
+// ==========================================
+// ANIMATION MOVES DEFINITION
+// ==========================================
+const moves = {
+  basicOpen: { name: "Basic Open", kfs: [
+    {t:0, hand:'bite', bite:0, safe:0, latch:0, rZ:0},
+    {t:0.1, hand:'bite', bite:0, safe:0, latch:PI, rZ:0},
+    {t:0.4, hand:'bite', bite:0, safe:PI, latch:PI, rZ:0},
+    {t:0.8, hand:'bite', bite:PI, safe:PI, latch:PI, rZ:0},
+    {t:1.0, hand:'bite', bite:PI, safe:PI, latch:0, rZ:0}
+  ]},
+  basicClose: { name: "Basic Close", kfs: [
+    {t:0, hand:'bite', bite:PI, safe:PI, latch:0, rZ:0},
+    {t:0.1, hand:'bite', bite:PI, safe:PI, latch:PI, rZ:0},
+    {t:0.4, hand:'bite', bite:0, safe:PI, latch:PI, rZ:0},
+    {t:0.8, hand:'bite', bite:0, safe:0, latch:PI, rZ:0},
+    {t:1.0, hand:'bite', bite:0, safe:0, latch:0, rZ:0}
+  ]},
+  chaplin: { name: "Chaplin", kfs: [
+    {t:0, hand:'bite', bite:PI, safe:PI, latch:0, rZ:0},
+    {t:0.1, hand:'bite', bite:PI, safe:PI, latch:PI, rZ:0},
+    {t:0.3, hand:'bite', bite:PI, safe:0, latch:PI, rZ:0},
+    {t:0.6, hand:'bite', bite:PI, safe:0, latch:PI, rZ: PI},
+    {t:0.8, hand:'bite', bite:0, safe:0, latch:PI, rZ: PI},
+    {t:0.95, hand:'bite', bite:0, safe:0, latch:0, rZ: PI}
+  ]},
+  zenRollover: { name: "Zen Rollover", kfs: [
+    {t:0, hand:'safe', bite:PI, safe:PI, latch:0, rZ:0},
+    {t:0.1, hand:'safe', bite:PI, safe:PI, latch:PI, rZ:0},
+    {t:0.3, hand:'safe', bite:0, safe:PI, latch:PI, rZ:0},
+    {t:0.6, hand:'safe', bite:0, safe:PI, latch:PI, rZ: PI},
+    {t:0.8, hand:'safe', bite:PI, safe:PI, latch:PI, rZ: PI},
+    {t:1.0, hand:'safe', bite:PI, safe:PI, latch:0, rZ: PI}
+  ]},
+  fan: { name: "Fan", kfs: [
+    {t:0, hand:'bite', bite:0, safe:0, latch:0, rZ:0},
+    {t:0.1, hand:'bite', bite:0, safe:0, latch:PI, rZ:0},
+    {t:0.8, hand:'bite', bite:0, safe:0, latch:PI, rZ: PI*4},
+    {t:0.9, hand:'bite', bite:0, safe:0, latch:PI, rZ: PI*4},
+    {t:1.0, hand:'bite', bite:0, safe:0, latch:0, rZ: PI*4}
+  ]},
+  helix: { name: "Helix", kfs: [
+    {t:0, hand:'bite', bite:PI, safe:PI, latch:0, rY:0},
+    {t:0.1, hand:'bite', bite:PI, safe:PI, latch:PI, rY:0},
+    {t:0.7, hand:'bite', bite:PI, safe:PI, latch:PI, rY: PI*4},
+    {t:0.9, hand:'bite', bite:0, safe:0, latch:PI, rY: PI*4},
+    {t:1.0, hand:'bite', bite:0, safe:0, latch:0, rY: 0}
+  ]},
+  aerial: { name: "Aerial", kfs: [
+    {t:0, hand:'bite', bite:PI, safe:PI, latch:0, rZ:0},
+    {t:0.1, hand:'bite', bite:PI, safe:PI, latch:PI, rZ:0},
+    {t:0.15, hand:'none', bite:PI, safe:PI, latch:PI, px:0, py:0, pz:0, rx:0, ry:0, rz:-PI},
+    {t:0.5, hand:'none', bite:0, safe:PI, latch:PI, px:0, py:0.15, pz:0, rx:0, ry:0, rz:-PI*2},
+    {t:0.75, hand:'none', bite:PI, safe:PI, latch:PI, px:0, py:0, pz:0, rx:0, ry:0, rz:-PI*3},
+    {t:0.8, hand:'bite', bite:PI, safe:PI, latch:PI, rZ:0},
+    {t:1.0, hand:'bite', bite:PI, safe:PI, latch:0, rZ:0}
+  ]},
+  signature: { name: "Arctic Howl", kfs: [
+    {t:0, hand:'safe', bite:0, safe:0, latch:0, rZ:0},
+    {t:0.1, hand:'safe', bite:0, safe:0, latch:PI, rZ:0},
+    {t:0.4, hand:'safe', bite:PI, safe:PI, latch:PI, rZ: PI},
+    {t:0.7, hand:'none', bite:PI, safe:PI, latch:PI, px:0, py:0.05, rz: PI*2},
+    {t:0.9, hand:'bite', bite:PI, safe:PI, latch:PI, rZ: PI*2},
+    {t:1.0, hand:'bite', bite:0, safe:0, latch:0, rZ: PI*2}
+  ]}
+};
+
+moveStates = {
+  basicOpen:{start:0, end:1}, basicClose:{start:1, end:0}, chaplin:{start:1, end:0},
+  zenRollover:{start:1, end:1}, fan:{start:0, end:0}, helix:{start:1, end:0},
+  aerial:{start:1, end:1}, signature:{start:0, end:0}
+};
+
+function bakeAll() {
+  for (let key in moves) {
+    let move = moves[key];
+    let lastAbsRot = null;
+    for (let kf of move.kfs) {
+      if (kf.hand === 'bite' || kf.hand === 'safe') {
+        let heldAngle = kf.hand === 'bite' ? kf.bite : kf.safe;
+        let pivot = kf.hand === 'bite' ? P_BITE : P_SAFE;
+        let qHand = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, kf.rY||0, kf.rZ||0, 'ZYX'));
+        let qRel = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -heldAngle);
+        let qRoot = qHand.clone().multiply(qRel);
+        let pRoot = pivot.clone().applyQuaternion(qRoot).multiplyScalar(-1);
+        let eRoot = new THREE.Euler().setFromQuaternion(qRoot);
+        let rotArr = [eRoot.x, eRoot.y, eRoot.z];
+        if (lastAbsRot) {
+          for(let i=0;i<3;i++) {
+            while(rotArr[i] - lastAbsRot[i] > PI) rotArr[i] -= PI*2;
+            while(rotArr[i] - lastAbsRot[i] < -PI) rotArr[i] += PI*2;
+          }
+        }
+        kf._absPos = pRoot.toArray();
+        kf._absRot = rotArr;
+        lastAbsRot = rotArr;
+      } else {
+        let rotArr = [kf.rx||0, kf.ry||0, kf.rz||0];
+        if (lastAbsRot) {
+          for(let i=0;i<3;i++) {
+            while(rotArr[i] - lastAbsRot[i] > PI) rotArr[i] -= PI*2;
+            while(rotArr[i] - lastAbsRot[i] < -PI) rotArr[i] += PI*2;
+          }
+        }
+        kf._absPos = [kf.px||0, kf.py||0, kf.pz||0];
+        kf._absRot = rotArr;
+        lastAbsRot = rotArr;
+      }
+    }
+  }
+}
+bakeAll();
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function getCurrentPose(move, t) {
+  let k1 = move.kfs[0], k2 = move.kfs[move.kfs.length - 1];
+  for (let i = 0; i < move.kfs.length - 1; i++) {
+    if (t >= move.kfs[i].t && t <= move.kfs[i+1].t) {
+      k1 = move.kfs[i]; k2 = move.kfs[i+1]; break;
+    }
+  }
+  let range = k2.t - k1.t;
+  let u = range > 0 ? (t - k1.t) / range : 0;
+  u = Math.max(0, Math.min(1, u));
+  let smooth = u * u * (3 - 2 * u);
+  return {
+    pos: [lerp(k1._absPos[0], k2._absPos[0], smooth), lerp(k1._absPos[1], k2._absPos[1], smooth), lerp(k1._absPos[2], k2._absPos[2], smooth)],
+    rot: [lerp(k1._absRot[0], k2._absRot[0], smooth), lerp(k1._absRot[1], k2._absRot[1], smooth), lerp(k1._absRot[2], k2._absRot[2], smooth)],
+    bite: lerp(k1.bite, k2.bite, smooth),
+    safe: lerp(k1.safe, k2.safe, smooth),
+    latch: lerp(k1.latch, k2.latch, smooth),
+    hand: u < 0.5 ? k1.hand : k2.hand,
+    rZ: lerp(k1.rZ||0, k2.rZ||0, smooth),
+    rY: lerp(k1.rY||0, k2.rY||0, smooth)
+  };
+}
+
+// ==========================================
+// PROCEDURAL TEXTURES
+// ==========================================
+function createWolfTexture() {
+  let c = document.createElement('canvas'); c.width=256; c.height=1024;
+  let ctx = c.getContext('2d');
+  ctx.fillStyle = '#fcfcfc'; ctx.fillRect(0,0,256,1024);
+  ctx.strokeStyle = '#eaeaea'; ctx.lineWidth = 2;
+  for(let i=0; i<800; i++) {
+    ctx.beginPath(); let x=Math.random()*256, y=Math.random()*1024;
+    ctx.moveTo(x,y); ctx.quadraticCurveTo(x+Math.random()*20-10, y+20, x+Math.random()*30-15, y+60); ctx.stroke();
+  }
+  ctx.fillStyle = '#ffffff';
+  for(let i=0;i<80;i++) {
+    let sx=Math.random()*256, sy=Math.random()*1024, r=Math.random()*4+2;
+    ctx.beginPath(); ctx.arc(sx,sy,r,0,PI*2); ctx.fill();
+    for(let a=0;a<6;a++) { ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+Math.cos(a*PI/3)*r*2, sy+Math.sin(a*PI/3)*r*2); ctx.strokeStyle='#fff'; ctx.stroke(); }
+  }
+  ctx.fillStyle = '#e0e5ec';
+  ctx.beginPath();
+  ctx.moveTo(128, 750); ctx.lineTo(80, 800); ctx.lineTo(50, 770); ctx.lineTo(70, 850); ctx.lineTo(128, 920);
+  ctx.lineTo(186, 850); ctx.lineTo(206, 770); ctx.lineTo(176, 800); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#b76e79'; ctx.fillRect(110, 810, 12, 5); ctx.fillRect(134, 810, 12, 5);
+  let tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; return tex;
+}
+function createMarkTexture() {
+  let c = document.createElement('canvas'); c.width=128; c.height=128;
+  let ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillRect(0,0,128,128);
+  ctx.fillStyle = 'rgba(30,30,30,0.9)'; ctx.textAlign = 'center';
+  ctx.font = 'bold 60px Arial'; ctx.fillText('☾', 64, 60);
+  ctx.font = '16px Arial'; ctx.fillText('FENRIR', 64, 90);
+  return new THREE.CanvasTexture(c);
+}
+function createSandTexture() {
+  let c = document.createElement('canvas'); c.width=512; c.height=512;
+  let ctx = c.getContext('2d');
+  ctx.fillStyle = '#d2b48c'; ctx.fillRect(0,0,512,512);
+  for(let i=0;i<80000;i++) {
+    ctx.fillStyle = Math.random()>0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+    ctx.fillRect(Math.random()*512, Math.random()*512, 2, 2);
+  }
+  let t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6,6); return t;
+}
+
+// ==========================================
+// GEOMETRY BUILDERS
+// ==========================================
+function buildBlade() {
+  let shape = new THREE.Shape();
+  shape.moveTo(0, -0.02); shape.lineTo(-0.012, -0.02); shape.lineTo(-0.012, 0);
+  shape.lineTo(-0.014, 0.02); shape.quadraticCurveTo(-0.015, 0.1, -0.01, 0.14);
+  shape.quadraticCurveTo(-0.005, 0.16, 0, 0.16); shape.lineTo(0.002, 0.14);
+  shape.quadraticCurveTo(0.006, 0.08, 0.006, 0.02); shape.lineTo(0.012, 0); shape.lineTo(0.012, -0.02); shape.closePath();
+  
+  let geo = new THREE.ExtrudeGeometry(shape, { depth: 0.003, bevelEnabled: true, bevelSize: 0.0005, bevelThickness: 0.0005, bevelSegments: 2 });
+  geo.translate(0, 0, -0.0015);
+  let mat = new THREE.MeshPhysicalMaterial({ color: 0xdddddd, metalness: 0.9, roughness: 0.15, clearcoat: 0.2, envMapIntensity: 1.5 });
+  let mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.label = 'Light Grey Drop Point Blade';
+  
+  // Edge bevel illusion
+  let edgeGeo = new THREE.PlaneGeometry(0.005, 0.15);
+  edgeGeo.translate(0.004, 0.08, 0.00151);
+  let edgeMat = new THREE.MeshPhysicalMaterial({ color: 0xaaaaaa, metalness: 1, roughness: 0.1 });
+  mesh.add(new THREE.Mesh(edgeGeo, edgeMat));
+
+  // Kicker
+  let kickerGeo = new THREE.BoxGeometry(0.004, 0.005, 0.003);
+  let kicker = new THREE.Mesh(kickerGeo, mat); kicker.position.set(0.014, -0.015, 0);
+  mesh.add(kicker);
+
+  // Maker's Mark
+  let markGeo = new THREE.PlaneGeometry(0.02, 0.02);
+  let markMat = new THREE.MeshBasicMaterial({ map: createMarkTexture(), transparent: true, depthWrite: false });
+  let mark = new THREE.Mesh(markGeo, markMat); mark.position.set(0, 0.06, 0.0016);
+  mesh.add(mark);
+
+  return mesh;
+}
+
+function buildHandle(isBite) {
+  let group = new THREE.Group();
+  let shape = new THREE.Shape();
+  shape.moveTo(-0.012, 0); shape.lineTo(0.012, 0);
+  shape.quadraticCurveTo(0.014, -0.07, 0.01, -0.14);
+  shape.lineTo(-0.01, -0.14); shape.quadraticCurveTo(-0.014, -0.07, -0.012, 0); shape.closePath();
+
+  let scaleGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.004, bevelEnabled: true, bevelSize: 0.0005, bevelThickness: 0.0005 });
+  scaleGeo.translate(0, 0, -0.002);
+  
+  let wolfTex = createWolfTexture();
+  let scaleMat = new THREE.MeshPhysicalMaterial({ map: wolfTex, color: 0xffffff, metalness: 0.1, roughness: 0.1, clearcoat: 1.0, clearcoatRoughness: 0.05 });
+  let scale = new THREE.Mesh(scaleGeo, scaleMat);
+  scale.userData.label = isBite ? 'Bite Handle Scale (White Ceramic)' : 'Safe Handle Scale (White Ceramic)';
+  group.add(scale);
+
+  let linerGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.002, bevelEnabled: true, bevelSize: 0.0005, bevelThickness: 0.0005 });
+  linerGeo.translate(0, 0, -0.001);
+  let linerMat = new THREE.MeshPhysicalMaterial({ color: 0xb76e79, metalness: 1.0, roughness: 0.2 });
+  let liner = new THREE.Mesh(linerGeo, linerMat);
+  liner.position.z = isBite ? -0.003 : 0.003;
+  liner.userData.label = 'Rose Gold Liner';
+  group.add(liner);
+
+  // Zen Pin
+  let pinGeo = new THREE.CylinderGeometry(0.002, 0.002, 0.006, 16); pinGeo.rotateX(PI/2);
+  let pin = new THREE.Mesh(pinGeo, linerMat); pin.position.set(isBite?-0.008:0.008, -0.005, 0);
+  group.add(pin);
+
+  if(isBite) {
+    latchPivot = new THREE.Group();
+    latchPivot.position.set(0.012, -0.09, 0.004);
+    let latchGeo = new THREE.BoxGeometry(0.006, 0.025, 0.002);
+    latchMat = new THREE.MeshPhysicalMaterial({ color: 0xb76e79, metalness: 1.0, roughness: 0.2 });
+    let latchMesh = new THREE.Mesh(latchGeo, latchMat);
+    latchMesh.position.y = -0.012;
+    latchMesh.userData.label = 'Classic T-Latch';
+    latchPivot.add(latchMesh);
+    group.add(latchPivot);
+    group.userData.label = 'Bite Handle Assembly';
+  } else {
+    group.userData.label = 'Safe Handle Assembly';
+  }
+
+  if(isBite) { biteScaleMat = scaleMat; biteLinerMat = linerMat; }
+  else { safeScaleMat = scaleMat; safeLinerMat = linerMat; }
+
+  return group;
+}
+
+function buildHand() {
+  let g = new THREE.Group();
+  let mat = new THREE.MeshStandardMaterial({ color: 0xd2a77f, roughness: 0.8 });
+  let palm = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.012), mat); palm.position.set(0, -0.035, 0); g.add(palm);
+  for(let i=0;i<4;i++) {
+    let f = new THREE.Mesh(new THREE.CapsuleGeometry(0.005, 0.03, 4, 8), mat);
+    f.position.set(-0.015 + i*0.01, -0.01, 0); f.rotation.z = 0.2; g.add(f);
+  }
+  let t = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 0.025, 4, 8), mat);
+  t.position.set(0.03, -0.01, 0); t.rotation.z = PI/3; g.add(t);
+  return g;
+}
+
+// ==========================================
+// INIT SCENE
+// ==========================================
+function init() {
+  let container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x1a1512, 0.5);
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 10);
+  camera.position.set(0, 0, 1.5);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.maxPolarAngle = PI / 2 - 0.05;
+  controls.minDistance = 0.1;
+  controls.maxDistance = 1.0;
+  controls.target.set(0, 0, 0);
+
+  // Lights
+  let dirLight = new THREE.DirectionalLight(0xffd7a8, 3);
+  dirLight.position.set(1, 1, -1); scene.add(dirLight);
+  let fillLight = new THREE.DirectionalLight(0xaaccff, 1.5);
+  fillLight.position.set(-1, 0.5, 1); scene.add(fillLight);
+  spotLight = new THREE.SpotLight(0xffffff, 10);
+  spotLight.position.set(-1, 1, 0.5); spotLight.angle = 0.3; spotLight.penumbra = 0.5;
+  scene.add(spotLight);
+
+  // Stage (Sand Dune)
+  let stageGeo = new THREE.PlaneGeometry(5, 5, 64, 64); stageGeo.rotateX(-PI/2);
+  let pos = stageGeo.attributes.position;
+  for(let i=0;i<pos.count;i++) {
+    let x=pos.getX(i), z=pos.getZ(i);
+    pos.setY(i, Math.sin(x*2)*0.08 + Math.cos(z*3)*0.05 - 0.1);
+  }
+  stageGeo.computeVertexNormals();
+  let stageMat = new THREE.MeshStandardMaterial({ map: createSandTexture(), roughness: 1.0, color: 0xffd7a8 });
+  let stage = new THREE.Mesh(stageGeo, stageMat); stage.receiveShadow = true; scene.add(stage);
+
+  // Contact Shadow
+  let sc = document.createElement('canvas'); sc.width=128; sc.height=128;
+  let sctx = sc.getContext('2d'); let grad = sctx.createRadialGradient(64,64,0,64,64,64);
+  grad.addColorStop(0, 'rgba(0,0,0,0.8)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+  sctx.fillStyle = grad; sctx.fillRect(0,0,128,128);
+  let shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.4,0.4), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(sc), transparent:true, depthWrite:false}));
+  shadow.rotateX(-PI/2); shadow.position.y = -0.09; scene.add(shadow);
+
+  // Sand Particles
+  let sandCount = 2000, sandPos = new Float32Array(sandCount*3);
+  for(let i=0;i<sandCount;i++) { sandPos[i*3]=(Math.random()-0.5)*4; sandPos[i*3+1]=Math.random()*0.2-0.09; sandPos[i*3+2]=(Math.random()-0.5)*4; }
+  let sandGeo = new THREE.BufferGeometry(); sandGeo.setAttribute('position', new THREE.BufferAttribute(sandPos, 3));
+  let sand = new THREE.Points(sandGeo, new THREE.PointsMaterial({ color: 0xffd7a8, size: 0.002, transparent: true, opacity: 0.6 }));
+  scene.add(sand);
+  window.sandParticles = sand;
+
+  // Trail
+  let trailPos = new Float32Array(60*3);
+  let tGeo = new THREE.BufferGeometry(); tGeo.setAttribute('position', new THREE.BufferAttribute(trailPos,3));
+  trail = new THREE.Points(tGeo, new THREE.PointsMaterial({ color: 0x00e5ff, size: 0.003, transparent: true, opacity: 0.8 }));
+  trail.visible = false; scene.add(trail); window.trailIdx = 0;
+
+  // Build Knife
+  knifeRoot = new THREE.Group(); scene.add(knifeRoot);
+  bladeGroup = buildBlade(); knifeRoot.add(bladeGroup);
+  explodeParts.push({mesh: bladeGroup, dir: new THREE.Vector3(0,0,0), origPos: bladeGroup.position.clone()});
+
+  safePivot = new THREE.Group(); safePivot.position.copy(P_SAFE); knifeRoot.add(safePivot);
+  safeHandleGroup = buildHandle(false); safePivot.add(safeHandleGroup);
+  explodeParts.push({mesh: safeHandleGroup, dir: new THREE.Vector3(0,0,1.5), origPos: safeHandleGroup.position.clone()});
+
+  bitePivot = new THREE.Group(); bitePivot.position.copy(P_BITE); knifeRoot.add(bitePivot);
+  biteHandleGroup = buildHandle(true); bitePivot.add(biteHandleGroup);
+  explodeParts.push({mesh: biteHandleGroup, dir: new THREE.Vector3(0,0,-1.5), origPos: biteHandleGroup.position.clone()});
+
+  // Pivot Screws
+  let screwGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.002, 16); screwGeo.rotateX(PI/2);
+  let screwMat = new THREE.MeshPhysicalMaterial({ color: 0xb76e79, metalness: 1, roughness: 0.2 });
+  let sScrew = new THREE.Mesh(screwGeo, screwMat); sScrew.position.set(0,0,0.006); sScrew.userData.label='Bearing Pivot Screw'; safePivot.add(sScrew);
+  let bScrew = new THREE.Mesh(screwGeo, screwMat); bScrew.position.set(0,0,-0.006); bScrew.userData.label='Bearing Pivot Screw'; bitePivot.add(bScrew);
+  explodeParts.push({mesh: sScrew, dir: new THREE.Vector3(0,0,2), origPos: sScrew.position.clone()});
+  explodeParts.push({mesh: bScrew, dir: new THREE.Vector3(0,0,-2), origPos: bScrew.position.clone()});
+
+  handGroup = buildHand(); scene.add(handGroup);
+
+  setupUI();
+  window.addEventListener('resize', onResize);
+  document.body.addEventListener('click', () => { if(!audioCtx) initAudio(); }, {once:true});
+
+  setTimeout(() => {
+    document.getElementById('loading').style.opacity = '0';
+    document.getElementById('ui').style.display = 'flex';
+    setTimeout(() => document.getElementById('loading').style.display = 'none', 800);
+  }, 500);
+
+  renderer.setAnimationLoop(animate);
+}
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let bs = audioCtx.sampleRate * 2, buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate), data = buf.getChannelData(0);
+  for(let i=0;i<bs;i++) data[i] = Math.random()*2-1;
+  let src = audioCtx.createBufferSource(); src.buffer=buf; src.loop=true;
+  let filt = audioCtx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=800;
+  whirGain = audioCtx.createGain(); whirGain.gain.value=0;
+  src.connect(filt); filt.connect(whirGain); whirGain.connect(audioCtx.destination); src.start();
+}
+
+function playClack(vel) {
+  if(!audioCtx || muted || vel < 0.01) return;
+  let t = audioCtx.currentTime;
+  let osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+  osc.type='triangle'; osc.frequency.setValueAtTime(1000+Math.random()*500, t);
+  osc.frequency.exponentialRampToValueAtTime(100, t+0.05);
+  g.gain.setValueAtTime(Math.min(1,vel)*0.5*parseFloat(document.getElementById('volume').value), t);
+  g.gain.exponentialRampToValueAtTime(0.01, t+0.05);
+  osc.connect(g); g.connect(audioCtx.destination); osc.start(); osc.stop(t+0.05);
+
+  let bs = audioCtx.sampleRate*0.05, buf = audioCtx.createBuffer(1,bs,audioCtx.sampleRate), d = buf.getChannelData(0);
+  for(let i=0;i<bs;i++) d[i]=Math.random()*2-1;
+  let noise = audioCtx.createBufferSource(); noise.buffer=buf;
+  let bp = audioCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=2500;
+  let ng = audioCtx.createGain(); ng.gain.setValueAtTime(Math.min(1,vel)*0.3, t); ng.gain.exponentialRampToValueAtTime(0.01, t+0.05);
+  noise.connect(bp); bp.connect(ng); ng.connect(audioCtx.destination); noise.start();
+}
+
+function checkClack(prev, curr, vel) {
+  if(Math.abs(curr-0) < 0.05 && Math.abs(prev-0) >= 0.05) playClack(vel);
+  if(Math.abs(curr-PI) < 0.05 && Math.abs(prev-PI) >= 0.05) playClack(vel);
+}
+
+// ==========================================
+// UI & CONTROLS
+// ==========================================
+function setupUI() {
+  let keys = ['basicOpen','basicClose','chaplin','zenRollover','fan','helix','aerial','signature'];
+  let grid = document.getElementById('moves-grid');
+  keys.forEach((k,i) => {
+    let b = document.createElement('button'); b.className='btn'; b.innerText=`${i+1}. ${moves[k].name}`;
+    b.onclick = () => playMove(k); grid.appendChild(b);
+  });
+
+  window.addEventListener('keydown', e => {
+    let idx = parseInt(e.key)-1;
+    if(idx>=0 && idx<8) playMove(keys[idx]);
+  });
+
+  document.getElementById('speed').oninput = e => speedMult = parseFloat(e.target.value);
+  document.getElementById('volume').oninput = e => { if(whirGain) whirGain.gain.value = 0; };
+  document.getElementById('btn-slowmo').onclick = e => { slowmo=!slowmo; e.target.innerText='SLOW-MO: '+(slowmo?'ON':'OFF'); e.target.classList.toggle('active',slowmo); };
+  document.getElementById('btn-mute').onclick = e => { muted=!muted; e.target.innerText='MUTE: '+(muted?'ON':'OFF'); e.target.classList.toggle('active',muted); };
+  document.getElementById('btn-trail').onclick = e => { trailOn=!trailOn; e.target.innerText='TRAIL: '+(trailOn?'ON':'OFF'); e.target.classList.toggle('active',trailOn); };
+  
+  document.getElementById('btn-combo').onclick = () => {
+    state='combo'; comboQueue=['basicOpen','chaplin','basicOpen','helix','fan','basicOpen','aerial','zenRollover','basicClose']; playNextCombo();
+  };
+  document.getElementById('btn-freestyle').onclick = () => { state='freestyle'; pickNextMove(); };
+
+  document.getElementById('btn-explode').onclick = e => {
+    exploded=!exploded; if(exploded) state='exploded'; else state='showcase';
+    e.target.classList.toggle('active',exploded);
+  };
+  document.getElementById('btn-cw').onclick = () => {
+    cwIdx = (cwIdx+1)%colorways.length; let cw = colorways[cwIdx];
+    safeScaleMat.color.setHex(cw.scale); biteScaleMat.color.setHex(cw.scale);
+    safeLinerMat.color.setHex(cw.liner); biteLinerMat.color.setHex(cw.liner); latchMat.color.setHex(cw.liner);
+  };
+  document.getElementById('btn-hide').onclick = () => {
+    let ui = document.getElementById('ui'); ui.style.display='none';
+    let b = document.createElement('button'); b.className='btn'; b.innerText='SHOW UI';
+    b.style.cssText='position:absolute;top:20px;right:20px;pointer-events:auto;';
+    b.onclick=()=>{ui.style.display='flex';b.remove();}; document.body.appendChild(b);
+  };
+
+  let ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+  window.addEventListener('mousemove', e => {
+    mouse.x = (e.clientX/window.innerWidth)*2-1; mouse.y = -(e.clientY/window.innerHeight)*2+1;
+    if(state==='exploded') {
+      ray.setFromCamera(mouse, camera);
+      let hits = ray.intersectObjects(knifeRoot.children, true);
+      let tip = document.getElementById('tooltip');
+      if(hits.length>0) {
+        let o=hits[0].object; while(o && !o.userData.label) o=o.parent;
+        if(o) { tip.innerText=o.userData.label; tip.style.left=e.clientX+15+'px'; tip.style.top=e.clientY+15+'px'; tip.style.display='block'; }
+      } else tip.style.display='none';
+    }
+  });
+}
+
+function setCamera(name) {
+  const p = {
+    HERO:{pos:[0.25,0.1,0.25], tar:[0,0,0]},
+    BLADE:{pos:[0,0.15,0.12], tar:[0,0.08,0]},
+    PIVOT:{pos:[0.06,-0.01,0.06], tar:[0,-0.01,0]},
+    LATCH:{pos:[-0.05,-0.08,0.08], tar:[0,-0.08,0]},
+    TOP:{pos:[0,0.3,0.001], tar:[0,0,0]}
+  }[name];
+  camTween = { sPos:camera.position.clone(), ePos:new THREE.Vector3(...p.pos), sTar:controls.target.clone(), eTar:new THREE.Vector3(...p.tar), t:0 };
+}
+
+function playMove(name) {
+  if(exploded) return;
+  state = 'playing'; currentMove = moves[name]; moveTime = 0;
+  let cap = document.getElementById('caption'); cap.innerText = currentMove.name; cap.style.opacity = 1;
+  setTimeout(()=>{ if(cap.innerText===currentMove.name) cap.style.opacity = 0; }, 1500);
+}
+function playNextCombo() {
+  if(comboQueue.length>0) { playMove(comboQueue.shift()); }
+  else { comboQueue=['basicOpen','chaplin','basicOpen','helix','fan','basicOpen','aerial','zenRollover','basicClose']; playNextCombo(); }
+}
+function pickNextMove() {
+  let av = Object.keys(moves).filter(m => moveStates[m].start === currentStateTracker && m !== lastMove);
+  let next;
+  if(av.length===0) { next = currentStateTracker===1?'basicClose':'basicOpen'; }
+  else { next = av[Math.floor(Math.random()*av.length)]; }
+  playMove(next); lastMove = next; currentStateTracker = moveStates[next].end;
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ==========================================
+// MAIN LOOP
+// ==========================================
+function animate() {
+  let dt = Math.min(clock.getDelta(), 0.1);
+  let tMult = slowmo ? 0.2 : 1;
+  let simDt = dt * speedMult * tMult;
+
+  // Explode
+  let targetExp = exploded ? 1 : 0;
+  explodeT += (targetExp - explodeT) * 10 * dt;
+  explodeParts.forEach(p => p.mesh.position.copy(p.origPos).addScaledVector(p.dir, explodeT*0.05));
+
+  // Camera Tween
+  if(camTween) {
+    camTween.t += dt*1.5; let u = Math.min(1, camTween.t); u = u*u*(3-2*u);
+    camera.position.lerpVectors(camTween.sPos, camTween.ePos, u);
+    controls.target.lerpVectors(camTween.sTar, camTween.eTar, u);
+    if(u>=1) camTween=null;
+  }
+  controls.update();
+
+  // Sand
+  let sp = window.sandParticles.geometry.attributes.position.array;
+  for(let i=0;i<2000;i++) { sp[i*3] += dt*0.1; if(sp[i*3]>2) sp[i*3]=-2; }
+  window.sandParticles.geometry.attributes.position.needsUpdate = true;
+
+  if (state === 'reveal') {
+    revealTime += dt;
+    if(revealTime < 2.0) {
+      let u = revealTime/2.0;
+      spotLight.position.x = -1 + u*2;
+      camera.position.lerpVectors(new THREE.Vector3(0,0,1.5), new THREE.Vector3(0.25,0.1,0.25), u*u*(3-2*u));
+      safePivot.rotation.z = PI*u; bitePivot.rotation.z = PI*u;
+      handGroup.visible = false;
+    } else { state = 'showcase'; }
+  } 
+  else if (state === 'showcase') {
+    knifeRoot.rotation.y += dt*0.3;
+    safePivot.rotation.z = lerp(safePivot.rotation.z, PI, 0.1);
+    bitePivot.rotation.z = lerp(bitePivot.rotation.z, PI, 0.1);
+    latchPivot.rotation.z = lerp(latchPivot.rotation.z, 0, 0.1);
+    handGroup.visible = false;
+    knifeRoot.position.lerp(new THREE.Vector3(0,0,0), 0.1);
+    knifeRoot.rotation.x = lerp(knifeRoot.rotation.x, 0, 0.1);
+    knifeRoot.rotation.z = lerp(knifeRoot.rotation.z, 0, 0.1);
+  }
+  else if (state === 'playing' || state === 'freestyle' || state === 'combo') {
+    if(currentMove) {
+      let pose = getCurrentPose(currentMove, moveTime);
+      knifeRoot.position.fromArray(pose.pos);
+      knifeRoot.rotation.fromArray(pose.rot);
+      safePivot.rotation.z = pose.safe;
+      bitePivot.rotation.z = pose.bite;
+      latchPivot.rotation.z = pose.latch;
+      handGroup.visible = pose.hand !== 'none';
+      handGroup.rotation.set(0, pose.rY, pose.rZ, 'ZYX');
+
+      let bVel = Math.abs(pose.bite - prevBite), sVel = Math.abs(pose.safe - prevSafe);
+      checkClack(prevBite, pose.bite, bVel);
+      checkClack(prevSafe, pose.safe, sVel);
+      prevBite = pose.bite; prevSafe = pose.safe;
+      if(whirGain && !muted) whirGain.gain.setTargetAtTime(Math.min(0.15, (bVel+sVel)*2), audioCtx.currentTime, 0.05);
+
+      moveTime += simDt * 1.5;
+      if(moveTime >= 1) {
+        if(state==='freestyle') pickNextMove();
+        else if(state==='combo') playNextCombo();
+        else state = 'showcase';
+      }
+    }
+  }
+  else if (state === 'exploded') {
+    if(whirGain && !muted) whirGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+  }
+
+  // Trail
+  if(trailOn && state !== 'exploded') {
+    let tp = new THREE.Vector3(0, 0.16, 0); bladeGroup.localToWorld(tp);
+    let arr = trail.geometry.attributes.position.array;
+    arr[window.trailIdx*3]=tp.x; arr[window.trailIdx*3+1]=tp.y; arr[window.trailIdx*3+2]=tp.z;
+    window.trailIdx = (window.trailIdx+1)%60;
+    trail.geometry.attributes.position.needsUpdate = true;
+    trail.visible = true;
+  } else { trail.visible = false; }
+
+  renderer.render(scene, camera);
+}
+
+init();
+</script>
+</body>
+</html>
