@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOXEL GARDEN — Spring Festival at the Five-Story Pagoda</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#070b1f;
+    font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+  .panel{position:fixed;z-index:10;color:#f3e9d2;
+    background:rgba(16,14,22,.62);border:1px solid rgba(232,184,109,.35);
+    border-radius:10px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    box-shadow:0 6px 28px rgba(0,0,0,.45);}
+  #title{top:16px;left:18px;padding:10px 16px 11px;}
+  #title h1{margin:0;font-size:21px;letter-spacing:.32em;font-weight:700;color:#E8B86D;
+    text-shadow:0 0 18px rgba(232,184,109,.35);}
+  #title small{display:block;margin-top:3px;font-size:10px;letter-spacing:.14em;
+    color:#cdbf9d;text-transform:uppercase;}
+  #stats{top:16px;right:18px;padding:10px 14px;font-size:12px;text-align:right;line-height:1.65;}
+  #stats b{color:#E8B86D;font-variant-numeric:tabular-nums;}
+  #hint{bottom:16px;left:18px;padding:8px 14px;font-size:11px;letter-spacing:.05em;color:#e9dcc0;}
+  #hint em{color:#FFB7C5;font-style:normal;}
+  #timebar{bottom:16px;right:18px;padding:10px 14px;display:flex;align-items:center;gap:10px;min-width:290px;}
+  #timebar button{cursor:pointer;width:34px;height:30px;border-radius:6px;border:1px solid rgba(232,184,109,.5);
+    background:rgba(232,184,109,.12);color:#E8B86D;font-size:13px;line-height:1;}
+  #timebar button:hover{background:rgba(232,184,109,.28);}
+  #timebar input[type=range]{flex:1;accent-color:#E8B86D;cursor:pointer;}
+  #phase{font-size:11px;letter-spacing:.12em;color:#FFE5EC;width:74px;text-align:right;text-transform:uppercase;}
+  #toast{top:78px;left:50%;transform:translateX(-50%);padding:7px 18px;font-size:11px;letter-spacing:.18em;
+    color:#ffe9c9;opacity:0;transition:opacity .35s;pointer-events:none;text-transform:uppercase;}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(5,6,14,.42) 100%);}
+  @media (max-width:640px){#stats{display:none}#hint{display:none}}
+</style>
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="title" class="panel"><h1>VOXEL&nbsp;GARDEN</h1><small>Spring Festival at the Five-Story Pagoda</small></div>
+<div id="stats" class="panel"><div><b id="vv">…</b> voxels</div><div><b id="fps">60</b> FPS</div><div>pagoda floors · <b>5</b></div></div>
+<div id="hint" class="panel"><em>Click lanterns</em> to toggle light · <em>Click a pagoda floor</em> to open its doors</div>
+<div id="timebar" class="panel"><button id="pp" title="Pause / resume daylight">❚❚</button><input id="time" type="range" min="0" max="1000" value="338"><span id="phase">Morning</span></div>
+<div id="toast" class="panel">Lantern</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   VOXEL GARDEN — Spring Festival at the Five-Story Pagoda
+   ============================================================ */
+
+// ---------- deterministic RNG ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rng = mulberry32(20240511);
+
+// ---------- palette ----------
+const P = {
+  verm:0xC73E1D, gold:0xE8B86D, teak:0x4A2C1A, teakDk:0x38220f,
+  jade1:0x2D6A4F, jade2:0x40916C, jadeLt:0x57a877,
+  sak1:0xFFB7C5, sak2:0xFF8FAB, sak3:0xFFE5EC,
+  stone:0x9AA0A6, stoneDk:0x7d8188, stoneLt:0xb9bec6,
+  water:0x7ED6DF, moss:0x606C38, mossLt:0x707d42, mossDk:0x4e5a2d,
+  trunk:0x4a3220, leafDk:0x2c4a33, pine:0x2f5233, pineLt:0x3f6b44,
+  maple1:0xd95f2b, maple2:0xc94f2e, maple3:0xe8873a,
+  gravel:0xe9dfc8, gravelLn:0xcfc2a4, rock:0x8f959d, rockDk:0x6f757d, sand:0xcbb287
+};
+
+// ---------- voxel store ----------
+const voxels = [];       // {x,y,z,sx,sy,sz,hex,shade,rx,ry,rz}
+const sway    = [];      // indices into voxels that sway in the wind
+function v(x,y,z,sx,sy,sz,hex,shade=1,rx=0,ry=0,rz=0,swayAmp=0){
+  const i = voxels.length;
+  voxels.push({x,y,z,sx,sy,sz,hex,shade,rx,ry,rz});
+  if(swayAmp>0) sway.push({i, amp:swayAmp, phase:rng()*Math.PI*2, bx:x, by:y, bz:z});
+  return i;
+}
+const box=(x,y,z,sx,sy,sz,hex,shade=1)=>v(x,y,z,sx,sy,sz,hex,shade);
+const jit=(a=0.14)=>1-a+rng()*a*2;
+const vnoise = (()=>{ // value noise
+  function h2(x,z){const s=Math.sin(x*127.1+z*311.7)*43758.5453123;return s-Math.floor(s);}
+  return function(x,z){
+    const xi=Math.floor(x), zi=Math.floor(z), xf=x-xi, zf=z-zi;
+    const u=xf*xf*(3-2*xf), w=zf*zf*(3-2*zf);
+    const a=h2(xi,zi), b=h2(xi+1,zi), c=h2(xi,zi+1), d=h2(xi+1,zi+1);
+    return a+(b-a)*u+(c-a)*w+(a-b-c+d)*u*w;
+  };
+})();
+const hash2=(x,z)=>{const s=Math.sin(x*127.1+z*311.7)*43758.5453123;return s-Math.floor(s);};
+
+// ---------- island shape / height field ----------
+const GW=144, GH=128;
+function islandD(x,z){
+  const ang=Math.atan2(z,x);
+  const rim=1 + 0.055*Math.sin(ang*3+1.7) + 0.045*Math.sin(ang*5+0.6)
+             + 0.035*Math.sin(ang*8+2.9)  + 0.09*(vnoise(x*0.045+13,z*0.045+13)-0.5)*2;
+  const nx=x/(72*rim), nz=z/(60*rim);
+  return Math.sqrt(nx*nx+nz*nz);
+}
+const ell=(cx,cz,rx,rz,x,z)=>{const dx=(x-cx)/rx, dz=(z-cz)/rz; return dx*dx+dz*dz<=1;};
+function terrainH(x,z){
+  if(islandD(x,z)>=1) return null;
+  let h=0;
+  const n=vnoise(x*0.10+7,z*0.10+7);
+  if(n>0.66) h=1;
+  if(x>=24 && x<=66 && z>=-26 && z<=12) h=Math.max(h,3);   // Zen terrace
+  if(x>=-66 && x<=-24 && z>=-28 && z<=16) h=Math.max(h,4); // Bamboo terrace
+  if(x>=-22 && x<=12 && z>=-16 && z<=4)  h=Math.max(h,4);  // Central spring terrace
+  if(x>=-20 && x<=20 && z>=-52 && z<=-18) h=Math.max(h,7); // Pagoda terrace
+  if(x>=-26 && x<=14 && z>=2 && z<=34)   h=Math.max(h,1);  // Koi plateau
+  if(ell(-8,-6,7.5,5.5,x,z))  h=3;                          // spring basin
+  if(ell(-6,17,11.5,8,x,z))   h=0;                          // koi pond carve
+  if(ell(-10,46,10,6,x,z))    h=0;                          // lower pool carve
+  else if(ell(-10,46,12.5,8,x,z)) h=Math.max(h,1);          // lower pool rim
+  if(x>=-13 && x<=-7 && z>=48) h=0;                         // outlet channel to cliff
+  return h;
+}
+const nearPool=(x,z)=>(
+  ell(-8,-6,9,7,x,z)||ell(-6,17,13.2,9.6,x,z)||ell(-10,46,12,8,x,z)||(x>=-14&&x<=-6&&z>=44&&z<64)
+);
+const nearGravel=(x,z)=>(x>=29&&x<=62&&z>=-24&&z<=-2);
+// paths (for keeping slabs clear of clutter)
+const P_MAIN1=[[20,46.5],[15.5,37],[7,29.5],[-1.5,25.6]];
+const P_MAIN2=[[-2,8.6],[-1,5],[5,1.5],[9,-3],[6,-9],[1.5,-13.5],[0,-15.4]];
+const P_ZEN  =[[4,0.5],[14,0],[24,-0.5],[27.5,-1],[27.5,-12],[27.5,-23]];
+const P_FOR  =[[2,4],[-8,6],[-18,4.5],[-26,-1],[-34,-4],[-43,-6],[-50,-12],[-42,-19],[-56,-13]];
+const ALL_PATHS=[P_MAIN1,P_MAIN2,P_ZEN,P_FOR];
+function segDist(px,pz,ax,az,bx,bz){
+  const dx=bx-ax, dz=bz-az, L2=dx*dx+dz*dz;
+  let t=L2?((px-ax)*dx+(pz-az)*dz)/L2:0; t=Math.max(0,Math.min(1,t));
+  const qx=ax+t*dx, qz=az+t*dz; return Math.hypot(px-qx,pz-qz);
+}
+function pathDist(x,z){
+  let m=1e9;
+  for(const pl of ALL_PATHS) for(let i=0;i<pl.length-1;i++) m=Math.min(m,segDist(x,z,pl[i][0],pl[i][1],pl[i+1][0],pl[i+1][1]));
+  return m;
+}
+
+// ---------- terrain voxels ----------
+function grassHex(n){
+  if(n>0.78) return P.mossLt;
+  if(n>0.45) return P.moss;
+  return P.mossDk;
+}
+for(let x=-72;x<72;x++) for(let z=-64;z<64;z++){
+  const h=terrainH(x,z); if(h===null) continue;
+  const n=vnoise(x*0.21+3,z*0.21+3);
+  // top block
+  let top=grassHex(n);
+  if(nearPool(x,z)) top=P.sand;
+  else if(nearGravel(x,z)) top=P.gravel;
+  box(x,h,z,0.99,1,0.99,top, 0.9+n*0.25);
+  // under-lip dirt (visible at rim edges handled below)
+  // cliff / terrace side faces
+  const DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dz] of DIRS){
+    const h2=terrainH(x+dx,z+dz);
+    if(h2!==null && h2>=h) continue;
+    const bottom=(h2===null)? h-7 : h2;
+    const terraceWall=(h2!==null && h-h2>=2);
+    for(let y=h-1;y>=bottom;y--){
+      const depth=h-y;
+      let hex;
+      if(terraceWall){ hex=(y+x+z)%3===0?P.stoneDk:P.stone; }
+      else if(depth<=1) hex=0x4f3a24;
+      else if(depth<=3) hex=0x54402c;
+      else if(depth<=5) hex=0x5d5148;
+      else hex=0x35322e;
+      box(x+dx*0.02,y,z+dz*0.02,0.99,1,0.99,hex, 0.8+hash2(x*3+y,z*5-y)*0.35);
+    }
+    // hanging roots on outer rim
+    if(h2===null && hash2(x*7.1,z*9.3)<0.22){
+      const rl=1+Math.floor(hash2(x*3.3,z*4.7)*2);
+      for(let k=1;k<=rl;k++) box(x+dx*0.45+(hash2(x,z+k)-0.5)*0.3, h-k, z+dz*0.45+(hash2(z,x+k)-0.5)*0.3, 0.16,1,0.16,0x3a2a1a,0.9);
+    }
+    // moss ledges on rim
+    if(h2===null && n>0.72) box(x+dx*0.5,h+0.35,z+dz*0.5,0.5,0.28,0.5,P.moss,1.05);
+  }
+}
+
+// ---------- underside: layered strata keel ----------
+{
+  const strata=[0x35322e,0x54402c,0x4a3a2a,0x5d5148,0x2e2a26];
+  for(let L=0;L<12;L++){
+    const y=-7.6-L*1.32;
+    const shrink=Math.pow(1-L/13.5,1.18);
+    const rx=60*shrink, rz=50*shrink;
+    const step=(L<3)?3.4:4.4, sz=(L<3)?2.7:Math.max(1.7,3.6-L*0.18);
+    const count=Math.floor((rx+rz)*2.35);
+    for(let i=0;i<count;i++){
+      const a=i/count*Math.PI*2;
+      const rr=1+(hash2(i*7.3,L*3.17)-0.5)*0.3;
+      const px=Math.cos(a)*rx*rr, pz=Math.sin(a)*rz*rr;
+      if(islandD(px,pz)>1.04) continue;
+      const hex=strata[(L+(i%3)+5)%5];
+      v(px,y,pz,sz,sz*0.82,sz,hex,0.72+hash2(i,L)*0.45, 0, a*0.4, 0);
+    }
+  }
+  // central keel
+  let kw=9;
+  for(let y=-8,i=0;y>-26;y-=1.7,i++){ kw*=0.86; box(0,y,0,kw,1.55,kw*0.82, strata[i%5], 0.6+0.1*((i%3))); }
+  box(0,-26.5,0,2.2,2.4,2.2,0x2a2724,0.55);
+}
+
+// ---------- two smaller floating islands ----------
+function smallIsland(cx,cy,cz,r,seed,kind){
+  const rr=mulberry32(seed);
+  // grass cap
+  const capR=Math.floor(r);
+  for(let x=-capR;x<=capR;x++)for(let z=-capR;z<=capR;z++){
+    const d=Math.hypot(x,z); if(d>r) continue;
+    box(cx+x,cy,cz+z,0.98,0.9,0.98, d>r-1.2?P.sand:grassHex(rr()), 0.9+rr()*0.25);
+  }
+  // strata cone
+  for(let L=1;L<=6;L++){
+    const ly=cy-0.5-L*0.95, lr=r*(1-L/7.2);
+    const n=Math.max(5,Math.floor(lr*4.4));
+    for(let i=0;i<n;i++){
+      const a=i/n*Math.PI*2+L*0.35;
+      v(cx+Math.cos(a)*lr, ly, cz+Math.sin(a)*lr, 1.7,1.5,1.7, [0x54402c,0x5d5148,0x35322e][L%3], 0.65+rr()*0.4, 0,a,0);
+    }
+  }
+  v(cx,cy-7.4,cz,2.6,2.6,2.6,0x35322e,0.55);
+  // silhouette differs by kind
+  if(kind==='pine'){
+    box(cx-1,cy+2.2,cz,0.6,3.2,0.6,P.trunk,0.95);
+    for(let t=0;t<3;t++){ const w=3.4-t*1.15; box(cx-1,cy+3.4+t*1.15,cz,w,0.62,w,P.pine,0.9+t*0.12); }
+    box(cx+2.4,cy+1.0,cz+1.6,0.45,1.3,0.45,P.trunk,0.9);
+    box(cx+2.4,cy+2.1,cz+1.6,1.8,0.5,1.8,P.pineLt,0.9);
+  } else {
+    // sakura islet
+    box(cx+1,cy+1.8,cz-1,0.75,2.4,0.75,P.trunk,0.95);
+    const blobs=[[1,3.6,-1,1.9],[0.2,3.0,-0.4,1.3],[2,3.1,-1.8,1.2]];
+    for(const [bx,by,bz,br] of blobs)
+      for(let k=0;k<16;k++){
+        const a=rr()*Math.PI*2, ph=rr()*Math.PI, rad=br*Math.cbrt(rr());
+        v(cx+bx+Math.cos(a)*Math.sin(ph)*rad, cy+by+Math.cos(ph)*rad*0.75, cz+bz+Math.sin(a)*Math.sin(ph)*rad,
+          0.66,0.6,0.66, [P.sak1,P.sak2,P.sak3][k%3], 0.85+rr()*0.3, 0,rr()*3,0, 0.05);
+      }
+  }
+}
+smallIsland(55,-6.5,-33, 5.2, 777, 'pine');   // tall spire-like
+smallIsland(-57,-10.5, 24, 4.2, 555, 'sakura'); // broad bloom islet
+
+// ---------- stone path slabs ----------
+function stampPath(poly, hexA, hexB, every=0.95, jitter=0.18){
+  for(let i=0;i<poly.length-1;i++){
+    const [ax,az]=poly[i], [bx,bz]=poly[i+1];
+    const len=Math.hypot(bx-ax,bz-az), steps=Math.floor(len/every);
+    for(let s=0;s<=steps;s++){
+      const t=s/Math.max(1,steps);
+      const x=ax+(bx-ax)*t+(rng()-0.5)*jitter, z=az+(bz-az)*t+(rng()-0.5)*jitter;
+      const h=terrainH(Math.round(x),Math.round(z)); if(h===null) continue;
+      const hex=rng()<0.22?hexB:hexA;
+      v(x,h+0.56,z,1.05,0.17,1.02,hex,0.82+rng()*0.35,0,rng()*0.35,0);
+    }
+  }
+}
+stampPath(P_MAIN1,P.stoneLt,P.stoneDk);
+stampPath(P_MAIN2,P.stoneLt,P.stoneDk);
+stampPath(P_ZEN,  P.sand,   P.stoneDk);
+stampPath(P_FOR,  0x7a5c3e, 0x5e4630, 1.0, 0.3);
+
+// ---------- torii gate ----------
+function buildTorii(px,pz){
+  const h=terrainH(Math.round(px),Math.round(pz))??0, gy=h+0.5;
+  const H=5.4, W=2.15;
+  for(const s of [-1,1]){
+    box(px+s*W, gy+0.15, pz, 1.25,0.3,1.25, 0x1c1c1e,0.9);          // black foot
+    box(px+s*W, gy+H/2, pz, 0.82,H,0.95, P.verm, 0.92+0.1*s);        // pillar
+    box(px+s*W, gy+H/2, pz, 0.98,0.28,1.1, P.gold, 0.9);             // gold collar
+  }
+  box(px, gy+H+0.28, pz, W*2+2.6, 0.62, 1.05, P.verm, 1.0);          // kasagi
+  box(px-W-1.28, gy+H+0.62, pz, 0.6,0.34,1.05, P.verm,1.05);         // upturned tips
+  box(px+W+1.28, gy+H+0.62, pz, 0.6,0.34,1.05, P.verm,1.05);
+  box(px, gy+H+0.72, pz, W*2+3.4, 0.24, 1.2, 0x1c1c1e, 0.85);        // black cap
+  box(px, gy+H-0.85, pz, W*2+1.1, 0.5, 0.75, P.verm, 0.95);          // nuki
+  box(px, gy+H-0.32, pz, 0.85,0.75,0.2, 0x1c1c1e, 0.9);              // plaque
+  box(px, gy+H-0.32, pz, 0.45,0.42,0.22, P.gold, 1.1);               // gold glyph
+  // stone lantern bases flanking
+}
+buildTorii(20,46.5);
+
+// ---------- stone bridge over koi pond ----------
+const BR_Z0=8.6, BR_Z1=25.4, BR_CX=-2;
+const bridgeY=z=>1.6+1.55*Math.cos((z-17)*Math.PI/((BR_Z1-BR_Z0)+0.4));
+for(let z=BR_Z0; z<=BR_Z1; z+=0.62){
+  const y=bridgeY(z);
+  const slope=-1.55*(Math.PI/17.9)*Math.sin((z-17)*Math.PI/17.9);
+  v(BR_CX, y, z, 2.55,0.2,0.6, (Math.floor(z*2)%3===0)?0x54382a:P.teak, 0.85+hash2(z*9,3)*0.3, Math.atan(slope),0,0);
+  if(Math.floor((z-BR_Z0)/1.24)!==Math.floor((z-0.62-BR_Z0)/1.24)){
+    for(const s of [-1,1]){
+      box(BR_CX+s*1.18, y+0.55, z, 0.2,1.0,0.2, P.teak, 0.9);
+      box(BR_CX+s*1.18, y+1.06, z, 0.26,0.16,0.26, P.gold, 0.9);
+    }
+  }
+  for(const s of [-1,1]) v(BR_CX+s*1.18, y+1.22, z, 0.17,0.13,0.66, 0x54382a, 0.9, Math.atan(slope),0,0);
+}
+for(const sz of [11.6, 22.4]){
+  const y=bridgeY(sz);
+  for(const s of [-1,1]) box(BR_CX+s*0.9, (y+0.4)/2, sz, 0.42, y-0.3, 0.42, 0x54382a, 0.8);
+  box(BR_CX, y*0.45, sz, 2.35, 0.3, 0.5, 0x3f2a1e, 0.8);
+}
+
+// ---------- bamboo fence along approach ----------
+function fenceRun(x0,z0,x1,z1){
+  const len=Math.hypot(x1-x0,z1-z0), n=Math.floor(len/1.7);
+  for(let i=0;i<=n;i++){
+    const t=i/n, x=x0+(x1-x0)*t, z=z0+(z1-z0)*t;
+    const h=terrainH(Math.round(x),Math.round(z))??0;
+    box(x, h+1.0, z, 0.18,1.15,0.18, 0x6b543a, 0.95);
+    box(x, h+1.62, z, 0.24,0.1,0.24, 0x2f6b3f, 1.0);
+    if(i<n){
+      const nx=x0+(x1-x0)*((i+1)/n), nz=z0+(z1-z0)*((i+1)/n);
+      const mx=(x+nx)/2, mz=(z+nz)/2, ang=Math.atan2(nx-x,nz-z);
+      for(const ry of [h+0.82, h+1.32]) v(mx,ry,mz, 0.12,0.14,Math.hypot(nx-x,nz-z)+0.1, 0x7d6547,0.95, 0,ang,0);
+    }
+  }
+}
+fenceRun(15.5,43.5, 10.5,33.5);
+fenceRun(24.5,43.5, 18.5,33.0);
+
+// ---------- jizo statues by the torii ----------
+function jizo(x,z){
+  const h=terrainH(Math.round(x),Math.round(z))??0, gy=h+0.5;
+  box(x,gy+0.15,z,0.72,0.3,0.72,P.stoneDk,0.9);
+  box(x,gy+0.62,z,0.46,0.72,0.42,P.stone,0.95);
+  box(x,gy+1.13,z,0.37,0.36,0.34,P.stoneLt,1.0);
+  box(x,gy+1.36,z,0.2,0.1,0.2,P.stoneLt,1.0);
+  box(x,gy+1.34,z-0.28,0.42,0.3,0.08,P.gold,0.85);       // halo
+  box(x,gy+0.72,z+0.24,0.4,0.34,0.05,P.verm,1.0);         // red bib
+}
+jizo(15.6,44.3); jizo(24.6,44.3);
+
+// ---------- pagoda ----------
+const PAG={x:0, z:-36, wallBase:9.5, spacing:3.6, widths:[9.6,8.0,6.5,5.0,3.6]};
+const wallHex=()=> (rng()<0.5?P.teak:0x53321f);
+function storyOpenings(xi, yi, w, d){
+  // returns 'door' | 'window' | null for local coords
+  const nx=xi, ny=yi;
+  if(Math.abs(nx)<1.0 && ny<2) return 'door';
+  if(Math.abs(nx)<1.35 && ny>=2) return null;
+  return null;
+}
+function buildPagoda(){
+  const px=PAG.x, pz=PAG.z;
+  // ---- plinth ----
+  box(px, 8.05, pz, 15, 1.15, 15, P.stone, 0.95);
+  box(px, 8.05, pz, 15.6, 0.28, 15.6, P.stoneDk, 0.9);
+  box(px, 9.1, pz, 12.4, 1.0, 12.4, P.stoneLt, 1.0);
+  box(px, 9.62, pz, 12.9, 0.16, 12.9, P.gold, 0.8);
+  // corner posts on plinth
+  for(const sx of [-1,1]) for(const sz of [-1,1])
+    box(px+sx*6.1, 9.35, pz+sz*6.1, 0.7,1.35,0.7, P.stoneDk,0.95);
+  // ---- stories ----
+  const doorDefs=[];
+  for(let s=0;s<5;s++){
+    const w=PAG.widths[s], d=w*0.86, yb=PAG.wallBase + s*PAG.spacing;
+    // floor slab
+    box(px, yb-0.22, pz, w+1.5, 0.4, d+1.5, 0x2c1c12, 0.9);
+    box(px, yb-0.02, pz, w+1.62, 0.09, d+1.62, P.gold, 0.75);
+    const hw=w/2, hd=d/2;
+    const nxs=Math.max(3,Math.round(w)), nzs=Math.max(3,Math.round(d));
+    // walls (front/back + sides), skip door & window cells
+    for(let row=0;row<3;row++){
+      const yy=yb+0.5+row;
+      for(let i=0;i<=nxs;i++){
+        const xi=-hw + i*(w/nxs);
+        for(const sz of [1,-1]){
+          const isDoor = Math.abs(xi)<1.0 && row<2;
+          if(isDoor) continue;
+          box(px+xi, yy, pz+sz*hd, 0.96,0.98,0.32, wallHex(), jit(0.18));
+        }
+      }
+      for(let i=1;i<nzs;i++){
+        const zi=-hd + i*(d/nzs);
+        for(const sx of [1,-1]){
+          const isWin = Math.abs(zi)<0.95 && row===1;
+          if(isWin){
+            box(px+sx*hw, yy, pz+zi, 0.34,0.7,0.8, 0x14100c, 1.0);            // dark inset
+            box(px+sx*(hw+0.06), yy+0.52, pz+zi, 0.36,0.12,1.0, P.gold, 0.8); // gold lintel
+          } else {
+            box(px+sx*hw, yy, pz+zi, 0.32,0.98,0.92, wallHex(), jit(0.18));
+          }
+        }
+      }
+    }
+    // corner + intermediate vermillion pillars
+    const pil=[[-hw,-hd],[hw,-hd],[-hw,hd],[hw,hd]];
+    for(const [ox,oz] of pil) box(px+ox, yb+1.45, pz+oz, 0.62,2.9,0.62, P.verm, 0.95+hash2(ox*3,oz*3)*0.15);
+    for(const fr of [-0.5,0.5]){
+      box(px+fr*w*0.62, yb+1.45, pz+hd, 0.42,2.9,0.42, P.verm, 0.9);
+      box(px+fr*w*0.62, yb+1.45, pz-hd, 0.42,2.9,0.42, P.verm, 0.9);
+    }
+    // balcony: posts + rails
+    const bo=Math.max(hw,hd)+0.95;
+    for(let i=0;i<=8;i++){
+      const t=i/8;
+      for(const [bx,bz] of [[-hw+bo*0+(-hw)+t*2*hw, hd+0.72],[-hw+t*2*hw, -hd-0.72],[hw+0.72, -hd+t*2*hd],[-hw-0.72, -hd+t*2*hd]]){
+        box(px+bx, yb+0.62, pz+bz, 0.17,0.85,0.17, P.teak, 0.9);
+      }
+    }
+    for(const s of [1,-1]){
+      box(px, yb+1.06, pz+s*(hd+0.72), 2*hw+1.7,0.13,0.22, P.teak,0.85);
+      box(px+s*(hw+0.72), yb+1.06, pz, 0.22,0.13,2*hd+1.7, P.teak,0.85);
+    }
+    // eave brackets
+    for(let i=0;i<=Math.floor(w);i++){
+      const t=i/Math.floor(w), bx=-hw+t*w;
+      box(px+bx, yb+3.02, pz+hd+0.15, 0.24,0.26,0.5, 0x241812, 0.85);
+      box(px+bx, yb+3.02, pz-hd-0.15, 0.24,0.26,0.5, 0x241812, 0.85);
+      box(px+hd+0.15, yb+3.02, pz+(-hd+t*d), 0.5,0.26,0.24, 0x241812, 0.85);
+      box(px-hd-0.15, yb+3.02, pz+(-hd+t*d), 0.5,0.26,0.24, 0x241812, 0.85);
+    }
+    // curved stepped roof — three slabs, jade with gold trim
+    const roofSpec=[[w+3.7, 0.55, P.jade1, 3.32],[w+2.45,0.48,P.jade2,3.78],[w+1.3,0.42,P.jadeLt,4.14]];
+    for(const [rw,rh,hex,ry] of roofSpec){
+      const rd=rw*0.84;
+      box(px, yb+ry, pz, rw, rh, rd, hex, 0.92+hash2(rw*7,ry*3)*0.2);
+      // upturned corners
+      for(const sx of [-1,1]) for(const sz of [-1,1])
+        box(px+sx*(rw/2-0.28), yb+ry+rh/2+0.16, pz+sz*(rd/2-0.28), 0.62,0.42,0.62, hex, 1.12);
+    }
+    // gold ridge + corner tips on widest slab
+    box(px, yb+3.32+0.36, pz, w*0.55,0.14,0.34, P.gold, 1.0);
+    for(const sx of [-1,1]) for(const sz of [-1,1])
+      box(px+sx*((w+3.7)/2-0.28), yb+3.32+0.42, pz+sz*((w+3.7)*0.84/2-0.28), 0.4,0.3,0.4, P.gold, 1.05);
+    doorDefs.push({yb, w, d, hw, hd});
+  }
+  // ---- finial (sorin) ----
+  const topY=PAG.wallBase + 5*PAG.spacing + 0.2;
+  box(px, topY+0.55, pz, 0.34,1.5,0.34, P.verm, 0.9);
+  let ringW=1.5;
+  for(let i=0;i<7;i++){ box(px, topY+0.5+i*0.34, pz, ringW,0.14,ringW, P.gold, 0.95+i*0.02); ringW*=0.82; }
+  box(px, topY+2.95, pz, 0.42,0.42,0.42, P.gold, 1.15);
+  box(px, topY+3.35, pz, 0.2,0.5,0.2, P.gold, 1.1);
+  // pagoda steps up from garden
+  for(let i=0;i<6;i++) box(0, 4.62+i*0.5, -17.0-i*0.62, 3.1, 0.5, 0.78, i%2?P.stone:P.stoneLt, 0.95);
+  return doorDefs;
+}
+const doorDefs = buildPagoda();
+
+// interior warm glow planes
+const glowMat = new THREE.MeshBasicMaterial({color:0xffc37a, side:THREE.DoubleSide});
+for(const st of doorDefs){
+  for(const s of [1,-1]){
+    const g=new THREE.Mesh(new THREE.PlaneGeometry(1.85,2.0), glowMat);
+    g.position.set(PAG.x, st.yb+1.15, PAG.z + s*(st.hd-0.28));
+    if(s<0) g.rotation.y=Math.PI;
+    sceneAdd(g);
+  }
+}
+function sceneAdd(o){ /* hoisted placeholder replaced below */ }
+// (sceneAdd defined properly later via direct scene.add calls — replaced here)
+</script>
+<script type="module">
+// placeholder to keep two-part script invalid — replaced by single script below
+</script>
+</body>
+</html>
