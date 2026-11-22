@@ -34,7 +34,6 @@
     background:radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(5,6,14,.42) 100%);}
   @media (max-width:640px){#stats{display:none}#hint{display:none}}
 </style>
-<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
@@ -446,21 +445,153 @@ function buildPagoda(){
 }
 const doorDefs = buildPagoda();
 
+// ---------- three.js ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070b1f);
+scene.fog = new THREE.Fog(0x070b1f, 25, 150);
+
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+app.appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.5, 500);
+camera.position.set(0, 16, -60);
+camera.lookAt(0, 2, -36);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, -36);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 8;
+controls.maxDistance = 140;
+
+const hemi = new THREE.HemisphereLight(0x6a7a8a, 0x222233, 0.55);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 1);
+sun.position.set(10, 20, 10);
+scene.add(sun);
+
+function setTimeOfDay(t){
+  const phase = (t/1000)*Math.PI;
+  const h = Math.sin(phase);
+  sun.position.set(Math.cos(phase)*40, h*26+4, Math.sin(phase)*40);
+  const bright = Math.max(0, h);
+  sun.intensity = 0.15 + bright*1.05;
+  sun.color.setHex(bright>0 ? 0xffffff : 0x4a5a7a);
+  hemi.intensity = 0.25 + bright*0.5;
+  hemi.color.setHex(bright>0 ? 0xffffff : 0x333a4a);
+  hemi.groundColor.setHex(bright>0 ? 0x2d3a2e : 0x1a1010);
+}
+
+// ---------- voxel geometry ----------
+const counts = {}, keys = {};
+voxels.forEach((vox)=>{
+  const c = new THREE.Color(vox.hex).multiplyScalar(vox.shade);
+  const key = c.getHex();
+  if(!(key in counts)){ counts[key] = 0; keys[key] = c; }
+  vox.instKey = key;
+  vox.instIdx = counts[key]++;
+});
+const instMeshes = {};
+const dummy = new THREE.Object3D();
+for(const key in counts){
+  const mat = new THREE.MeshStandardMaterial({color: keys[key], flatShading: true});
+  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), mat, counts[key]);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(mesh);
+  instMeshes[key] = {mesh, cursor: 0};
+}
+voxels.forEach((vox)=>{
+  const slot = instMeshes[vox.instKey];
+  dummy.position.set(vox.x, vox.y, vox.z);
+  dummy.scale.set(vox.sx, vox.sy, vox.sz);
+  dummy.rotation.set(vox.rx, vox.ry, vox.rz);
+  dummy.updateMatrix();
+  slot.mesh.setMatrixAt(slot.cursor++, dummy.matrix);
+  vox.instMesh = slot.mesh;
+});
+for(const key in instMeshes) instMeshes[key].mesh.instanceMatrix.needsUpdate = true;
+
 // interior warm glow planes
 const glowMat = new THREE.MeshBasicMaterial({color:0xffc37a, side:THREE.DoubleSide});
 for(const st of doorDefs){
   for(const s of [1,-1]){
-    const g=new THREE.Mesh(new THREE.PlaneGeometry(1.85,2.0), glowMat);
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(1.85,2.0), glowMat);
     g.position.set(PAG.x, st.yb+1.15, PAG.z + s*(st.hd-0.28));
-    if(s<0) g.rotation.y=Math.PI;
-    sceneAdd(g);
+    if(s<0) g.rotation.y = Math.PI;
+    scene.add(g);
   }
 }
-function sceneAdd(o){ /* hoisted placeholder replaced below */ }
-// (sceneAdd defined properly later via direct scene.add calls — replaced here)
-</script>
-<script type="module">
-// placeholder to keep two-part script invalid — replaced by single script below
+
+// ---------- time of day controls ----------
+let time = parseFloat(document.getElementById('time').value) || 338;
+let paused = false;
+const phaseEl = document.getElementById('phase');
+const timeEl = document.getElementById('time');
+const pp = document.getElementById('pp');
+function phaseLabel(t){
+  const p = ((t%1000)+1000)%1000;
+  if(p<250) return 'Morning';
+  if(p<500) return 'Noon';
+  if(p<750) return 'Evening';
+  return 'Night';
+}
+function setTime(v){
+  time = Math.max(0, Math.min(1000, v));
+  timeEl.value = time;
+  phaseEl.textContent = phaseLabel(time);
+  setTimeOfDay(time);
+}
+setTime(time);
+pp.addEventListener('click', ()=>{ paused = !paused; pp.textContent = paused ? '▶' : '❚❚'; });
+timeEl.addEventListener('input', ()=>{ setTime(timeEl.value); });
+
+// ---------- wind sway ----------
+const swayDirty = new Set();
+function updateSway(t){
+  for(const s of sway){
+    const vox = voxels[s.i];
+    const y = s.by + Math.sin(t*0.0015 + s.phase)*s.amp*0.7;
+    dummy.position.set(s.bx, y, s.bz);
+    dummy.scale.set(vox.sx, vox.sy, vox.sz);
+    dummy.rotation.set(0,0,0);
+    dummy.updateMatrix();
+    vox.instMesh.setMatrixAt(vox.instIdx, dummy.matrix);
+    swayDirty.add(vox.instMesh);
+  }
+  for(const mesh of swayDirty) mesh.instanceMatrix.needsUpdate = true;
+  swayDirty.clear();
+}
+
+// ---------- stats ----------
+const vv = document.getElementById('vv'), fpsEl = document.getElementById('fps');
+vv.textContent = voxels.length;
+let frames = 0, last = performance.now();
+
+// ---------- loop ----------
+function animate(now){
+  requestAnimationFrame(animate);
+  if(!paused) time += 0.25;
+  if(time > 1000) time -= 1000;
+  setTime(time);
+  controls.update();
+  updateSway(now);
+  renderer.render(scene, camera);
+  frames++;
+  if(now - last >= 1000){
+    fpsEl.textContent = frames;
+    frames = 0; last = now;
+  }
+}
+requestAnimationFrame(animate);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
 </script>
 </body>
 </html>
