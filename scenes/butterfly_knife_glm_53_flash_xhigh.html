@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SIROCCO — Caldera Ironworks balisong</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#161c11;font-family:"Segoe UI",system-ui,sans-serif;color:#e8e2d4}
+#app{position:fixed;inset:0}
+canvas{display:block}
+#ui{position:fixed;inset:0;pointer-events:none;transition:opacity .3s}
+#ui.hidden{opacity:0}
+.panel{position:absolute;background:rgba(14,17,11,.72);backdrop-filter:blur(6px);border:1px solid rgba(214,182,110,.25);border-radius:10px;padding:10px 12px;pointer-events:auto}
+#brand{top:14px;left:14px;max-width:280px}
+#brand h1{margin:0;font-size:26px;letter-spacing:6px;color:#e8b64c;font-weight:600}
+#brand .sub{font-size:10px;letter-spacing:3px;color:#b9ae94;margin:2px 0 8px}
+#spec{font-size:11px;line-height:1.5;color:#d8d2c2;border-top:1px solid rgba(214,182,110,.2);padding-top:7px}
+#spec b{color:#e8b64c;font-weight:600}
+#cw{display:flex;gap:6px;margin-top:8px}
+#cw button{flex:1;border:1px solid #555;border-radius:6px;padding:4px 2px;font-size:9px;letter-spacing:.5px;color:#ddd;background:#1c1c1c;cursor:pointer}
+#cw button.on{border-color:#e8b64c;color:#e8b64c}
+#ctrl{top:14px;right:14px;width:190px;font-size:11px}
+#ctrl label{display:flex;align-items:center;justify-content:space-between;margin:5px 0;gap:6px}
+#ctrl input[type=range]{width:104px;accent-color:#c1121f}
+#ctrl input[type=checkbox]{accent-color:#c1121f}
+#ctrl .row{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+.btn{border:1px solid #6a655a;background:#20211c;color:#e4ddcb;border-radius:6px;padding:4px 8px;font-size:10px;letter-spacing:1px;cursor:pointer;pointer-events:auto}
+.btn:hover{border-color:#e8b64c;color:#e8b64c}
+.btn.on{background:#c1121f;border-color:#c1121f;color:#fff}
+#moves{bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:5px;padding:8px 10px;flex-wrap:wrap;justify-content:center;max-width:92vw}
+#moves .btn b{color:#e8b64c;font-weight:600;margin-right:4px}
+#caption{position:absolute;bottom:64px;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:4px;color:#e8b64c;text-shadow:0 1px 4px #000;opacity:0;transition:opacity .25s;pointer-events:none}
+#tip{position:absolute;padding:3px 8px;background:rgba(10,10,8,.9);border:1px solid #e8b64c;border-radius:5px;font-size:11px;color:#e8b64c;display:none;pointer-events:none;white-space:nowrap}
+#title{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;transition:opacity 1.2s}
+#title h1{font-size:64px;letter-spacing:18px;margin:0;color:#e8e2d4;text-shadow:0 2px 24px #000;font-weight:300}
+#title div{letter-spacing:8px;font-size:13px;color:#e8b64c;margin-top:8px}
+#title.gone{opacity:0}
+#load{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#161c11;color:#b9ae94;letter-spacing:4px;font-size:13px;z-index:9}
+#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:#e8b64c;font-size:15px;text-align:center;padding:30px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="load">FORGING…</div>
+<div id="err"></div>
+<div id="title"><h1>SIROCCO</h1><div>CALDERA IRONWORKS</div></div>
+<div id="ui">
+ <div class="panel" id="brand">
+  <h1>SIROCCO</h1><div class="sub">CALDERA IRONWORKS · BALISONG Nº 7</div>
+  <div id="spec">
+   <b>Spec.</b> OAL 234 mm open / 132 mm closed<br>
+   Blade 102 mm — bowie clip point, black PVD tool steel, polished edge &amp; swedge<br>
+   Handles — flaked candy-apple lacquer, contoured, woven dune-band inlay<br>
+   Pivots — phosphor-bronze washers, zen pins, drop hook latch<br>
+   Weight 148 g &nbsp;·&nbsp; <i>“Sand remembers the wind.”</i>
+  </div>
+  <div id="cw"></div>
+ </div>
+ <div class="panel" id="ctrl">
+  <label>speed <input id="spd" type="range" min="0.25" max="2" step="0.05" value="1"><span id="spdv">1.0×</span></label>
+  <label>slow motion <input id="slow" type="checkbox"></label>
+  <label>tip trail <input id="trail" type="checkbox"></label>
+  <label>sound <input id="mute" type="checkbox"> <input id="vol" type="range" min="0" max="1" step="0.02" value="0.7" style="width:70px"></label>
+  <div class="row"><button class="btn" id="explode">EXPLODED VIEW (X)</button><button class="btn" id="hideui">HIDE UI (H)</button></div>
+  <div class="row" id="cams">
+   <button class="btn" data-cam="HERO">HERO</button><button class="btn" data-cam="BLADE">BLADE</button>
+   <button class="btn" data-cam="PIVOT">PIVOT</button><button class="btn" data-cam="LATCH">LATCH</button><button class="btn" data-cam="TOP">TOP</button>
+  </div>
+ </div>
+ <div class="panel" id="moves"></div>
+ <div id="caption"></div>
+ <div id="tip"></div>
+</div>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import*as THREE from'three';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+import{RoomEnvironment}from'three/addons/environments/RoomEnvironment.js';
+const P=Math.PI,$=id=>document.getElementById(id);
+let renderer;try{renderer=new THREE.WebGLRenderer({antialias:true});}catch(e){$('load').style.display='none';$('err').style.display='flex';$('err').textContent='WebGL is unavailable in this browser — the SIROCCO showcase needs WebGL to run.';throw e;}
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+$('app').appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x232d1c);scene.fog=new THREE.Fog(0x232d1c,26,95);
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,0.1,300);camera.position.set(9,11,15);
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,8,0);controls.enableDamping=true;controls.dampingFactor=.08;controls.autoRotate=true;controls.autoRotateSpeed=.7;controls.maxPolarAngle=1.62;controls.minDistance=2;controls.maxDistance=60;
+const pmrem=new THREE.PMREMGenerator(renderer);scene.environment=pmrem.fromScene(new RoomEnvironment(),.04).texture;
+function canvasTex(w,h,fn,rep){const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.anisotropy=4;if(rep){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rep,rep);}return t;}
+/* ---------- lights ---------- */
+scene.add(new THREE.HemisphereLight(0xaecb96,0x2c2418,.65));
+const key=new THREE.DirectionalLight(0xfff0d8,2.4);key.position.set(6,14,5);key.castShadow=true;key.shadow.mapSize.set(2048,2048);
+Object.assign(key.shadow.camera,{left:-9,right:9,top:9,bottom:-9,near:2,far:40});key.shadow.bias=-0.0004;scene.add(key);
+const rim=new THREE.DirectionalLight(0xbcd4ff,1.1);rim.position.set(-8,7,-9);scene.add(rim);
+const sweep=new THREE.SpotLight(0xfff2d8,0,40,.3,.6);sweep.position.set(-14,24,6);scene.add(sweep);scene.add(sweep.target);
+/* ---------- stage ---------- */
+const groundTex=canvasTex(512,512,(g,w,h)=>{g.fillStyle='#33422a';g.fillRect(0,0,w,h);for(let i=0;i<160;i++){g.fillStyle=`rgba(${40+Math.random()*50|0},${70+Math.random()*50|0},${30+Math.random()*30|0},.5)`;g.beginPath();g.ellipse(Math.random()*w,Math.random()*h,6+Math.random()*26,4+Math.random()*16,Math.random()*3,0,7);g.fill();}for(let i=0;i<34;i++){const r=30+Math.random()*70,x=Math.random()*w,y=Math.random()*h,gr=g.createRadialGradient(x,y,2,x,y,r);gr.addColorStop(0,'rgba(235,242,190,.20)');gr.addColorStop(1,'rgba(235,242,190,0)');g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,7);g.fill();}},3);
+const ground=new THREE.Mesh(new THREE.CircleGeometry(45,40),new THREE.MeshStandardMaterial({map:groundTex,roughness:1}));ground.rotation.x=-P/2;ground.receiveShadow=true;scene.add(ground);
+const rockTex=canvasTex(256,256,(g,w,h)=>{g.fillStyle='#5d5b52';g.fillRect(0,0,w,h);for(let i=0;i<2600;i++){g.fillStyle=`rgba(${70+Math.random()*40|0},${70+Math.random()*35|0},${60+Math.random()*30|0},.25)`;g.fillRect(Math.random()*w,Math.random()*h,2,2);}for(let i=0;i<26;i++){g.fillStyle=`rgba(70,105,48,${.15+Math.random()*.3})`;g.beginPath();g.ellipse(Math.random()*w,Math.random()*h,8+Math.random()*22,6+Math.random()*14,Math.random()*3,0,7);g.fill();}},1.6);
+const rockGeo=new THREE.IcosahedronGeometry(4.3,3);{const p=rockGeo.attributes.position;for(let i=0;i<p.count;i++){const s=1+.16*Math.sin(p.getX(i)*3.1)*Math.sin(p.getY(i)*2.7)*Math.sin(p.getZ(i)*3.7);p.setXYZ(i,p.getX(i)*s,p.getY(i)*s*.78,p.getZ(i)*s);}rockGeo.computeVertexNormals();}
+const rock=new THREE.Mesh(rockGeo,new THREE.MeshStandardMaterial({map:rockTex,roughness:.95}));rock.position.set(0,3.1,0);rock.castShadow=rock.receiveShadow=true;scene.add(rock);
+const rock2=new THREE.Mesh(rockGeo,new THREE.MeshStandardMaterial({map:rockTex,roughness:.95}));rock2.scale.setScalar(.4);rock2.position.set(5.2,1.1,-2.5);rock2.castShadow=rock2.receiveShadow=true;scene.add(rock2);
+const fernTex=canvasTex(128,256,(g,w,h)=>{g.clearRect(0,0,w,h);g.strokeStyle='#3c642e';g.lineWidth=4;g.beginPath();g.moveTo(w/2,h);g.lineTo(w/2,10);g.stroke();for(let y=24;y<h-6;y+=8){const l=(1-y/h)*52+8;for(const s of[-1,1]){g.strokeStyle=['#3f6b31','#568a44','#699a50','#2f5226'][Math.random()*4|0];g.lineWidth=3.4;g.beginPath();g.moveTo(w/2,y);g.quadraticCurveTo(w/2+s*l*.6,y-l*.35,w/2+s*l,y-l*.62);g.stroke();}}});
+const fernGeo=new THREE.PlaneGeometry(3.6,2);const fernMat=new THREE.MeshStandardMaterial({map:fernTex,alphaTest:.35,side:THREE.DoubleSide,roughness:.9});
+const ferns=new THREE.InstancedMesh(fernGeo,fernMat,90);{const m=new THREE.Matrix4(),q=new THREE.Quaternion(),e=new THREE.Euler(),v=new THREE.Vector3(),s=new THREE.Vector3();
+for(let i=0;i<90;i++){const a=Math.random()*P*2,r=5.5+Math.random()*13;e.set(Math.random()*.5-.25,Math.random()*P*2,Math.random()*.7);q.setFromEuler(e);const sc=.7+Math.random()*1.1;s.set(sc,sc,sc);v.set(Math.cos(a)*r,sc*1.0,Math.sin(a)*r);m.compose(v,q,s);ferns.setMatrixAt(i,m);}ferns.instanceMatrix.needsUpdate=true;}
+scene.add(ferns);
+/* ---------- textures / materials ---------- */
+const flake=(base,spot)=>canvasTex(256,256,g=>{g.fillStyle=base;g.fillRect(0,0,256,256);for(let i=0;i<2400;i++){g.fillStyle=spot;g.globalAlpha=Math.random()*.45+.08;g.fillRect(Math.random()*256,Math.random()*256,1.5,1.5);}});
+const band=(cA,cB)=>canvasTex(512,128,g=>{g.fillStyle='#17110a';g.fillRect(0,0,512,128);for(let x=0;x<512;x+=32){g.fillStyle=cA;g.beginPath();g.moveTo(x,108);g.lineTo(x+16,60);g.lineTo(x+32,108);g.fill();g.fillStyle=cB;g.beginPath();g.moveTo(x,22);g.lineTo(x+16,70);g.lineTo(x+32,22);g.fill();}g.fillStyle=cA;g.fillRect(0,8,512,5);g.fillRect(0,115,512,5);});
+const markTex=canvasTex(256,256,g=>{g.clearRect(0,0,256,256);g.strokeStyle='#d9b169';g.fillStyle='#d9b169';g.lineWidth=4;g.beginPath();g.arc(128,92,26,0,7);g.stroke();for(let i=0;i<12;i++){const a=i/12*P*2;g.beginPath();g.moveTo(128+Math.cos(a)*34,92+Math.sin(a)*34);g.lineTo(128+Math.cos(a)*44,92+Math.sin(a)*44);g.stroke();}g.beginPath();g.moveTo(40,140);g.quadraticCurveTo(90,110,128,140);g.quadraticCurveTo(170,170,220,136);g.lineTo(220,152);g.quadraticCurveTo(128,182,40,152);g.fill();g.font='600 30px Georgia';g.textAlign='center';g.fillText('SIROCCO',128,208);g.font='11px Georgia';g.fillText('CALDERA IRONWORKS',128,228);});
+const CWs=[
+ {n:'CINDER FLATS',flake:flake('#8e0e12','#ff6a4a'),band:band('#d9b169','#8e2a1e'),body:0xffffff,blade:0x121317,bladeR:.42,edge:0xe9edf1,hw:0x17171b,collar:0xc1141f,collarI:.35},
+ {n:'MOJAVE NIGHT',flake:flake('#c8b487','#fff3d0'),band:band('#2a2016','#c8b487'),body:0xffffff,blade:0x8f9297,bladeR:.5,edge:0xf2f4f6,hw:0x6e5327,collar:0x8a6a34,collarI:.15},
+ {n:'RATTLESNAKE',flake:flake('#26241f','#e07a2a'),band:band('#d98a2b','#26241f'),body:0xffffff,blade:0x6b5335,bladeR:.38,edge:0xf0d9a8,hw:0x1c1a16,collar:0xd96a1e,collarI:.4}];
+const matBody=new THREE.MeshPhysicalMaterial({metalness:.82,roughness:.32,clearcoat:1,clearcoatRoughness:.08,envMapIntensity:1});
+const matBlade=new THREE.MeshPhysicalMaterial({metalness:.92,roughness:.42,clearcoat:.55,envMapIntensity:.9});
+const matEdge=new THREE.MeshPhysicalMaterial({metalness:1,roughness:.1,envMapIntensity:1.3});
+const matHw=new THREE.MeshPhysicalMaterial({metalness:.85,roughness:.4,envMapIntensity:.8});
+const matCol=new THREE.MeshPhysicalMaterial({metalness:1,roughness:.25,envMapIntensity:1.1});
+const matSkin=new THREE.MeshStandardMaterial({color:0xc9a184,roughness:.85});
+function applyCW(i){const c=CWs[i];matBody.map=c.flake;matBody.color.setHex(c.body);matBody.needsUpdate=true;matBlade.color.setHex(c.blade);matBlade.roughness=c.bladeR;matEdge.color.setHex(c.edge);matHw.color.setHex(c.hw);matCol.color.setHex(c.collar);matCol.iridescence=c.collarI;bandMat&&bandMat.map&&(bandMat.map=c.band,bandMat.needsUpdate=true);document.querySelectorAll('#cw button').forEach((b,j)=>b.classList.toggle('on',j===i));}
+/* ---------- knife geometry ---------- */
+const bladeShape=new THREE.Shape();
+bladeShape.moveTo(-0.45,-1.15);bladeShape.lineTo(0.3,-1.15);bladeShape.lineTo(0.62,-0.15);
+bladeShape.quadraticCurveTo(0.92,0.4,1.04,1.7);bladeShape.quadraticCurveTo(1.13,4.3,1.05,6.3);
+bladeShape.quadraticCurveTo(0.98,8.4,0.72,9.7);bladeShape.quadraticCurveTo(0.1,8.6,-0.28,7.3);
+bladeShape.lineTo(-0.45,6.6);bladeShape.lineTo(-0.45,-1.15);
+function wedgeGeo(pts,d,zIn,zOut){const pos=[],nrm=[],idx=[];const n=pts.length;
+ const nor=i=>{const a=pts[Math.max(0,i-1)],b=pts[Math.min(n-1,i+1)];let dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1;let nx=dy/l,ny=-dx/l;if(nx>0){nx=-nx;ny=-ny;}return[nx,ny];};
+ for(let i=0;i<n;i++){const p=pts[i],nv=nor(i);pos.push(p[0]+nv[0]*d,p[1]+nv[1]*d,zIn, p[0],p[1],zOut, p[0],p[1],-zOut, p[0]+nv[0]*d,p[1]+nv[1]*d,-zIn);
+  nrm.push(0,0,1, 0,0,1, 0,0,-1, 0,0,-1);}
+ for(let i=0;i<n-1;i++){const o=i*4,b=o+4;idx.push(o,o+1,b+1,o, b+1,b,o, o+2,o+3,b+3,o+2, b+3,b+2,o+2, o+3,o,b,o+3);}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nrm,3));g.setIndex(idx);return g;}
+function swedgeGeo(pts,d,zIn,zOut){const pos=[],idx=[];const n=pts.length;
+ for(let i=0;i<n;i++){const p=pts[i];const a=pts[Math.max(0,i-1)],b=pts[Math.min(n-1,i+1)];let dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1;let nx=-dy/l,ny=dx/l;if(ny>0){nx=-nx;ny=-ny;}
+  pos.push(p[0]+nx*d,p[1]+ny*d,zIn, p[0],p[1],zOut);} 
+ for(let i=0;i<n-1;i++){const o=i*2;idx.push(o,o+1,o+3,o,o+3,o+2);}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);g.computeVertexNormals();return g;}
+const handleShape=new THREE.Shape();
+handleShape.moveTo(1.26,-1.3);handleShape.quadraticCurveTo(1.5,-0.7,1.36,0.3);handleShape.quadraticCurveTo(1.24,1.6,1.28,3.2);
+handleShape.quadraticCurveTo(1.32,7.6,1.1,10.8);handleShape.quadraticCurveTo(0.96,12.2,0.3,12.55);
+handleShape.quadraticCurveTo(-0.4,12.8,-0.8,12.3);handleShape.quadraticCurveTo(-1.18,11.85,-1.2,11.2);
+handleShape.lineTo(-1.12,8.0);handleShape.quadraticCurveTo(-0.5,7.3,-1.02,6.6);handleShape.quadraticCurveTo(-1.18,6.35,-1.1,4.2);
+handleShape.quadraticCurveTo(-0.42,3.1,-0.95,2.2);handleShape.quadraticCurveTo(-1.3,1.6,-1.24,0.4);
+handleShape.quadraticCurveTo(-1.45,-0.9,-1.26,-1.3);handleShape.lineTo(1.26,-1.3);
+/* build knife */
+const rig=new THREE.Group(),knife=new THREE.Group();rig.add(knife);scene.add(rig);
+const parts=[];
+function reg(obj,name,dir){obj.traverse(o=>o.userData.pn=name);parts.push({obj,home:obj.position.clone(),dir:new THREE.Vector3(...dir)});}
+const bladeGrp=new THREE.Group();knife.add(bladeGrp);
+{const g=new THREE.ExtrudeGeometry(bladeShape,{depth:.24,bevelEnabled:true,bevelThickness:.05,bevelSize:.045,bevelSegments:2});g.translate(0,0,-.17);
+ const body=new THREE.Mesh(g,matBlade);bladeGrp.add(body);
+ const edge=new THREE.Mesh(wedgeGeo([[0.66,-0.1],[0.95,0.6],[1.06,2.2],[1.06,4.4],[1.0,6.4],[0.92,8.2],[0.72,9.68]],.15,.19,.02),matEdge);bladeGrp.add(edge);
+ const sw=new THREE.Mesh(swedgeGeo([[-0.42,6.95],[-0.18,7.65],[0.12,8.5],[0.45,9.3],[0.7,9.66]],.13,.17,.08),new THREE.MeshPhysicalMaterial({metalness:1,roughness:.12,envMapIntensity:1.2,side:THREE.DoubleSide}));bladeGrp.add(sw);
+ const tang=new THREE.Mesh(new THREE.BoxGeometry(1.02,1.5,.5),matHw);tang.position.set(-0.05,-0.45,0);bladeGrp.add(tang);
+ const kick=new THREE.Mesh(new THREE.CylinderGeometry(.11,.11,.3,10),matHw);kick.rotation.z=P/2;kick.position.set(0.75,-0.78,0.24);bladeGrp.add(kick);
+ const mark=new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.5),new THREE.MeshBasicMaterial({map:markTex,transparent:true,opacity:.9}));mark.position.set(-0.03,0.9,0.181);bladeGrp.add(mark);
+ for(const s of[-1,1]){const w=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,.06,20),matHw);w.rotation.x=P/2;w.position.set(0,0,s*.27);bladeGrp.add(w);reg(w,'Phosphor-bronze washers',[0,0,s*.9]);}
+ for(const s of[-1,1]){const pin=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.72,10),matHw);pin.rotation.x=P/2;pin.position.set(.62*s,-0.98,0);bladeGrp.add(pin);}
+ const tip=new THREE.Object3D();tip.position.set(0.7,9.7,0);bladeGrp.add(tip);knife.userData.tip=tip;
+ reg(bladeGrp,'Blade — Bowie clip point, black PVD, polished edge & swedge',[0,.4,0]);
+ reg(tang,'Tang plate, kicker & pins',[0,1.1,0]);}
+const bandMat=new THREE.MeshBasicMaterial({map:CWs[0].band,toneMapped:false});
+function buildHandle(zs,side,isBite){const g=new THREE.Group();g.position.z=zs;knife.add(g);
+ const eg=new THREE.ExtrudeGeometry(handleShape,{depth:.6,bevelEnabled:true,bevelThickness:.17,bevelSize:.13,bevelSegments:2});eg.translate(0,0,-.47);
+ const body=new THREE.Mesh(eg,matBody);g.add(body);
+ const liner=new THREE.Mesh(new THREE.ShapeGeometry(handleShape),matHw);liner.scale.set(.86,.985,1);liner.position.z=side*-.42+side*0;liner.position.z=isBite?-.42:.42;g.add(liner);
+ const screw=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,1.95,16),matHw);screw.rotation.x=P/2;g.add(screw);
+ const collar=new THREE.Mesh(new THREE.TorusGeometry(.45,.1,10,26),matCol);collar.position.z=isBite?.52:-.52;g.add(collar);
+ const boss=new THREE.Mesh(new THREE.BoxGeometry(.6,.55,.14),matHw);boss.position.set(isBite?.92:-.92,-0.95,isBite?-.5:.5);g.add(boss);
+ const bd=new THREE.Mesh(new THREE.PlaneGeometry(1.5,5.6),bandMat);bd.position.set(.08,6.6,side*.485);if(!isBite)bd.rotation.y=P;g.add(bd);
+ reg(g,isBite?'Bite handle — flaked lacquer, dune-band inlay':'Safe handle — flaked lacquer, dune-band inlay',[0,0,side*-3.4]);
+ reg(screw,'Pivot screw + anodized collar',[0,0,side*-1.7]);reg(collar,'Pivot collar — anodized candy red',[0,0,side*-2.4]);
+ if(isBite){const lg=new THREE.Group();lg.position.set(0,12.1,-.28);
+  const bar=new THREE.Mesh(new THREE.BoxGeometry(.26,1.05,.15),matHw);bar.position.set(0,.5,0);lg.add(bar);
+  const hook=new THREE.Mesh(new THREE.TorusGeometry(.26,.07,8,16,3.4),matHw);hook.position.set(0,1.0,-.1);hook.rotation.x=P/2;hook.rotation.z=1.2;lg.add(hook);
+  g.add(lg);reg(lg,'Drop hook latch',[0,0,-1.3]);g.userData.latch=lg;}
+ return g;}
+const safeG=buildHandle(-.75,-1,false),biteG=buildHandle(.75,1,true);
+knife.traverse(o=>{if(o.isMesh){o.castShadow=true;}});
+const REST=new THREE.Vector3(0,7.95,0),PERF=new THREE.Vector3(0,21,0);
+const canonQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(.06,.42,-1.5));
+/* ---------- hand ---------- */
+function buildHand(side){const g=new THREE.Group();
+ const palm=new THREE.Mesh(new THREE.CapsuleGeometry(.6,1.5,4,10),matSkin);palm.scale.set(1.2,1,.5);palm.position.set(0,.4,side*.9);g.add(palm);
+ for(let i=0;i<4;i++){const f=new THREE.Mesh(new THREE.CapsuleGeometry(.19,.9,3,8),matSkin);f.rotation.z=P/2;f.rotation.x=side*-.35;f.position.set(0,1.05+i*.52,side*.32);g.add(f);}
+ const th=new THREE.Mesh(new THREE.CapsuleGeometry(.2,.8,3,8),matSkin);th.rotation.z=.9;th.position.set(.8,-.5,side*.5);g.add(th);
+ g.traverse(o=>o.castShadow=true);g.scale.setScalar(.001);scene.add(g);return g;}
+const hands=[buildHand(1),buildHand(-1)];
+/* ---------- trail ---------- */
+const TN=70;const trailGeo=new THREE.BufferGeometry();
+trailGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TN*3),3));
+{const c=new Float32Array(TN*3);for(let i=0;i<TN;i++){const f=1-i/TN;c[i*3]=.9*f;c[i*3+1]=.35*f;c[i*3+2]=.2*f;}trailGeo.setAttribute('color',new THREE.BufferAttribute(c,3));}
+const trail=new THREE.Line(trailGeo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+trail.frustumCulled=false;scene.add(trail);
+/* ---------- audio ---------- */
+let AC=null,master,swishG,swishF,whirG,whirF,noiseBuf;
+function initAudio(){if(AC)return;AC=new AudioContext();master=AC.createGain();master.gain.value=$('vol').value;master.connect(AC.destination);
+ noiseBuf=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+ const mk=(f,q)=>{const s=AC.createBufferSource();s.buffer=noiseBuf;s.loop=true;const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=f;bp.Q.value=q;const g=AC.createGain();g.gain.value=0;s.connect(bp).connect(g).connect(master);s.start();return[bp,g];};
+ [swishF,swishG]=mk(700,.8);[whirF,whirG]=mk(1700,2);}
+function burst(dur,filter,f,q,gain){if(!AC)return;const s=AC.createBufferSource();s.buffer=noiseBuf;const fl=AC.createBiquadFilter();fl.type=filter;fl.frequency.value=f;fl.Q.value=q;const g=AC.createGain();const t=AC.currentTime;g.gain.setValueAtTime(gain,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);s.connect(fl).connect(g).connect(master);s.start(t);s.stop(t+dur+.02);}
+const sfx={
+ latch(){burst(.035,'highpass',3200,1,.5);burst(.05,'bandpass',1800,3,.3);},
+ clack(v=1){burst(.05,'lowpass',1100,1,.85*v);if(!AC)return;const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.frequency.setValueAtTime(210,t);o.frequency.exponentialRampToValueAtTime(70,t+.08);g.gain.setValueAtTime(.5*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.1);o.connect(g).connect(master);o.start(t);o.stop(t+.12);burst(.03,'bandpass',2600,4,.3*v);},
+ ring(){if(!AC)return;const t=AC.currentTime;[[520,.3],[1470,.18],[2610,.1]].forEach(([f,a])=>{const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f*(1+(Math.random()-.5)*.01);g.gain.setValueAtTime(a,t);g.gain.exponentialRampToValueAtTime(.0001,t+.5);o.connect(g).connect(master);o.start(t);o.stop(t+.55);});}};
+addEventListener('pointerdown',initAudio,{once:false});addEventListener('keydown',initAudio,{once:false});
+/* ---------- animation system ---------- */
+const EI=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,EO=t=>1-Math.pow(1-t,3);
+const st={L:0,R:0,lt:0,rx:0,ry:0,rz:0,px:0,py:0,pz:0};
+let pose='closed',seq=null,ph=null,pt=0,evI=0,seqLoop=null,seqOrder=[],seqIdx=0,lastKey='';
+function PH(name,dur,ease,hold,kfs,ev,fl){return Object.assign({name,dur,ease:ease||EI,hold:hold||null,kfs:kfs||[],ev:ev||[]},fl||{});}
+const SETTLE=(name,toPerf)=>({name,settle:true,toPerf,dur:.75,ease:EI});
+const MOVES={
+ open:{name:'BASIC OPEN',start:'closed',end:'open',ph:[
+  PH('unlatch',.3,EO,null,[{t:1,lt:1.9}],[[.4,'latch']]),
+  PH('drop & swing the bite handle',.5,EO,{h:'L',off:[-.15,3,-.6]},[{t:.9,R:-P-.06},{t:1,R:-P}]),
+  PH('wrist flip — blade & bite snap around',.55,EI,{h:'L',off:[-.15,3,-.6]},[{t:.92,L:P,rz:-P+.02},{t:1,L:P,rz:-P}],[[.93,'clack'],[.97,'ring']])]},
+ close:{name:'BASIC CLOSE',start:'open',end:'closed',ph:[
+  PH('seat the blade & bite onto the safe handle',.5,EI,{h:'L',off:[-.15,3,-.6]},[{t:.93,L:0,rz:-P+.03},{t:1,L:0,rz:-P}],[[.94,'clack']]),
+  PH('close the bite handle',.45,EO,{h:'L',off:[-.15,3,-.6]},[{t:.88,R:.05},{t:1,R:0,lt:0}],[[.88,'clack'],[.95,'latch']])]},
+ chaplin:{name:'CHAPLIN',start:'open',end:'open',ph:[PH('one full turn around the index finger',1.05,EI,{h:'L',off:[-.15,1.1,-.6]},[{t:1,rz:-2*P}])]},
+ rollover:{name:'ZEN ROLLOVER',start:'open',end:'open',ph:[PH('over the back of the hand',.85,EI,{h:'L',off:[-.15,.9,-.6]},[{t:1,rx:-P}])]},
+ fan:{name:'FAN',start:'open',end:'open',ph:[PH('two revolutions around the pivot',1.15,EO,{h:'L',off:[-.15,1,-.6]},[{t:.94,R:-5*P+.05,rz:-.06},{t:1,R:-5*P}],[[.95,'clack']])]},
+ helix:{name:'HELIX',start:'open',end:'open',ph:[PH('twirl & flip, free in the air',1.15,EI,null,[{t:.5,py:2.6,ry:P,rz:-P},{t:1,py:.35,ry:2*P,rz:-2*P}])]},
+ aerial:{name:'AERIAL',start:'open',end:'closed',ph:[
+  PH('tossed — one full turn, closing mid-air',1.2,EI,null,[{t:.3,py:2.4,L:P*.25},{t:.75,py:2.9,L:0,R:0},{t:1,py:.3,L:0,R:0,lt:0,rz:-2*P}],[[.55,'clack'],[.9,'latch']]),
+  PH('caught by the bite handle',.5,EI,{h:'R',off:[.15,2.5,.6]}),SETTLE('present',false)]},
+ devil:{name:'DUST DEVIL',start:'closed',end:'closed',ph:[
+  PH('unlatch',.3,EO,null,[{t:1,lt:1.9}],[[.4,'latch']]),
+  PH('open & wind the fan',1.0,EI,{h:'L',off:[-.15,3,-.6]},[{t:.42,R:-P,rz:-.1},{t:.5,R:-P-.06},{t:.55,R:-P},{t:1,R:-3*P}],[[.45,'clack'],[.5,'ring']]),
+  PH('barrel roll, closing in the air',1.2,EI,null,[{t:.35,py:2.5,rx:P*.7,L:P*.3},{t:.8,py:2.8,L:P,R:-4*P},{t:1,py:.3,rx:2*P,rz:P,L:P,R:-4*P,lt:0}],[[.82,'clack'],[.92,'latch']]),
+  PH('caught by the bite handle',.55,EI,{h:'R',off:[.15,2.5,.6]}),SETTLE('present',false)]]};
+function bake(){knife.updateMatrixWorld(true);const v=new THREE.Vector3(),q=new THREE.Quaternion();
+ knife.getWorldPosition(v);knife.getWorldQuaternion(q);rig.rotation.set(0,0,0);rig.quaternion.identity();rig.position.set(0,0,0);knife.position.copy(v);knife.quaternion.copy(q);}
+function setupPhase(p){ph=p;pt=0;evI=0;$('caption').textContent=p.name;$('caption').style.opacity=1;
+ let prev={...st};p.ks=p.kfs.map(k=>{const f={...prev,...k};prev=f;return f;});p.ks.unshift({...st,t:0});
+ if(p.settle){rig.position.copy(knife.position);p._c0=knife.position.clone();knife.position.set(0,0,0);p._q0=new THREE.Quaternion();
+  p._qt=canonQ.clone().multiply(new THREE.Quaternion().copy(knife.quaternion).invert());}
+ else if(p.hold){const hg=p.hold.h==='L'?safeG:biteG;p._hb=hg;const wp=hg.localToWorld(new THREE.Vector3(...p.hold.off));rig.position.copy(wp);knife.position.sub(wp);p._rb=wp.clone();p._p0=[st.px,st.py,st.pz];}
+ else{rig.position.copy(knife.position);knife.position.set(0,0,0);p._rb=new THREE.Vector3(0,0,0);p._p0=[st.px,st.py,st.pz];p._air=true;}}
+function endPhase(){bake();
+ if(ph.settle){pose=seq.end;const c=pose==='closed'?{L:0,R:0,lt:0}:{L:P,R:-P,lt:1.9};Object.assign(st,c,{rx:0,ry:0,rz:0,px:0,py:0,pz:0});}
+ else Object.assign(st,ph.ks[ph.ks.length-1]);st.rx%=2*P;st.ry%=2*P;st.rz%=2*P;
+ const i=seq.i+1;
+ if(i<seq.ph.length){seq.i=i;setupPhase(seq.ph[i]);}
+ else if(seq.loop){let key;if(seq.loop==='combo'){key=seqOrder[seqIdx++%seqOrder.length];}else{do{key=Object.keys(MOVES)[Math.random()*8|0];}while(key===lastKey);}lastKey=key;startMove(key,seq.loop);}
+ else{seq=null;ph=null;$('caption').style.opacity=0;}}
+function startMove(key,loop){exT=0;drag=null;phys=null;controls.enabled=true;
+ const mv=MOVES[key];let list=[];
+ if(pose!==mv.start){const pre=MOVES[mv.start==='closed'?'close':'open'];list.push(...pre.ph);list.push(SETTLE('lift',true));}
+ list.push(...mv.ph);list.push(SETTLE('present',false));
+ seq={name:mv.name,end:mv.end,ph:list,i:0,loop:loop||null};setupPhase(list[0]);}
+const CH=['L','R','lt','rx','ry','rz','px','py','pz'];
+function updSeq(dt){if(!ph)return;const u=Math.min(1,pt/ph.dur),e=ph.ease(u);pt+=dt;
+ const ks=ph.ks;let a=ks[0],b=ks[ks.length-1];
+ for(let i=0;i<ks.length-1;i++)if(u>=ks[i].t&&u<=ks[i+1].t){a=ks[i];b=ks[i+1];break;}
+ const span=(b.t-a.t)||1,f=(u-a.t)/span;
+ for(const c of CH)st[c]=a[c]+(b[c]-a[c])*f;
+ if(ph.settle){rig.quaternion.slerpQuaternions(ph._q0,ph._qt,e);rig.position.lerpVectors(ph._c0,ph.toPerf?PERF:REST,e);}
+ else{safeG.rotation.z=st.L;biteG.rotation.z=st.R;if(biteG.userData.latch)biteG.userData.latch.rotation.x=st.lt;
+  rig.rotation.set(st.rx,st.ry,st.rz);
+  rig.position.copy(ph._rb).add(new THREE.Vector3(st.px-ph._p0[0],st.py-ph._p0[1],st.pz-ph._p0[2]));}
+ while(evI<ph.ev.length&&ph.ev[evI][0]<=u){const[,ty]=ph.ev[evI++];const v=Math.min(1.6,Math.abs(angVel)+.25);sfx[ty==='latch'?'latch':'clack'](ty==='ring'?1:v);if(ty==='ring')sfx.ring();}
+ if(u>=1)endPhase();}
+/* ---------- explode & labels ---------- */
+let ex=0,exT=0;
+function updExplode(dt){ex+=(exT-ex)*Math.min(1,dt*5);if(Math.abs(ex-exT)<.002)ex=exT;
+ for(const p of parts)p.obj.position.copy(p.home).addScaledVector(p.dir,ex);}
+const ray=new THREE.Raycaster(),mouse=new THREE.Vector2(),tipEl=$('tip');
+addEventListener('pointermove',e=>{mouse.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);
+ tipEl.style.left=e.clientX+14+'px';tipEl.style.top=e.clientY+10+'px';
+ if(ex>.8){ray.setFromCamera(mouse,camera);const h=ray.intersectObject(knife,true)[0];
+  if(h){let o=h.object,n=null;while(o&&!n){n=o.userData.pn;o=o.parent;}if(n){tipEl.textContent=n;tipEl.style.display='block';return;}}}
+ tipEl.style.display='none';});
+/* ---------- hand ---------- */
+const hv=new THREE.Vector3(),hq=new THREE.Quaternion();
+function updHand(dt){const p=ph&&!ph.settle?ph:null;let target=null,hb=null;
+ if(p&&p.hold){hb=p._hb;hb.localToWorld(hv.set(...p.hold.off));hb.getWorldQuaternion(hq);}
+ for(const h of hands){if(hb&&hands[0]===h&&p.hold.h==='L'||hb&&hands[1]===h&&p.hold.h==='R'){h.position.lerp(hv,Math.min(1,dt*14));h.quaternion.slerp(hq,Math.min(1,dt*14));h.scale.setScalar(Math.min(1,h.scale.x+dt*6));}
+  else{h.scale.setScalar(Math.max(.001,h.scale.x-dt*6));h.position.y-=dt*2*(h.scale.x);}}}
+/* ---------- drag to flip ---------- */
+let drag=null,phys=null,angVel=0,prevR=0;
+const pickables=[];knife.traverse(o=>{if(o.isMesh)pickables.push(o);});
+renderer.domElement.addEventListener('pointerdown',e=>{if(seq||ex>.2)return;ray.setFromCamera(mouse,camera);
+ const h=ray.intersectObject(knife,true)[0];if(!h)return;let o=h.object,bit=null;
+ while(o&&o!==knife){if(o===biteG)bit='R';if(o===safeG)bit='L';o=o.parent;}
+ if(bit){drag={h:bit,y:e.clientY,start:st[bit]};phys=null;controls.enabled=false;}});
+addEventListener('pointermove',e=>{if(!drag)return;const dy=drag.y-e.clientY;drag.y=e.clientY;
+ const lim=drag.h==='R'?[-P,0]:[0,P];st[drag.h]=Math.max(lim[0],Math.min(lim[1],st[drag.h]+dy*.014));
+ angVel=dy*.014/Math.max(.008,lastDt);});
+addEventListener('pointerup',()=>{if(drag){phys={h:drag.h,v:angVel};drag=null;controls.enabled=true;}});
+function updDrag(dt){if(drag){safeG.rotation.z=st.L;biteG.rotation.z=st.R;}
+ if(phys){const h=phys.h,lim=h==='R'?[-P,0]:[0,P];st[h]+=phys.v*dt;phys.v*=Math.max(0,1-2.4*dt);
+  if(st[h]<=lim[0]){st[h]=lim[0];if(Math.abs(phys.v)>.6)sfx.clack(Math.min(1,Math.abs(phys.v)*.2));phys.v*=-.32;}
+  if(st[h]>=lim[1]){st[h]=lim[1];if(Math.abs(phys.v)>.6)sfx.clack(Math.min(1,Math.abs(phys.v)*.2));phys.v*=-.32;}
+  if(Math.abs(phys.v)<.35&&Math.abs(st[h]-lim[0])<.01){phys=null;st[h]=lim[0];}
+  safeG.rotation.z=st.L;biteG.rotation.z=st.R;}
+ if(!seq&&!drag){const t=(pose==='closed'&&Math.abs(st.L)<.1&&Math.abs(st.R)<.1)?0:1.9;st.lt+=(t-st.lt)*Math.min(1,dt*8);
+  if(biteG.userData.latch)biteG.userData.latch.rotation.x=st.lt;}}
+/* ---------- camera ---------- */
+let camAnim=null;
+const CAMS={HERO:{o:[6,3,12],t:[0,0,0]},BLADE:{o:[2.4,.9,3.4],t:[5,.4,0]},PIVOT:{o:[1.6,.7,2.4],t:[0,.2,0]},LATCH:{o:[-2,1.4,3.2],t:[-8.5,0,0]},TOP:{o:[0,15,.8],t:[0,0,0]}};
+function camTo(k){const base=seq?PERF:REST,c=CAMS[k];camAnim={t0:0,p0:camera.position.clone(),g0:controls.target.clone(),
+ p1:new THREE.Vector3(...c.o).add(base).add(new THREE.Vector3(...c.t)),g1:new THREE.Vector3(...c.t).add(base)};}
+$('cams').addEventListener('click',e=>{const b=e.target.closest('[data-cam]');if(b)camTo(b.dataset.cam);});
+/* ---------- UI ---------- */
+const MKEYS=['open','close','chaplin','rollover','fan','helix','aerial','devil'];
+const mEl=$('moves');MKEYS.forEach((k,i)=>{const b=document.createElement('button');b.className='btn';b.innerHTML=`<b>${i+1}</b>${MOVES[k].name}`;b.onclick=()=>startMove(k);mEl.appendChild(b);});
+[['COMBO (C)',()=>{seqOrder=[...MKEYS];seqIdx=0;startMove(seqOrder[seqIdx++%8],'combo');}],['FREESTYLE (F)',()=>startMoveKey(true)],['STOP (ESC)',()=>{seqLoop=null;seq=null;ph=null;$('caption').style.opacity=0;}]].forEach(([t,f])=>{const b=document.createElement('button');b.className='btn';b.textContent=t;b.onclick=f;mEl.appendChild(b);});
+function startMoveKey(fs){seqOrder=MKEYS.slice().sort(()=>$sea());let key;do{key=MKEYS[Math.random()*8|0];}while(key===lastKey);lastKey=key;startMove(key,'free');}
+function $sea(){return Math.random()-.5;}
+CWs.forEach((c,i)=>{const b=document.createElement('button');b.textContent=c.n;b.onclick=()=>applyCW(i);$('cw').appendChild(b);});applyCW(0);
+$('spd').oninput=e=>{$('spdv').textContent=(+e.target.value).toFixed(2)+'×';};
+$('mute').onchange=e=>{if(master)master.gain.value=e.target.checked?0:$('vol').value;};
+$('vol').oninput=e=>{if(!$('mute').checked&&master)master.gain.value=+e.target.value;};
+$('explode').onclick=()=>{exT=exT?0:1;$('explode').classList.toggle('on',!!exT);};
+const uiEl=$('ui');$('hideui').onclick=()=>uiEl.classList.toggle('hidden');
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+ if(k>='1'&&k<='8')startMove(MKEYS[+k-1]);
+ else if(k==='c'){seqOrder=[...MKEYS];seqIdx=0;startMove(seqOrder[seqIdx++%8],'combo');}
+ else if(k==='f')startMoveKey(true);
+ else if(k==='x')$('explode').onclick();
+ else if(k==='t')$('trail').click();
+ else if(k==='s')$('slow').click();
+ else if(k==='m')$('mute').click();
+ else if(k==='h')uiEl.classList.toggle('hidden');
+ else if(k==='escape'){seqLoop=null;seq=null;ph=null;$('caption').style.opacity=0;}});
+$('trail').onchange=e=>{if(e.target.checked){trail.material.opacity=.85;const v=new THREE.Vector3();knife.userData.tip.getWorldPosition(v);for(let i=0;i<TN;i++)trailGeo.attributes.position.setXYZ(i,v.x,v.y,v.z);trailGeo.attributes.position.needsUpdate=true;}else trail.material.opacity=0;};
+$('slow').onchange=()=>{};
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+/* ---------- main loop ---------- */
+const tipPrev=new THREE.Vector3(),tipCur=new THREE.Vector3();let swS=0,whS=0,lastDt=.016,intro=true;
+knife.position.copy(REST);knife.quaternion.copy(canonQ);
+let sweepT=0;
+const clock=new THREE.Clock();
+function loop(){requestAnimationFrame(loop);const dt=Math.min(.05,clock.getDelta());lastDt=dt;
+ const rate=(+$('spd').value)*($('slow').checked?.22:1);
+ if(seq||ph)updSeq(dt*rate);else if(intro){intro=false;}
+ updDrag(dt);updExplode(dt);updHand(dt);
+ /* sound */
+ knife.userData.tip.getWorldPosition(tipCur);
+ const sp=tipCur.distanceTo(tipPrev)/Math.max(dt,.001);tipPrev.copy(tipCur);
+ const angVelNow=Math.abs(st.R-prevR)/Math.max(dt,.001);prevR=st.R;window.angVel=angVelNow;
+ swS+=((Math.min(1,sp*.02))-swS)*.2;whS+=((Math.min(1,angVelNow*.06))-whS)*.2;
+ if(AC&&!$('mute').checked){swishG.gain.value=swS*.5;swishF.frequency.value=Math.min(2600,250+sp*80);
+  whirG.gain.value=whS*.16;whirF.frequency.value=1400+whS*2200;}
+ /* trail */
+ if($('trail').checked&&trail.material.opacity>0){const a=trailGeo.attributes.position;
+  for(let i=TN-1;i>0;i--)a.setXYZ(i,a.getX(i-1),a.getY(i-1),a.getZ(i-1));a.setXYZ(0,tipCur.x,tipCur.y,tipCur.z);a.needsUpdate=true;}
+ /* intro sweep light */
+ if(sweepT<4){sweepT+=dt;sweep.intensity=sweepT<3?260:Math.max(0,260*(1-(sweepT-3)));sweep.position.set(-14+28*Math.min(1,sweepT/3),24,6);sweep.target.position.copy(knife.position);}
+ /* camera */
+ const desT=seq?PERF:REST;controls.target.lerp(desT,.045);
+ if(camAnim){camAnim.t0+=dt;const f=Math.min(1,camAnim.t0/.8),e=EI(f);camera.position.lerpVectors(camAnim.p0,camAnim.p1,e);controls.target.lerpVectors(camAnim.g0,camAnim.g1,e);if(f>=1)camAnim=null;}
+ controls.update();renderer.render(scene,camera);}
+loop();
+/* reveal */
+setTimeout(()=>{startMove('open');},450);
+setTimeout(()=>{$('title').classList.add('gone');$('load').style.display='none';},600);
+</script>
+</body>
+</html>
