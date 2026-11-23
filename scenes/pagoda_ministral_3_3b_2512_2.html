@@ -56,9 +56,10 @@
     <script type="importmap">
         {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
     </script>
-    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    <script>
         // Scene setup
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
@@ -79,7 +80,7 @@
         document.body.appendChild(renderer.domElement);
 
         // Controls
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.screenSpacePanning = false;
@@ -118,11 +119,11 @@
                     float dist = length(pos);
                     float d = dist / 500.0;
                     float s = smoothstep(0.9, 0.95, d);
-                    vec3 col = mix(color1.value, color2.value, s);
+                    vec3 col = mix(color1, color2, s);
                     col.r *= mix(0.8, 1.0, h);
                     col.g *= mix(0.8, 1.0, r);
                     col.b *= mix(0.8, 1.0, h);
-                    gl_FragColor = vec4(col, 1.0);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
                 }
             `,
             fragmentShader: `
@@ -164,7 +165,9 @@
             const terrainMesh = new THREE.Mesh(terrain, new THREE.MeshStandardMaterial({ color: 0x1A1A1A }));
 
             // Perlin noise for terrain
-            const perlin = new THREE.PerlinNoise();
+            const perlin = {
+                noise3: (x, y, z) => Math.sin(x * 12.9898 + y * 78.233 + z * 45.164) * 2.0 - 1.0
+            };
             const scale = 0.05;
 
             for (let z = 0; z < depth; z++) {
@@ -183,8 +186,7 @@
             }
 
             // Create terrain geometry
-            const vertices = terrain.geometry.attributes.position.array;
-            const normals = terrain.geometry.attributes.normal.array;
+            const vertices = terrain.attributes.position.array;
 
             for (let i = 0; i < vertices.length; i += 3) {
                 const x = vertices[i];
@@ -196,8 +198,8 @@
                 }
             }
 
-            terrain.geometry.attributes.position.needsUpdate = true;
-            terrain.geometry.computeVertexNormals();
+            terrain.attributes.position.needsUpdate = true;
+            terrain.computeVertexNormals();
             return terrainMesh;
         }
 
@@ -318,11 +320,12 @@
                 const height = 2 + Math.random() * 1.5;
 
                 // Main stem
-                const stem = new THREE.InstancedMesh(
+                const stem = new THREE.Group();
+                const stemMesh = new THREE.Mesh(
                     new THREE.BoxGeometry(bambooWidth, height * cellSize, bambooDepth),
-                    materials.bamboo,
-                    1
+                    materials.bamboo
                 );
+                stem.add(stemMesh);
 
                 // Add joints
                 for (let j = 0; j < Math.floor(height * 10); j++) {
@@ -333,18 +336,19 @@
                     joint.position.set(0, j * cellSize, 0);
                     joint.rotation.x = Math.PI / 4;
                     joint.rotation.z = Math.random() * Math.PI * 2;
-                    stem.instanceArray.push(joint);
+                    stem.add(joint);
                 }
 
                 stem.position.set(x, 0, z);
                 bambooGroup.add(stem);
 
                 // Leaves
-                const leaves = new THREE.InstancedMesh(
+                const leaves = new THREE.Group();
+                const leavesMesh = new THREE.Mesh(
                     new THREE.BoxGeometry(bambooWidth * 0.3, cellSize * 0.5, bambooDepth * 0.3),
-                    materials.bamboo,
-                    1
+                    materials.bamboo
                 );
+                leaves.add(leavesMesh);
 
                 for (let l = 0; l < 4; l++) {
                     const leaf = new THREE.Mesh(
@@ -354,7 +358,7 @@
                     leaf.position.set(0, height * cellSize * 0.8, l * cellSize * 0.2 - bambooDepth * cellSize * 0.15);
                     leaf.rotation.x = Math.PI / 4;
                     leaf.rotation.y = Math.random() * Math.PI * 2;
-                    leaves.instanceArray.push(leaf);
+                    leaves.add(leaf);
                 }
 
                 leaves.position.set(x, height * cellSize * 0.8, z);
@@ -796,7 +800,7 @@
         const koi = generateKoi();
         scene.add(koi);
 
-        const petals = generateSakuraPetals();
+        let petals = generateSakuraPetals();
 
         // Torii gate (simplified)
         const torii = new THREE.Group();
@@ -862,7 +866,7 @@
 
         // Initialize HUD
         function updateHUD() {
-            document.getElementById('info').textContent = `VOXEL GARDEN\n${voxelCount.toLocaleString()} voxels | ${Math.round(fps)} FPS`;
+            document.getElementById('info').textContent = `VOXEL GARDEN\n${voxelCount.toLocaleString()} voxels | ${Math.round(lastFps)} FPS`;
             document.getElementById('timeDisplay').textContent = formatTime(dayNightCycle);
         }
 
