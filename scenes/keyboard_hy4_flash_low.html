@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mechanical Keyboard Showcase</title>
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 30%, #2a2d34, #0a0a0c);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+  }
+  #ui {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+  }
+  button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    backdrop-filter: blur(4px);
+    transition: background 0.2s, transform 0.1s;
+  }
+  button:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  button:active {
+    transform: scale(0.95);
+  }
+  #audio-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+    z-index: 10;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <button id="btn-replay">Replay Assembly</button>
+  <button id="btn-mute">Mute: OFF</button>
+  <button id="btn-rgb">RGB: ON</button>
+</div>
+<div id="audio-hint">Click or press any key to enable sound</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// --- Scene Setup ---
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 9, 13);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.maxPolarAngle = Math.PI / 2 - 0.05;
+controls.minDistance = 8;
+controls.maxDistance = 25;
+controls.target.set(0, 0, 0);
+
+// --- Lighting ---
+const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+dirLight.position.set(5, 12, 8);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
+dirLight.shadow.camera.left = -10;
+dirLight.shadow.camera.right = 10;
+dirLight.shadow.camera.top = 10;
+dirLight.shadow.camera.bottom = -10;
+dirLight.shadow.bias = -0.0005;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0xaaccff, 0.5);
+fillLight.position.set(-5, 5, -5);
+scene.add(fillLight);
+
+// --- Materials ---
+const caseMat = new THREE.MeshStandardMaterial({ color: 0x1a1b1e, roughness: 0.5, metalness: 0.5 });
+const pcbMat = new THREE.MeshStandardMaterial({ color: 0x053003, roughness: 0.8 });
+const foamMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+const plateMat = new THREE.MeshStandardMaterial({ color: 0xc4a35a, roughness: 0.3, metalness: 0.8 });
+const switchMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+
+const alphaMat = new THREE.MeshStandardMaterial({ color: 0x2a2b2e, roughness: 0.6 });
+const modMat = new THREE.MeshStandardMaterial({ color: 0x3b3d42, roughness: 0.6 });
+const accentMat = new THREE.MeshStandardMaterial({ color: 0xe06c56, roughness: 0.6 });
+
+// --- Ground & Underglow ---
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.15;
+ground.receiveShadow = true;
+scene.add(ground);
+
+let rgbOn = true;
+let hue = 0;
+const underglowMat = new THREE.MeshBasicMaterial({
+  color: 0xff0000,
+  transparent: true,
+  opacity: 0.5,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const underglow = new THREE.Mesh(new THREE.PlaneGeometry(15.6, 5.6), underglowMat);
+underglow.rotation.x = -Math.PI / 2;
+underglow.position.y = -0.1;
+scene.add(underglow);
+
+// --- Case Assembly ---
+const caseGroup = new THREE.Group();
+const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.2, 5.6), caseMat);
+bottomPlate.position.y = 0;
+bottomPlate.receiveShadow = true;
+caseGroup.add(bottomPlate);
+
+const wallGeoX = new THREE.BoxGeometry(0.3, 0.8, 5.6);
+const wallGeoZ = new THREE.BoxGeometry(15.0, 0.8, 0.3);
+
+const leftWall = new THREE.Mesh(wallGeoX, caseMat);
+leftWall.position.set(-7.65, 0.4, 0);
+leftWall.castShadow = true; leftWall.receiveShadow = true;
+caseGroup.add(leftWall);
+
+const rightWall = new THREE.Mesh(wallGeoX, caseMat);
+rightWall.position.set(7.65, 0.4, 0);
+rightWall.castShadow = true; rightWall.receiveShadow = true;
+caseGroup.add(rightWall);
+
+const topWall = new THREE.Mesh(wallGeoZ, caseMat);
+topWall.position.set(0, 0.4, -2.65);
+topWall.castShadow = true; topWall.receiveShadow = true;
+caseGroup.add(topWall);
+
+const bottomWall = new THREE.Mesh(wallGeoZ, caseMat);
+bottomWall.position.set(0, 0.4, 2.65);
+bottomWall.castShadow = true; bottomWall.receiveShadow = true;
+caseGroup.add(bottomWall);
+
+scene.add(caseGroup);
+
+const topCaseGroup = new THREE.Group();
+const topWallGeoX = new THREE.BoxGeometry(0.3, 0.5, 5.6);
+const topWallGeoZ = new THREE.BoxGeometry(15.0, 0.5, 0.3);
+
+const tlWall = new THREE.Mesh(topWallGeoX, caseMat); tlWall.position.set(-7.65, 0.85, 0); tlWall.castShadow = true;
+const trWall = new THREE.Mesh(topWallGeoX, caseMat); trWall.position.set(7.65, 0.85, 0); trWall.castShadow = true;
+const ttWall = new THREE.Mesh(topWallGeoZ, caseMat); ttWall.position.set(0, 0.85, -2.65); ttWall.castShadow = true;
+const tbWall = new THREE.Mesh(topWallGeoZ, caseMat); tbWall.position.set(0, 0.85, 2.65); tbWall.castShadow = true;
+
+topCaseGroup.add(tlWall, trWall, ttWall, tbWall);
+scene.add(topCaseGroup);
+
+// Internal Components
+const pcbMesh = new THREE.Mesh(new THREE.BoxGeometry(15.0, 0.1, 5.0), pcbMat);
+pcbMesh.receiveShadow = true;
+scene.add(pcbMesh);
+
+const foamMesh = new THREE.Mesh(new THREE.BoxGeometry(15.0, 0.2, 5.0), foamMat);
+foamMesh.receiveShadow = true;
+scene.add(foamMesh);
+
+const plateMesh = new THREE.Mesh(new THREE.BoxGeometry(15.0, 0.1, 5.0), plateMat);
+plateMesh.receiveShadow = true; plateMesh.castShadow = true;
+scene.add(plateMesh);
+
+// --- Keyboard Layout & Keys ---
+const keymap = [
+  [
+    {l:'Esc', c:'Escape', t:'accent'}, {l:'1', c:'Digit1'}, {l:'2', c:'Digit2'}, {l:'3', c:'Digit3'}, {l:'4', c:'Digit4'}, {l:'5', c:'Digit5'}, {l:'6', c:'Digit6'}, {l:'7', c:'Digit7'}, {l:'8', c:'Digit8'}, {l:'9', c:'Digit9'}, {l:'0', c:'Digit0'}, {l:'-', c:'Minus'}, {l:'=', c:'Equal'}, {l:'Backspace', c:'Backspace', w:2, t:'mod'}
+  ],
+  [
+    {l:'Tab', c:'Tab', w:1.5, t:'mod'}, {l:'Q', c:'KeyQ'}, {l:'W', c:'KeyW'}, {l:'E', c:'KeyE'}, {l:'R', c:'KeyR'}, {l:'T', c:'KeyT'}, {l:'Y', c:'KeyY'}, {l:'U', c:'KeyU'}, {l:'I', c:'KeyI'}, {l:'O', c:'KeyO'}, {l:'P', c:'KeyP'}, {l:'[', c:'BracketLeft'}, {l:']', c:'BracketRight'}, {l:'\\', c:'Backslash', w:1.5, t:'mod'}
+  ],
+  [
+    {l:'Caps', c:'CapsLock', w:1.75, t:'mod'}, {l:'A', c:'KeyA'}, {l:'S', c:'KeyS'}, {l:'D', c:'KeyD'}, {l:'F', c:'KeyF'}, {l:'G', c:'KeyG'}, {l:'H', c:'KeyH'}, {l:'J', c:'KeyJ'}, {l:'K', c:'KeyK'}, {l:'L', c:'KeyL'}, {l:';', c:'Semicolon'}, {l:"'", c:'Quote'}, {l:'Enter', c:'Enter', w:2.25, t:'accent'}
+  ],
+  [
+    {l:'Shift', c:'ShiftLeft', w:2.25, t:'mod'}, {l:'Z', c:'KeyZ'}, {l:'X', c:'KeyX'}, {l:'C', c:'KeyC'}, {l:'V', c:'KeyV'}, {l:'B', c:'KeyB'}, {l:'N', c:'KeyN'}, {l:'M', c:'KeyM'}, {l:',', c:'Comma'}, {l:'.', c:'Period'}, {l:'/', c:'Slash'}, {l:'Shift', c:'ShiftRight', w:2.75, t:'mod'}
+  ],
+  [
+    {l:'Ctrl', c:'ControlLeft', w:1.25, t:'mod'}, {l:'Win', c:'MetaLeft', w:1.25, t:'mod'}, {l:'Alt', c:'AltLeft', w:1.25, t:'mod'}, {l:'', c:'Space', w:6.25, t:'normal'}, {l:'Alt', c:'AltRight', w:1.25, t:'mod'}, {l:'Win', c:'MetaRight', w:1.25, t:'mod'}, {l:'Menu', c:'ContextMenu', w:1.25, t:'mod'}, {l:'Ctrl', c:'ControlRight', w:1.25, t:'mod'}
+  ]
+];
+
+const switchesGroup = [];
+const keycapsGroup = [];
+
+const keyGeoNormal = new RoundedBoxGeometry(0.95, 0.5, 0.95, 2, 0.05);
+const switchGeo = new THREE.BoxGeometry(0.7, 0.4, 0.7);
+
+let currentZ = -2.0;
+keymap.forEach(row => {
+  let currentX = -7.5;
+  row.forEach(key => {
+    let w = key.w || 1;
+    let cx = currentX + (w * 1.0) / 2;
+    let cz = currentZ;
+    
+    // Switch
+    const sw = new THREE.Mesh(switchGeo, switchMat);
+    sw.position.set(cx, 8, cz);
+    sw.scale.x = (w * 1.0 - 0.05) / 0.7;
+    sw.castShadow = false;
+    sw.receiveShadow = true;
+    scene.add(sw);
+    switchesGroup.push(sw);
+    
+    // Keycap Group
+    const kcGroup = new THREE.Group();
+    kcGroup.position.set(cx, 9, cz);
+    
+    let mat = alphaMat;
+    if (key.t === 'mod') mat = modMat;
+    if (key.t === 'accent') mat = accentMat;
+    
+    const kcMesh = new THREE.Mesh(keyGeoNormal, mat);
+    kcMesh.scale.x = (w * 1.0 - 0.05) / 0.95;
+    kcMesh.castShadow = true;
+    kcMesh.receiveShadow = true;
+    kcGroup.add(kcMesh);
+    
+    if (key.l) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,256,256);
+      ctx.fillStyle = key.t === 'accent' ? '#1a1a1a' : '#e2e2e2';
+      let fontSize = 70;
+      if (key.l.length > 4) fontSize = 38;
+      else if (key.l.length > 2) fontSize = 50;
+      else if (key.l.length > 1) fontSize = 60;
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(key.l, 128, 128);
+      
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const planeMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+      const planeGeo = new THREE.PlaneGeometry(0.8, 0.8);
+      const plane = new THREE.Mesh(planeGeo, planeMat);
+      plane.rotation.x = -Math.PI / 2;
+      plane.position.y = 0.251;
+      kcGroup.add(plane);
+    }
+    
+    scene.add(kcGroup);
+    
+    let kType = 'normal';
+    if (key.c === 'Space') kType = 'space';
+    else if (key.c === 'Enter') kType = 'enter';
+    else if (key.c === 'Backspace') kType = 'backspace';
+    else if (key.t === 'mod' || key.c === 'Escape') kType = 'modifier';
+    
+    keycapsGroup.push({ group: kcGroup, mesh: kcMesh, code: key.c, type: kType, isPressedPhys: false });
+    
+    currentX += w * 1.0;
+  });
+  currentZ += 1.0;
+});
+
+// --- Tween Engine ---
+const tweens = [];
+function tween(target, prop, endValue, duration, delay = 0, onComplete = null) {
+  tweens.push({
+    target, prop,
+    startValue: target[prop],
+    endValue, duration, delay, elapsed: 0, onComplete
+  });
+}
+
+function updateTweens(dt) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const t = tweens[i];
+    t.elapsed += dt;
+    if (t.elapsed < t.delay) continue;
+    const progress = Math.min((t.elapsed - t.delay) / t.duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+    t.target[t.prop] = t.startValue + (t.endValue - t.startValue) * ease;
+    if (progress >= 1) {
+      if (t.onComplete) t.onComplete();
+      tweens.splice(i, 1);
+    }
+  }
+}
+
+// --- Assembly Animation ---
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let isAnimating = false;
+
+function startAssembly() {
+  isAnimating = true;
+  tweens.length = 0;
+  
+  pcbMesh.position.y = 6;
+  foamMesh.position.y = 6.5;
+  plateMesh.position.y = 7;
+  topCaseGroup.children.forEach(c => c.position.y = 7.5);
+  switchesGroup.forEach((sw, i) => sw.position.y = 8 + i*0.05);
+  keycapsGroup.forEach((kc, i) => {
+    kc.group.position.y = 9 + i*0.05;
+    kc.isPressedPhys = false;
+  });
+  
+  if (prefersReducedMotion) {
+     pcbMesh.position.y = 0.25;
+     foamMesh.position.y = 0.4;
+     plateMesh.position.y = 0.55;
+     topCaseGroup.children.forEach(c => c.position.y = 0.85);
+     switchesGroup.forEach(sw => sw.position.y = 0.8);
+     keycapsGroup.forEach(kc => kc.group.position.y = 1.25);
+     isAnimating = false;
+     return;
+  }
+  
+  tween(pcbMesh.position, 'y', 0.25, 800, 500);
+  tween(foamMesh.position, 'y', 0.4, 800, 800);
+  tween(plateMesh.position, 'y', 0.55, 800, 1100);
+  topCaseGroup.children.forEach(c => tween(c.position, 'y', 0.85, 800, 1400));
+  
+  let swBaseDelay = 1700;
+  switchesGroup.forEach((sw, i) => {
+     tween(sw.position, 'y', 0.8, 400, swBaseDelay + i * 25);
+  });
+  
+  let kcBaseDelay = swBaseDelay + switchesGroup.length * 25 + 200;
+  keycapsGroup.forEach((kc, i) => {
+     tween(kc.group.position, 'y', 1.25, 400, kcBaseDelay + i * 25);
+  });
+  
+  setTimeout(() => { isAnimating = false; }, kcBaseDelay + keycapsGroup.length * 25 + 400);
+}
+
+// --- Audio System ---
+let audioCtx;
+let audioEnabled = false;
+let muted = false;
+
+function enableAudio() {
+  if (!audioEnabled) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioEnabled = true;
+    document.getElementById('audio-hint').style.opacity = '0';
+  } else if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function playClick(type) {
+  if (muted || !audioEnabled || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  const gain = audioCtx.createGain();
+  
+  let freq = 150, noiseFreq = 1000, decay = 0.05, vol = 1.0;
+  
+  switch(type) {
+    case 'space': freq = 70; noiseFreq = 400; decay = 0.12; vol = 1.5; break;
+    case 'enter': freq = 110; noiseFreq = 700; decay = 0.08; vol = 1.2; break;
+    case 'backspace': freq = 100; noiseFreq = 600; decay = 0.09; vol = 1.1; break;
+    case 'modifier': freq = 180; noiseFreq = 1200; decay = 0.04; vol = 0.8; break;
+  }
+  
+  osc.frequency.setValueAtTime(freq, t);
+  osc.frequency.exponentialRampToValueAtTime(freq/2, t + decay);
+  gain.gain.setValueAtTime(vol * 0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + decay);
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + decay);
+  
+  const bufferSize = audioCtx.sampleRate * decay;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = noiseFreq;
+  noiseFilter.Q.value = 1.0;
+  
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(vol * 0.3, t);
+  noiseGain.gain.exponentialRampToValueAtTime(0.01, t + decay);
+  
+  noise.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noise.start(t);
+}
+
+// --- Interactions ---
+function clearKeyTweens(key) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    if (tweens[i].target === key.group.position && tweens[i].prop === 'y') {
+      tweens.splice(i, 1);
+    }
+  }
+}
+
+function pressKeyMesh(key) {
+  if (isAnimating) return;
+  clearKeyTweens(key);
+  tween(key.group.position, 'y', 1.05, 30, 0, () => {
+    tween(key.group.position, 'y', 1.25, 80);
+  });
+  playClick(key.type);
+}
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  enableAudio();
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  
+  const intersects = raycaster.intersectObjects(keycapsGroup.map(kc => kc.mesh));
+  if (intersects.length > 0) {
+    const mesh = intersects[0].object;
+    const key = keycapsGroup.find(k => k.mesh === mesh);
+    if (key) pressKeyMesh(key);
+  }
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  enableAudio();
+  const key = keycapsGroup.find(k => k.code === e.code);
+  if (key && !key.isPressedPhys) {
+    key.isPressedPhys = true;
+    if (!isAnimating) {
+      clearKeyTweens(key);
+      tween(key.group.position, 'y', 1.05, 30);
+      playClick(key.type);
+    }
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  const key = keycapsGroup.find(k => k.code === e.code);
+  if (key && key.isPressedPhys) {
+    key.isPressedPhys = false;
+    if (!isAnimating) {
+      clearKeyTweens(key);
+      tween(key.group.position, 'y', 1.25, 80);
+    }
+  }
+});
+
+// UI Buttons
+document.getElementById('btn-replay').addEventListener('click', startAssembly);
+
+document.getElementById('btn-mute').addEventListener('click', (e) => {
+  muted = !muted;
+  e.target.innerText = `Mute: ${muted ? 'ON' : 'OFF'}`;
+});
+
+document.getElementById('btn-rgb').addEventListener('click', (e) => {
+  rgbOn = !rgbOn;
+  e.target.innerText = `RGB: ${rgbOn ? 'ON' : 'OFF'}`;
+  underglow.visible = rgbOn;
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// --- Main Loop ---
+let lastTime = performance.now();
+function animate(time) {
+  requestAnimationFrame(animate);
+  const dt = time - lastTime;
+  lastTime = time;
+  
+  updateTweens(dt);
+  controls.update();
+  
+  if (rgbOn) {
+    hue = (hue + 0.001) % 1;
+    underglowMat.color.setHSL(hue, 0.8, 0.5);
+  }
+  
+  renderer.render(scene, camera);
+}
+
+// Start
+requestAnimationFrame(animate);
+startAssembly();
+
+</script>
+</body>
+</html>
