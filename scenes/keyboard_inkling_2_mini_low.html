@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIS-75 — Mechanical Keyboard Showcase</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:rgba(16,18,26,.72); --line:rgba(255,255,255,.09);
+    --txt:#e8eaf0; --muted:#9aa1b2; --teal:#39d3c0; --amber:#ffb454;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%; margin:0; overflow:hidden; background:radial-gradient(1200px 800px at 70% -10%, #1a1e2b 0%, var(--bg) 55%); color:var(--txt); font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;}
+  #app{position:fixed; inset:0;}
+  canvas{display:block;}
+  .hud{position:fixed; pointer-events:none; z-index:10;}
+  .brand{top:18px; left:20px;}
+  .brand h1{font-size:15px; letter-spacing:.28em; margin:0; font-weight:700; text-transform:uppercase;}
+  .brand p{margin:4px 0 0; font-size:11px; color:var(--muted); letter-spacing:.08em;}
+  .controls{bottom:18px; left:20px; display:flex; gap:10px; pointer-events:auto; flex-wrap:wrap;}
+  button{appearance:none; border:1px solid var(--line); background:var(--panel); color:var(--txt);
+    padding:10px 16px; border-radius:12px; font-size:12px; letter-spacing:.06em; font-weight:600;
+    cursor:pointer; backdrop-filter:blur(10px); transition:all .16s ease; box-shadow:0 8px 24px rgba(0,0,0,.35);}
+  button:hover{border-color:rgba(57,211,192,.5); transform:translateY(-1px);}
+  button:active{transform:translateY(0) scale(.97);}
+  button.on{border-color:rgba(57,211,192,.7); color:var(--teal);}
+  .hint{bottom:20px; right:20px; max-width:230px; text-align:right; font-size:11px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px; backdrop-filter:blur(10px);
+    transition:opacity .5s ease, transform .5s ease; pointer-events:none;}
+  .hint.hidden{opacity:0; transform:translateY(8px);}
+  .tag{top:18px; right:20px; font-size:10px; letter-spacing:.22em; color:var(--muted); border:1px solid var(--line);
+    border-radius:999px; padding:7px 12px; background:var(--panel); backdrop-filter:blur(10px); pointer-events:auto;}
+  #boot{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    background:radial-gradient(1000px 700px at 50% 40%, #171b26 0%, #080a0f 70%); transition:opacity .6s ease;}
+  #boot.hidden{opacity:0; pointer-events:none;}
+  .spinner{width:34px; height:34px; border-radius:50%; border:2px solid rgba(255,255,255,.12); border-top-color:var(--teal); animation:spin .9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #boot p{font-size:11px; letter-spacing:.3em; color:var(--muted); text-transform:uppercase; margin:0;}
+  @media (max-width:640px){ .tag{display:none} .hint{max-width:180px} .brand p{display:none} }
+  @media (prefers-reduced-motion: reduce){ .spinner{animation-duration:2.4s} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="boot"><div class="spinner"></div><p>Assembling</p></div>
+
+<div class="hud brand">
+  <h1>AXIS-75</h1>
+  <p>Five-layer mechanical · 75-key · tactile</p>
+</div>
+<div class="hud tag">EXPLODED → ASSEMBLED</div>
+<div class="hud controls">
+  <button id="replayBtn">↻ Replay assembly</button>
+  <button id="muteBtn">Sound: on</button>
+</div>
+<div class="hud hint" id="hint">Click a key — or press your own keyboard — to enable audio. Sound starts after your first interaction.</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const T = (s)=> REDUCED ? s*0.35 : s; // shrink durations w/ reduced motion
+
+/* ---------- scene ---------- */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d12);
+scene.fog = new THREE.Fog(0x0b0d12, 24, 46);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, .1, 100);
+const target = new THREE.Vector3(0, .9, 0);
+const rig = { theta:-.62, phi:.92, radius:16.5, tTheta:-.62, tPhi:.92, tRadius:16.5 };
+
+/* ---------- lights ---------- */
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x1a1410, .75));
+const key = new THREE.DirectionalLight(0xffffff, 1.35);
+key.position.set(6,12,7);
+key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.left=-12; key.shadow.camera.right=12;
+key.shadow.camera.top=10; key.shadow.camera.bottom=-10;
+key.shadow.camera.far=40;
+key.shadow.bias=-0.0008;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x39d3c0,.55); rim.position.set(-9,6,-8); scene.add(rim);
+const fill = new THREE.PointLight(0x6f7bd6,.5,30); fill.position.set(0,4,9); scene.add(fill);
+
+/* ---------- helpers ---------- */
+const mat = (c,r=.7,m=0)=> new THREE.MeshStandardMaterial({color:c, roughness:r, metalness:m});
+function roundedBox(w,h,d,r,color,rough,metal){
+  // shell via box + soft edge illusion; keep simple but convincing with lighting
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat(color,rough,metal));
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+  return body;
+}
+function labelTexture(text, color, size){
+  const c = document.createElement('canvas'); c.width=c.height=256;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,256,256);
+  ctx.fillStyle = color; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font = `700 ${size||86}px Inter, Arial, sans-serif`;
+  ctx.fillText(text,128,132);
+  const t = new THREE.CanvasTexture(c); t.anisotropy=4; t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+
+/* ---------- layout ---------- */
+const U = 1, ROWS = 5;
+const layout = [
+  [ ['ESC','Escape',1],['1','Digit1',1],['2','Digit2',1],['3','Digit3',1],['4','Digit4',1],['5','Digit5',1],['6','Digit6',1],['7','Digit7',1],['8','Digit8',1],['9','Digit9',1],['0','Digit0',1],['-','Minus',1],['=','Equal',1],['⌫','Backspace',2] ],
+  [ ['TAB','Tab',1.5],['Q','KeyQ',1],['W','KeyW',1],['E','KeyE',1],['R','KeyR',1],['T','KeyT',1],['Y','KeyY',1],['U','KeyU',1],['I','KeyI',1],['O','KeyO',1],['P','KeyP',1],['[','BracketLeft',1],[']','BracketRight',1],['\\','Backslash',1.5] ],
+  [ ['CAPS','CapsLock',1.75],['A','KeyA',1],['S','KeyS',1],['D','KeyD',1],['F','KeyF',1],['G','KeyG',1],['H','KeyH',1],['J','KeyJ',1],['K','KeyK',1],['L','KeyL',1],[';','Semicolon',1],["'",'Quote',1],['RETURN','Enter',2.25] ],
+  [ ['SHIFT','ShiftLeft',2.25],['Z','KeyZ',1],['X','KeyX',1],['C','KeyC',1],['V','KeyV',1],['B','KeyB',1],['N','KeyN',1],['M','KeyM',1],[',','Comma',1],['.','Period',1],['/','Slash',1],['SHIFT','ShiftRight',2.75] ],
+  [ ['CTRL','ControlLeft',1.25],['GUI','MetaLeft',1.25],['ALT','AltLeft',1.25],['','Space',6.25],['ALT','AltRight',1.5],['FN','Fn',1.5],['CTRL','ControlRight',2.0] ]
+];
+const TOTAL_W = 15;
+let keys = [];
+layout.forEach((row, ri)=>{
+  let x = -TOTAL_W/2;
+  row.forEach(([label,code,w])=>{
+    const cx = x + w/2;
+    const z  = -2 + ri; // -2..2
+    keys.push({label, code, w, x:cx, z, ri, group:labelFor(code,label)});
+    x += w;
+  });
+});
+function labelFor(code,label){
+  if(code==='Space') return 'space';
+  if(code==='Enter') return 'enter';
+  if(code==='Backspace') return 'backspace';
+  if(['Tab','ShiftLeft','ShiftRight','ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','CapsLock','Fn','Escape'].includes(code)) return 'mod';
+  if(/^(Key|Digit|Numpad)/.test(code)) return 'letter';
+  return 'punct';
+}
+
+/* ---------- layers ---------- */
+const world = new THREE.Group(); scene.add(world);
+
+/* case */
+const caseGroup = new THREE.Group(); world.add(caseGroup);
+const caseColor = 0x20232d;
+const caseBody = roundedBox(16.4, .62, 6.35, .06, caseColor, .62, .18);
+caseBody.position.y = .31; caseGroup.add(caseBody);
+const caseLip = roundedBox(16.7, .12, 6.6, .05, 0x161922, .55, .2);
+caseLip.position.y = .06; caseGroup.add(caseLip);
+// rubber feet
+[[-7.6,-2.7],[7.6,-2.7],[-7.6,2.7],[7.6,2.7]].forEach(([x,z])=>{
+  const f = new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.12,24), mat(0x0c0d12,.85));
+  f.position.set(x,-.06,z); f.castShadow=true; caseGroup.add(f);
+});
+// PCB
+const pcbGroup = new THREE.Group(); world.add(pcbGroup);
+const pcb = roundedBox(15.05,.11,5.15,.03, 0x0e4b3e, .55, .12);
+pcbGroup.add(pcb);
+const pcbEdge = new THREE.Mesh(new THREE.BoxGeometry(15.1,.045,5.2), mat(0xb8862f,.4,.7));
+pcbEdge.position.y=-.06; pcbGroup.add(pcbEdge);
+// copper pads
+for(let i=0;i<46;i++){
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(.16,.02,.16), mat(0xd9a441,.35,.8));
+  pad.position.set((Math.random()-.5)*14.2,.065,(Math.random()-.5)*4.6);
+  pcbGroup.add(pad);
+}
+const chip = new THREE.Mesh(new THREE.BoxGeometry(1.15,.09,1.15), mat(0x101018,.5,.3));
+chip.position.set(0,.09,0); pcbGroup.add(chip);
+
+/* foam */
+const foamGroup = new THREE.Group(); world.add(foamGroup);
+foamGroup.add(roundedBox(15.0,.2,5.05,.03, 0x1b1e26, .95, 0));
+
+/* plate */
+const plateGroup = new THREE.Group(); world.add(plateGroup);
+const plate = roundedBox(15.0,.12,5.05,.03, 0x9aa3b2, .32, .9);
+plateGroup.add(plate);
+// plate accent lines
+const lineMat = mat(0x6f7888,.4,.8);
+[-1.2,1.2].forEach(z=>{
+  const l = new THREE.Mesh(new THREE.BoxGeometry(15.02,.02,.035), lineMat);
+  l.position.set(0,.065,z); plateGroup.add(l);
+});
+
+/* RGB front strip (subtle) */
+const stripMat = new THREE.MeshStandardMaterial({color:0x101018, emissive:0x39d3c0, emissiveIntensity:1.5, roughness:.3});
+const strip = new THREE.Mesh(new THREE.BoxGeometry(13.4,.06,.06), stripMat);
+strip.position.set(0,.34,3.19); caseGroup.add(strip);
+const stripLight = new THREE.PointLight(0x39d3c0,.55,9); stripLight.position.set(0,.55,3.6); caseGroup.add(stripLight);
+
+/* switches + keycaps */
+const switchGroupRoot = new THREE.Group(); world.add(switchGroupRoot);
+const capGroupRoot = new THREE.Group(); world.add(capGroupRoot);
+
+const capColorFor = {letter:0x2b2e38, punct:0x2b2e38, mod:0x23252f, space:0x33394a, enter:0x1d4a44, backspace:0x40302b};
+const accent = {letter:0xd7dae2, punct:0xd7dae2, mod:0xa9b0c0, space:0xe7ecf3, enter:0x8df5e8, backspace:0xffd7a1};
+
+const labelCache = {};
+function capLabel(text, color){
+  const k = text+'|'+color;
+  if(!labelCache[k]) labelCache[k] = labelTexture(text, color, text.length>5?60:96);
+  return labelCache[k];
+}
+
+keys.forEach((kd)=>{
+  // switch
+  const sw = new THREE.Group();
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(.46,.3,.46), mat(0xe8e2d2,.6,0));
+  housing.position.y = .15; housing.castShadow = true; sw.add(housing);
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(.18,.12,.18), mat(kd.group==='enter'?0x2fd9c4:(kd.group==='backspace'?0xff9e57:0x3f8f86),.55,0));
+  stem.position.y = .34; sw.add(stem);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(.34,.05,.34), mat(0x14151b,.6));
+  top.position.y = .42; sw.add(top);
+  sw.position.set(kd.x, 1.08, kd.z);
+  switchGroupRoot.add(sw);
+  kd.switchGroup = sw;
+
+  // keycap
+  const cap = new THREE.Group();
+  const col = capColorFor[kd.group] ?? 0x2b2e38;
+  const base = new THREE.Mesh(new THREE.BoxGeometry(.92*kd.w - .06,.3,.92), mat(col,.58,.12));
+  base.position.y=.15; base.castShadow=true; base.receiveShadow=true; cap.add(base);
+  const topSlab = new THREE.Mesh(new THREE.BoxGeometry(.86*kd.w - .06,.16,.86), mat(col,.5,.15));
+  topSlab.position.y=.38; topSlab.castShadow=true; cap.add(topSlab);
+  const label = kd.code==='Space' ? ' ' : kd.label;
+  if(kd.code!=='Space'){
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(.62,.62),
+      new THREE.MeshBasicMaterial({map:capLabel(label, '#'+new THREE.Color(accent[kd.group]||0xd7dae2).getHexString()), transparent:true, depthWrite:false, toneMapped:false}));
+    plane.rotation.x = -Math.PI/2; plane.position.y = .465;
+    plane.scale.set(kd.w,1,1);
+    plane.scale.x = Math.min(kd.w, 2.25);
+    cap.add(plane);
+  } else {
+    // crisp spacebar line
+    const line = new THREE.Mesh(new THREE.BoxGeometry(3.2,.05,.05), mat(0x8db7ad,.5,.2));
+    line.position.set(0,.465,0); cap.add(line);
+  }
+  cap.position.set(kd.x, 1.40, kd.z);
+  cap.userData.code = kd.code;
+  base.userData.code = kd.code; base.userData.cap = kd; base.userData.pick=true;
+  topSlab.userData.code = kd.code; topSlab.userData.cap = kd; topSlab.userData.pick=true;
+  capGroupRoot.add(cap);
+  kd.capGroup = cap; kd.capBaseY = 1.40; kd.switchBaseY = 1.08;
+  // store meshes
+  kd.pickMeshes = [base, topSlab];
+});
+
+/* populate pick list for raycast */
+const pickMeshes = [];
+keys.forEach(k=>{ k.pickMeshes.forEach(m=>pickMeshes.push(m)); });
+
+/* ---------- camera orbit ---------- */
+let pointerDown=false, moved=0, lastX=0, lastY=0;
+const el = renderer.domElement;
+el.addEventListener('pointerdown', e=>{ pointerDown=true; moved=0; lastX=e.clientX; lastY=e.clientY; el.setPointerCapture(e.pointerId); firstInteraction(); });
+el.addEventListener('pointermove', e=>{
+  if(!pointerDown) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY; moved+=Math.abs(dx)+Math.abs(dy);
+  lastX=e.clientX; lastY=e.clientY;
+  rig.tTheta -= dx*.0052;
+  rig.tPhi   = THREE.MathUtils.clamp(rig.tPhi - dy*.0042, .32, 1.32);
+});
+el.addEventListener('pointerup', e=>{
+  pointerDown=false;
+  if(moved<6){ handlePick(e.clientX,e.clientY); }
+});
+el.addEventListener('wheel', e=>{
+  e.preventDefault();
+  rig.tRadius = THREE.MathUtils.clamp(rig.tRadius + e.deltaY*.02, 8, 30);
+},{passive:false});
+
+/* ---------- audio ---------- */
+let actx=null, master=null, noiseBuf=null, muted=false, audioReady=false;
+const hint = document.getElementById('hint');
+function firstInteraction(){
+  if(!audioReady){
+    try{
+      actx = new (window.AudioContext||window.webkitAudioContext)();
+      master = actx.createGain(); master.gain.value = muted?0:.8; master.connect(actx.destination);
+      const len = actx.sampleRate*.12; noiseBuf = actx.createBuffer(1,len,actx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+      audioReady=true;
+    }catch(err){}
+  }
+  if(actx && actx.state==='suspended') actx.resume();
+  hint.classList.add('hidden');
+}
+document.addEventListener('pointerdown', firstInteraction, {once:false});
+document.addEventListener('keydown', firstInteraction, {once:false});
+
+const FREQ = {letter:340, punct:380, space:96, enter:520, backspace:250, mod:170, spaceFn:96};
+function playSound(group){
+  if(!audioReady || muted) return;
+  const now = actx.currentTime;
+  const g = actx.createGain(); g.connect(master);
+  let freq = 340, dur = .06, thresh=3400, bp=900;
+  if(group==='space'){ freq=96; dur=.09; bp=420; }
+  else if(group==='enter'){ freq=520; dur=.07; bp=1500; }
+  else if(group==='backspace'){ freq=245; dur=.07; bp=760; }
+  else if(group==='mod'){ freq=170; dur=.06; bp=560; }
+  else if(group==='punct'){ freq=395; dur=.05; bp=1200; }
+  // click noise
+  const src = actx.createBufferSource(); src.buffer = noiseBuf;
+  const filt = actx.createBiquadFilter(); filt.type='bandpass'; filt.frequency.value=bp; filt.Q.value=1.1;
+  const ng = actx.createGain();
+  ng.gain.setValueAtTime(.9, now); ng.gain.exponentialRampToValueAtTime(.001, now+dur);
+  src.connect(filt); filt.connect(ng); ng.connect(g); src.start(now);
+  // thock oscillator
+  const osc = actx.createOscillator(); osc.type='sine';
+  osc.frequency.setValueAtTime(freq, now); osc.frequency.exponentialRampToValueAtTime(freq*.55, now+dur);
+  const og = actx.createGain();
+  og.gain.setValueAtTime(.0001, now); og.gain.exponentialRampToValueAtTime(.55, now+.008);
+  og.gain.exponentialRampToValueAtTime(.0001, now+dur+.02);
+  osc.connect(og); og.connect(g); osc.start(now); osc.stop(now+dur+.05);
+}
+
+/* ---------- tweens / timeline ---------- */
+const tweens = [];
+function tween(dur, onUpdate, onComplete, ease){
+  return new Promise(res=>{
+    tweens.push({t:0, dur, onUpdate, onComplete:()=>{res();}, ease:ease||easeOutCubic});
+  });
+}
+function easeOutCubic(x){return 1-Math.pow(1-x,3);}
+function easeInOutCubic(x){return x<.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2;}
+function easeOutBack(x){const c=1.70158; return 1 + (c+1)*Math.pow(x-1,3) + c*Math.pow(x-1,2);}
+function updateTweens(dt){
+  for(let i=tweens.length-1;i>=0;i--){
+    const tw = tweens[i]; tw.t += dt;
+    const p = Math.min(tw.t/tw.dur,1);
+    tw.onUpdate(tw.ease(p));
+    if(p>=1){ tweens.splice(i,1); tw.onComplete && tw.onComplete(); }
+  }
+}
+
+/* ---------- assembly ---------- */
+const layerBaseY = {pcb:0.62, foam:0.82, plate:1.02};
+pcbGroup.position.y = layerBaseY.pcb;
+foamGroup.position.y = layerBaseY.foam;
+plateGroup.position.y = layerBaseY.plate;
+
+let assembling=false, token=0, assemblyDone=false;
+
+async function setLayer(group, finalY, delay, dropY){
+  group.visible = true;
+  group.position.y = finalY + dropY;
+  await delay;
+  await tween(T(.95), p=>{ group.position.y = finalY + dropY*(1-p); }, null, easeInOutCubic);
+  group.position.y = finalY;
+}
+
+async function startAssembly(){
+  token++;
+  const my = token;
+  assembling = true; assemblyDone = false;
+  tweens.length = 0;
+  const rise = REDUCED?5:11;
+
+  // reset layers + items
+  pcbGroup.visible = true; pcbGroup.position.y = layerBaseY.pcb+rise;
+  foamGroup.visible = false; foamGroup.position.y = layerBaseY.foam+rise;
+  plateGroup.visible = false; plateGroup.position.y = layerBaseY.plate+rise;
+  keys.forEach(k=>{
+    k.switchGroup.visible = true; k.switchGroup.position.y = k.switchBaseY + rise;
+    k.capGroup.visible = true; k.capGroup.position.y = k.capBaseY + rise;
+    k.press = 0;
+  });
+
+  document.getElementById('boot').classList.remove('hidden');
+
+  // PCB
+  await tween(T(1.1), p=>{ pcbGroup.position.y = layerBaseY.pcb + rise*(1-p); }, null, easeInOutCubic);
+  if(my!==token) return;
+  await tween(T(.18), ()=>{}, null);
+  document.getElementById('boot').classList.add('hidden');
+
+  // foam
+  foamGroup.visible = true; foamGroup.position.y = layerBaseY.foam + rise;
+  await tween(T(.9), p=>{ foamGroup.position.y = layerBaseY.foam + rise*(1-p); }, null, easeInOutCubic);
+  if(my!==token) return;
+  await tween(T(.16), ()=>{}, null);
+
+  // plate
+  plateGroup.visible = true; plateGroup.position.y = layerBaseY.plate + rise;
+  await tween(T(.9), p=>{ plateGroup.position.y = layerBaseY.plate + rise*(1-p); }, null, easeInOutCubic);
+  if(my!==token) return;
+  await tween(T(.16), ()=>{}, null);
+
+  // switches left->right
+  const byX = [...keys].sort((a,b)=> (a.z-b.z)||(a.x-b.x) || (Math.abs(a.x)-Math.abs(b.x)) );
+  const byX2 = [...keys].sort((a,b)=> a.x-b.x || a.z-b.z);
+  await Promise.all(byX2.map((k,i)=>{
+    const start = performance.now() + i*T(38);
+    return new Promise(res=>{
+      const iv = setInterval(()=>{
+        if(my!==token){ clearInterval(iv); res(); return; }
+        const now = performance.now();
+        if(now>=start){
+          clearInterval(iv);
+          tween(T(.32), p=>{ k.switchGroup.position.y = k.switchBaseY + (1-p)*rise; }, null, easeOutCubic).then(res);
+        }
+      }, 16);
+    });
+  }));
+  if(my!==token) return;
+  await tween(T(.22), ()=>{}, null);
+
+  // keycaps left->right
+  await Promise.all(byX2.map((k,i)=>{
+    const start = performance.now() + i*T(34);
+    return new Promise(res=>{
+      const iv = setInterval(()=>{
+        if(my!==token){ clearInterval(iv); res(); return; }
+        const now = performance.now();
+        if(now>=start){
+          clearInterval(iv);
+          tween(T(.34), p=>{ k.capGroup.position.y = k.capBaseY + (1-p)*rise; }, null, easeOutBack).then(res);
+        }
+      }, 16);
+    });
+  }));
+  if(my!==token) return;
+  keys.forEach(k=>{ k.capGroup.position.y = k.capBaseY; k.switchGroup.position.y = k.switchBaseY; });
+  assembling=false; assemblyDone=true;
+}
+
+/* ---------- interaction ---------- */
+const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+const keyByCode = {}; keys.forEach(k=> keyByCode[k.code]=k);
+
+function pressKey(code, fromPhysical){
+  const kd = keyByCode[code];
+  if(!kd || assembling) return;
+  kd.press = 1;
+  playSound(kd.group);
+  kd.pressUntil = performance.now()+170;
+}
+function handlePick(cx, cy){
+  if(assembling) return;
+  mouse.x = (cx/innerWidth)*2-1; mouse.y = -(cy/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(pickMeshes, false);
+  if(hits.length){
+    pressKey(hits[0].object.userData.code, false);
+  }
+}
+document.addEventListener('keydown', e=>{
+  const code = e.code;
+  if(keyByCode[code]){
+    e.preventDefault();
+    if(!e.repeat) pressKey(code, true);
+  }
+});
+
+/* ---------- controls UI ---------- */
+document.getElementById('replayBtn').addEventListener('click', ()=>{ firstInteraction(); startAssembly(); });
+const muteBtn = document.getElementById('muteBtn');
+muteBtn.addEventListener('click', ()=>{
+  firstInteraction();
+  muted = !muted;
+  muteBtn.textContent = muted? 'Sound: off' : 'Sound: on';
+  if(master) master.gain.value = muted?0:.8;
+  muteBtn.classList.toggle('on', muted);
+});
+document.getElementById('boot').addEventListener('pointerdown', firstInteraction);
+
+/* ---------- animation loop ---------- */
+const clock = new THREE.Clock();
+function tick(){
+  const dt = Math.min(clock.getDelta(), .05);
+  updateTweens(dt);
+
+  // key press decay
+  const now = performance.now();
+  keys.forEach(k=>{
+    if(k.press>0){
+      k.press = Math.max(0, k.press - dt*6.5);
+      if(!assembling && assemblyDone){
+        k.capGroup.position.y = k.capBaseY - .17 * easeOutCubic(Math.max(k.press,0));
+      } else if(assembling){
+        // keep assembly y (handled by tweens)
+      }
+    }
+  });
+
+  // RGB strip pulse
+  const hue = (now*0.00006)%1;
+  if(!REDUCED){
+    stripMat.emissive.setHSL(hue, .75, .55);
+    stripLight.color.setHSL(hue, .75, .6);
+    stripMat.emissiveIntensity = 1.25 + Math.sin(now*.003)*.35;
+  } else {
+    stripMat.emissive.set(0x39d3c0); stripLight.color.set(0x39d3c0); stripMat.emissiveIntensity = 1.3;
+  }
+
+  // camera
+  rig.theta += (rig.tTheta-rig.theta)*Math.min(dt*8,1);
+  rig.phi   += (rig.tPhi-rig.phi)*Math.min(dt*8,1);
+  rig.radius+= (rig.tRadius-rig.radius)*Math.min(dt*8,1);
+  const sp = Math.sin(rig.phi), cp = Math.cos(rig.phi);
+  camera.position.set(
+    target.x + rig.radius*sp*Math.sin(rig.theta),
+    target.y + rig.radius*cp,
+    target.z + rig.radius*sp*Math.cos(rig.theta)
+  );
+  camera.lookAt(target);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- resize ---------- */
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- go ---------- */
+tick();
+setTimeout(()=>{ startAssembly(); }, 350);
+})();
+</script>
+</body>
+</html>
