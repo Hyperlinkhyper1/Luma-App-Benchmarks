@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Lisbon Cruise Terminal — Dock 3</title>
+<style>
+  :root{
+    --ui-bg: rgba(10,16,26,0.62);
+    --ui-brd: rgba(255,255,255,0.14);
+    --ui-fg: #e9f2ff;
+    --accent: #ffc857;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b1017;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color:var(--ui-fg); -webkit-font-smoothing:antialiased;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+
+  #hud{
+    position:fixed;left:14px;top:14px;width:252px;
+    background:var(--ui-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--ui-brd);border-radius:14px;padding:12px 13px 11px;
+    font-size:11px;line-height:1.35;user-select:none;z-index:20;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35);
+    max-height:calc(100vh - 150px);overflow:auto;overflow-x:hidden;
+    transition:opacity .25s ease, transform .25s ease;
+  }
+  #hud.hidden{opacity:0;pointer-events:none;transform:translateY(-8px);}
+  .title{font-weight:800;font-size:12px;letter-spacing:.16em;color:#fff;margin:0 0 1px;}
+  .sub{color:#8fa6bf;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;}
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:9px 0 5px;}
+  .sec span:first-child{font-size:9px;letter-spacing:.18em;color:#7f96ae;text-transform:uppercase;}
+  .sec span:last-child{font-size:10px;color:var(--accent);font-weight:700;letter-spacing:.06em;}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px;}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:5px;}
+  button{
+    font:inherit;font-size:10.5px;font-weight:700;letter-spacing:.05em;color:var(--ui-fg);
+    background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;padding:6px 5px;cursor:pointer;text-align:center;
+    transition:background .15s, border-color .15s, transform .08s;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  button:hover{background:rgba(255,255,255,0.16);border-color:rgba(255,255,255,0.26);}
+  button:active{transform:translateY(1px);}
+  button.on{background:rgba(255,200,87,0.20);border-color:rgba(255,200,87,0.55);color:#ffd98a;}
+  .btn-w{width:100%;}
+  .big{background:rgba(255,200,87,0.16);border-color:rgba(255,200,87,0.45);color:#ffdf9e;padding:8px 5px;}
+  .big:hover{background:rgba(255,200,87,0.30);}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+    background:linear-gradient(90deg,#63a6ff,#ffc857 50%,#ff5d5d);opacity:.85;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:#fff;border:2px solid #ffc857;margin-top:-5px;box-shadow:0 1px 4px rgba(0,0,0,.5);}
+  input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:linear-gradient(90deg,#63a6ff,#ffc857 50%,#ff5d5d);}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #ffc857;}
+  .val{color:var(--accent);font-weight:700;}
+  .hint{margin-top:9px;font-size:9px;line-height:1.5;color:#7c93aa;border-top:1px solid rgba(255,255,255,0.08);padding-top:7px;}
+  .hint b{color:#b9cde2;font-weight:600;}
+  kbd{background:rgba(255,255,255,.1);border-radius:4px;padding:0 4px;font-size:9px;font-family:inherit;}
+  #toast{
+    position:fixed;left:50%;top:22px;transform:translate(-50%,-16px);
+    background:rgba(10,16,26,.85);border:1px solid rgba(255,200,87,.45);color:#ffdf9e;
+    padding:9px 18px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.12em;
+    opacity:0;pointer-events:none;transition:all .3s ease;z-index:30;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+  #loader{
+    position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 45%, #13202f 0%, #070a0f 75%);z-index:100;
+    transition:opacity .7s ease;gap:16px;
+  }
+  #loader.gone{opacity:0;pointer-events:none;}
+  #loader .lb{font-size:12px;letter-spacing:.42em;color:#cfe0f2;font-weight:700;text-transform:uppercase;}
+  #loader .lt{width:180px;height:3px;background:rgba(255,255,255,.09);border-radius:2px;overflow:hidden;}
+  #loader .lt i{display:block;height:100%;width:30%;border-radius:2px;background:linear-gradient(90deg,#63a6ff,#ffc857,#ff5d5d);
+    animation:load 1.15s cubic-bezier(.6,.05,.4,.95) infinite;}
+  @keyframes load{0%{margin-left:-30%;}100%{margin-left:100%;}}
+  #nogl{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#070a0f;
+    color:#cfe0f2;font-size:15px;text-align:center;padding:30px;z-index:200;line-height:1.7;}
+  #toggleui{
+    position:fixed;right:14px;bottom:14px;z-index:25;width:36px;height:36px;border-radius:10px;
+    background:var(--ui-bg);backdrop-filter:blur(10px);border:1px solid var(--ui-brd);color:#fff;
+    font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  #toggleui:hover{background:rgba(255,255,255,.16);}
+  @media (max-width:720px){
+    #hud{width:calc(100vw - 28px);max-height:46vh;left:14px;top:12px;font-size:10.5px;}
+    .row{grid-template-columns:1fr 1fr;}
+    .row3{grid-template-columns:1fr 1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div class="title">LISBON DOCK 3</div>
+  <div class="sub">Cruise Terminal · Jardim do Tabaco</div>
+
+  <div class="sec"><span>Camera</span><span id="camname">Miradouro</span></div>
+  <div class="row3">
+    <button data-cam="miradouro">MIRADOURO</button>
+    <button data-cam="waterfront">WATERFRONT</button>
+    <button data-cam="aerial">AERIAL</button>
+  </div>
+  <div class="row3">
+    <button data-cam="river">FROM RIVER</button>
+    <button data-cam="deck">SHIP DECK</button>
+    <button id="walkbtn">WALK MODE</button>
+  </div>
+
+  <div class="sec"><span>Deck Activity</span><span class="val" id="activity">BERTHED</span></div>
+  <div class="row">
+    <button class="big" id="depart">DEPARTURE</button>
+    <button class="big" id="return">RETURN TO BERTH</button>
+  </div>
+
+  <div class="sec"><span>Time of Day</span><span class="val" id="todname">GOLDEN HOUR</span></div>
+  <input id="tod" type="range" min="0" max="23.99" step="0.01" value="19.4">
+  <div class="row">
+    <button id="playbtn" class="on">⏸ PAUSE TIME</button>
+    <button id="weatherbtn">☁ CLEAR</button>
+  </div>
+
+  <div class="sec"><span>Vessel &amp; Port</span><span class="val" id="trimode">BERTHED</span></div>
+  <div class="hint">
+    Drag to orbit · Scroll to zoom · Right-drag pan<br>
+    <b>WASD</b>/arrows move · <b>Mouse</b> look · <b>Shift</b> run<br>
+    <kbd>Space</kbd> depart · <kbd>R</kbd> return · <kbd>H</kbd> hide UI · <kbd>1</kbd>–<kbd>5</kbd> cameras
+  </div>
+</div>
+
+<button id="toggleui" title="Toggle UI">☰</button>
+<div id="toast"></div>
+<div id="nogl"><div><div><b>WebGL is not available.</b></div><div>This 3D scene needs WebGL to run.</div></div></div>
+<div id="loader">
+  <div class="lb">Dock 3</div>
+  <div class="lt"><i></i></div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+
+/* =========================================================================
+   CANVAS / RENDERER
+   ========================================================================= */
+const container = document.getElementById('app');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance', stencil:false });
+} catch (e) {
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('nogl').style.display = 'flex';
+  throw e;
+}
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(DPR);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.sortObjects = true;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x9fc2d6, 0.00022);
+
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.5, 9000);
+camera.position.set(-300, 60, 640);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.rotateSpeed = 0.55;
+controls.zoomSpeed = 0.8;
+controls.panSpeed = 0.6;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.minDistance = 10;
+controls.maxDistance = 4200;
+controls.target.set(0, 0, -160);
+
+/* =========================================================================
+   HELPERS
+   ========================================================================= */
+const V3 = (x,y,z)=>new THREE.Vector3(x,y,z);
+const clamp = (v,a,b)=>v<a?a:v>b?b:v;
+const lerp = (a,b,t)=>a+(b-a)*t;
+const rand = (a=1,b=0)=> b + Math.random()*(a-b);
+const randi = (a,b)=> Math.floor(rand(a,b+1));
+
+const _m = new THREE.Matrix4();
+const _v1 = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _e = new THREE.Euler();
+
+function geoMat(geo, mat){
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const s = Math.max(bb.max.x-bb.min.x, bb.max.y-bb.min.y, bb.max.z-bb.min.z);
+  return new THREE.Mesh(geo, mat);
+}
+function addMesh(parent, geo, mat, x=0,y=0,z=0){
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x,y,z); m.matrixAutoUpdate = false;
+  parent.add(m); return m;
+}
+
+/* ---------- Instanced Mesh Factory (batched, merged materials) ---------- */
+class Batch {
+  constructor(geo, mat, parent, max=4000){
+    this.geo = geo; this.mat = mat; this.parent = parent; this.max = max;
+    this.count = 0;
+    this.mesh = new THREE.InstancedMesh(geo, mat, max);
+    this.mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.parent.add(this.mesh);
+    this.matrix = new THREE.Matrix4();
+  }
+  clear(){ this.count = 0; }
+  push(px,py,pz, rx=0, ry=0, rz=0, s=1, sx, sy, sz){
+    const c = this.count; if (c >= this.max) return;
+    _q.setFromEuler(_e.set(rx, ry, rz));
+    const sxx = sx===undefined? s : sx;
+    const syy = sy===undefined? s : sy;
+    const szz = sz===undefined? s : sz;
+    _m.compose(V3(px,py,pz), _q, V3(sxx,syy,szz));
+    this.mesh.setMatrixAt(c, _m);
+    this.count = c+1;
+  }
+  end(){ this.mesh.count = this.count; this.mesh.instanceMatrix.needsUpdate = true; this.matrixAutoUpdate = false; }
+}
+
+function makeBox(w,h,d,mat){ const g = new THREE.BoxGeometry(w,h,d); return new THREE.InstancedMesh(g, mat, 4096); }
+
+/* =========================================================================
+   POST PROCESS - light bloom via additive lens-pass (no extra libs)
+   ========================================================================= */
+const RenderComposer = (function(){
+  const rt = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
+  const down = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
+  const blurAB = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
+
+  const vs = `
+    varying vec2 vUv;
+    void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+  const fsBase = `
+    uniform sampler2D tDiffuse; varying vec2 vUv;
+    void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; gl_FragColor = vec4(c,1.0); }`;
+  const fsBright = `
+    uniform sampler2D tDiffuse; varying vec2 vUv;
+    uniform float threshold, amount;
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      float l = max(c.r, max(c.g,c.b));
+      float k = smoothstep(threshold, threshold+0.55, l);
+      gl_FragColor = vec4(c*k*amount, 1.0);
+    }`;
+  const fsBlur = `
+    uniform sampler2D tDiffuse; uniform vec2 texel; varying vec2 vUv;
+    void main(){
+      vec3 s = texture2D(tDiffuse, vUv).rgb * 0.227027;
+      s += texture2D(tDiffuse, vUv + texel * vec2(1.384615,0.0)).rgb * 0.316216;
+      s += texture2D(tDiffuse, vUv - texel * vec2(1.384615,0.0)).rgb * 0.316216;
+      s += texture2D(tDiffuse, vUv + texel * vec2(0.0,1.384615)).rgb * 0.316216;
+      s += texture2D(tDiffuse, vUv - texel * vec2(0.0,1.384615)).rgb * 0.316216;
+      gl_FragColor = vec4(s,1.0);
+    }`;
+  const fsFinal = `
+    uniform sampler2D tBase; uniform sampler2D tBlur; uniform float strength;
+    varying vec2 vUv;
+    void main(){ vec3 c = texture2D(tBase, vUv).rgb; vec3 b = texture2D(tBlur, vUv).rgb;
+      gl_FragColor = vec4(c + b*strength, 1.0); }`;
+
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMaterial({ uniforms:{}, vertexShader:vs, fragmentShader:fsBase, depthTest:false, depthWrite:false, toneMapped:false }));
+  quad.frustumCulled = false;
+  const quadScene = new THREE.Scene();
+  const quadCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  quadScene.add(quad);
+
+  const mats = {
+    bright: new THREE.ShaderMaterial({ uniforms:{ tDiffuse:{value:null}, threshold:{value:0.85}, amount:{value:1.0} }, vertexShader:vs, fragmentShader:fsBright, depthTest:false, depthWrite:false, toneMapped:false }),
+    blurA:  new THREE.ShaderMaterial({ uniforms:{ tDiffuse:{value:null}, texel:{value:new THREE.Vector2()} }, vertexShader:vs, fragmentShader:fsBlur, depthTest:false, depthWrite:false, toneMapped:false }),
+    blurB:  new THREE.ShaderMaterial({ uniforms:{ tDiffuse:{value:null}, texel:{value:new THREE.Vector2()} }, vertexShader:vs, fragmentShader:fsBlur, depthTest:false, depthWrite:false, toneMapped:false }),
+    final:  new THREE.ShaderMaterial({ uniforms:{ tBase:{value:null}, tBlur:{value:null}, strength:{value:0.0} }, vertexShader:vs, fragmentShader:fsFinal, depthTest:false, depthWrite:false, toneMapped:false })
+  };
+
+  let lastW=0, lastH=0;
+
+  return {
+    targets:{ rt, down, blurA, blurB },
+    get size(){ return { w:lastW, h:lastH }; },
+    resize(w,h){
+      lastW=w; lastH=h;
+      const dpr = 1; // resolution already at DPR by renderer
+      rt.setSize(w, h); down.setSize(w, h); blurA.setSize(w, h); blurB.setSize(w, h);
+    },
+    render(scene2, cam){
+      const w = lastW, h = lastH;
+      if (w===0 || h===0) return;
+      // base
+      renderer.setRenderTarget(rt);
+      renderer.render(scene2, cam);
+      // bright
+      setMat(mats.bright); setTarget(down);
+      setMat(mats.blurA); setTarget(down); // re-use down as temp
+      // blur pass 1 (from down) -> blurA
+      setMat(mats.blurA); setTarget(blurA);
+      // blur pass 2 (from blurA) -> blurB
+      setMat(mats.blurB); setTarget(blurB);
+      // final
+      setMat(mats.final); setTarget(null);
+    }
+  };
+
+  function setTarget(t){ quad.material.uniforms.tDiffuse.value = t && t.texture ? t.texture : null; quad.material.uniforms.texel.value.set(1/(t? t.width : lastW), 1/(t? t.height : lastH)); quad.material.needsUpdate = true; }
+  function setMat(m){
+    quad.material = m;
+    if (m.uniforms.tDiffuse) m.uniforms.tDiffuse.value = rt.texture;
+  }
+})();
+</script>
+</body>
+</html>
