@@ -1,0 +1,4131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MSC Virtuosa — At Sea</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a1420;
+    font-family: "Segoe UI", Trebuchet MS, Verdana, sans-serif;
+    color: #e8f2f8;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: radial-gradient(ellipse at 50% 40%, rgba(10,26,40,0.55), rgba(3,10,18,0.92));
+    transition: opacity 0.8s ease;
+    cursor: pointer;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  #overlay h1 {
+    font-size: clamp(28px, 5vw, 60px);
+    letter-spacing: 6px;
+    font-weight: 300;
+    margin: 0 0 6px 0;
+    color: #ffffff;
+    text-shadow: 0 0 30px rgba(90,180,255,0.55);
+  }
+  #overlay .sub {
+    font-size: 15px;
+    letter-spacing: 3px;
+    font-weight: 300;
+    color: #9fc8e8;
+    margin-bottom: 26px;
+  }
+  #overlay .msc {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 44px;
+    letter-spacing: 10px;
+    color: #e2543f;
+    font-weight: bold;
+    margin: 0 0 26px 0;
+    text-shadow: 0 0 24px rgba(226,84,63,0.65);
+  }
+  #overlay .controls-box {
+    background: rgba(10,30,48,0.55);
+    border: 1px solid rgba(140,200,240,0.25);
+    border-radius: 12px;
+    padding: 18px 30px;
+    font-size: 14px;
+    line-height: 1.9;
+    letter-spacing: 0.5px;
+    color: #cfe8f7;
+    margin-bottom: 22px;
+    backdrop-filter: blur(4px);
+  }
+  #overlay .controls-box b { color: #ffd84a; font-weight: 600; }
+  #overlay .gear {
+    font-size: 13px;
+    color: #9fc8e8;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 10px;
+  }
+  #hint {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: rgba(220,235,245,0.75);
+    background: rgba(8,20,32,0.45);
+    border: 1px solid rgba(140,200,240,0.15);
+    padding: 8px 18px;
+    border-radius: 20px;
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+  #controls {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 11;
+    background: rgba(8,22,36,0.55);
+    border: 1px solid rgba(140,200,240,0.2);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: #cfe8f7;
+    backdrop-filter: blur(6px);
+    width: 208px;
+  }
+  #controls h3 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: #9fc8e8;
+    font-weight: 600;
+  }
+  #controls .row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  #controls label { color: #9fc8e8; }
+  #controls select, #controls input[type="range"] {
+    background: rgba(10,30,48,0.7);
+    color: #e8f2f8;
+    border: 1px solid rgba(140,200,240,0.25);
+    border-radius: 6px;
+    padding: 3px 6px;
+    font-size: 12px;
+    width: 96px;
+    outline: none;
+  }
+  #controls input[type="range"] { width: 84px; }
+  #controls button {
+    width: 100%;
+    margin-top: 6px;
+    background: rgba(226,84,63,0.25);
+    color: #ffb4a3;
+    border: 1px solid rgba(226,84,63,0.5);
+    border-radius: 6px;
+    padding: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  #controls button:hover { background: rgba(226,84,63,0.45); color: #fff; }
+  #sunState { color: #ffd84a; font-weight: 600; }
+  @media (max-width: 720px) {
+    #controls { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="overlay">
+  <div class="msc">MSC</div>
+  <h1>VIRTUOSA</h1>
+  <div class="sub">&mdash; A DAY AT SEA &mdash;</div>
+  <div class="controls-box">
+    <b>W A S D</b> / <b>Arrows</b> &nbsp;move &nbsp;&bull;&nbsp; <b>Mouse</b> look<br>
+    <b>Space</b> hop &nbsp;&bull;&nbsp; <b>Shift</b> run<br>
+    <b>E</b> stairs &nbsp;&bull;&nbsp; <b>F</b> toggle camera
+  </div>
+  <div style="color:#9fc8e8;font-size:13px;letter-spacing:3px;">CLICK TO BOARD THE SHIP</div>
+  <div class="gear">Generated in your browser &mdash; no assets loaded</div>
+</div>
+
+<div id="hint"></div>
+<div id="controls">
+  <h3>AT SEA</h3>
+  <div class="row"><label for="weather">Weather</label>
+    <select id="weather">
+      <option value="clear">Clear</option>
+      <option value="cloudy">Cloudy</option>
+      <option value="rain">Rain</option>
+      <option value="storm">Storm</option>
+    </select>
+  </div>
+  <div class="row"><label for="mode">Mode</label>
+    <select id="mode">
+      <option value="fly">Fly (Orbit)</option>
+      <option value="walk">Walk (FP)</option>
+      <option value="cinema">Cinema</option>
+    </select>
+  </div>
+  <div class="row"><label for="sunSlider">Sun</label>
+    <input id="sunSlider" type="range" min="0" max="1" step="0.01" value="0.35">
+  </div>
+  <div class="row"><span>Speed</span><span id="sunState">06:00</span></div>
+  <button id="autoplay">AUTO CYCLE: ON</button>
+  <div style="margin-top:8px;font-size:11px;color:#7ea8c4;letter-spacing:0.5px;">
+    D1 promenade &bull; D2 &bull; D6&ndash;D8 &bull; D10 pool &bull; D14 gardens &bull; D17 top deck &bull; D18 boat deck
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+/* ============================================================
+   MSC VIRTUOSA — procedural cruise ship, day/night, weather
+   ============================================================ */
+
+// ---------- Basic setup ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9ec9e0);
+scene.fog = new THREE.Fog(0x9ec9e0, 420, 1500);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.5, 4000);
+camera.position.set(0, 8, 260);
+
+// ---------- Lights ----------
+const hemi = new THREE.HemisphereLight(0xbddcf0, 0x2a3542, 0.85);
+scene.add(hemi);
+
+const sunLight = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+const sc = sunLight.shadow.camera;
+sc.left = -240; sc.right = 240; sc.top = 240; sc.bottom = -240;
+sc.near = 1; sc.far = 2000;
+sunLight.shadow.bias = -0.0006;
+sunLight.shadow.normalBias = 1.5;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x9ec8f0, 0.45);
+fillLight.position.set(-300, 200, -300);
+scene.add(fillLight);
+
+const nightBoost = new THREE.AmbientLight(0x223344, 0.4);
+scene.add(nightBoost);
+
+const moonLight = new THREE.DirectionalLight(0x88aacc, 0.6);
+moonLight.position.set(-120, 260, -60);
+scene.add(moonLight);
+
+// ---------- Sky dome ----------
+const skyGeo = new THREE.SphereGeometry(1600, 32, 20);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  uniforms: {
+    uTop:     { value: new THREE.Color(0x1a5f9e) },
+    uHorizon: { value: new THREE.Color(0x9ec9e0) },
+    uSun:     { value: new THREE.Color(0xfff1cc) },
+    uSunDir:  { value: new THREE.Vector3(0.3, 0.2, 0.1) },
+    uDown:    { value: new THREE.Color(0x2b4a66) },
+    uOpacity: { value: 1.0 }
+  },
+  vertexShader: `
+    varying vec3 vDir;
+    void main() {
+      vDir = position;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform vec3 uTop, uHorizon, uSun, uDown;
+    uniform vec3 uSunDir;
+    uniform float uOpacity;
+    varying vec3 vDir;
+    void main() {
+      float h = normalize(vDir).y;
+      vec3 c = mix(uHorizon, uTop, smoothstep(0.0, 0.75, h));
+      if (h < 0.0) c = mix(uHorizon, uDown, smoothstep(0.0, -0.6, h));
+      float s = max(dot(normalize(vDir), normalize(uSunDir)), 0.0);
+      c += uSun * pow(s, 28.0) * 0.85;
+      c += uSun * pow(s, 6.0) * 0.25;
+      gl_FragColor = vec4(c, 1.0);
+    }`
+});
+const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+skyMesh.frustumCulled = false;
+scene.add(skyMesh);
+
+// ---------- Sun disc + glow (screen-aligned, follows sun) ----------
+const sunDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(40, 20, 16),
+  new THREE.MeshBasicMaterial({ color: 0xfff3d4, fog: false, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+const moonDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(26, 20, 16),
+  new THREE.MeshBasicMaterial({ color: 0xcfe4ff, fog: false, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+scene.add(sunDisc, moonDisc);
+
+// ============================================================
+// PROCEDURAL TEXTURES (all canvas-generated)
+// ============================================================
+
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+// Hull white with subtle paneling + portholes + MSC "M" logo area handled separately
+function makeHullTexture() {
+  const c = makeCanvas(1024, 512);
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0.0, '#ffffff');
+  grad.addColorStop(0.45, '#f2f5f7');
+  grad.addColorStop(0.9, '#e2e8ec');
+  grad.addColorStop(1.0, '#d3dcdf');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 1024, 512);
+
+  // subtle noise grain
+  for (let i = 0; i < 9000; i++) {
+    const x = Math.random() * 1024, y = Math.random() * 512;
+    g.fillStyle = `rgba(160,175,185,${Math.random() * 0.05})`;
+    g.fillRect(x, y, 2, 2);
+  }
+  // panel seams
+  g.strokeStyle = 'rgba(140,155,165,0.25)';
+  g.lineWidth = 2;
+  for (let i = 0; i < 10; i++) {
+    const y = 60 + i * 42;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(1024, y); g.stroke();
+  }
+  for (let i = 0; i < 18; i++) {
+    const x = 60 + i * 56;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 512); g.stroke();
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+// Porthole texture (applied to hull sides)
+function makePortholeTexture() {
+  const c = makeCanvas(256, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(0,0,0,0)';
+  g.fillRect(0, 0, 256, 256);
+  // draw rings
+  g.strokeStyle = 'rgba(60,70,80,0.85)';
+  g.lineWidth = 6;
+  g.beginPath(); g.arc(128, 128, 86, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(220,228,232,0.9)';
+  g.lineWidth = 4;
+  g.beginPath(); g.arc(128, 128, 78, 0, Math.PI * 2); g.stroke();
+  // inner hole
+  g.fillStyle = '#121c26';
+  g.beginPath(); g.arc(128, 128, 62, 0, Math.PI * 2); g.fill();
+  // rivets
+  g.fillStyle = 'rgba(200,210,218,0.9)';
+  for (let i = 0; i < 28; i++) {
+    const a = i / 28 * Math.PI * 2;
+    g.beginPath();
+    g.arc(128 + Math.cos(a) * 70, 128 + Math.sin(a) * 70, 3.2, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Superstructure window texture (day version + night version)
+function makeSuperTexture(night) {
+  const c = makeCanvas(512, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = night ? '#0c1520' : '#eef3f6';
+  g.fillRect(0, 0, 512, 256);
+
+  // blocky windows grid
+  const cols = 16, rows = 8;
+  const marginX = 8, marginY = 10;
+  const gap = 6;
+  const w = (512 - marginX * 2 - gap * (cols - 1)) / cols;
+  const h = (256 - marginY * 2 - gap * (rows - 1)) / rows;
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      const x = marginX + i * (w + gap);
+      const y = marginY + j * (h + gap);
+      g.fillStyle = night ? '#0c1520' : '#dfe8ed';
+      g.fillRect(x, y, w, h);
+      if (night) {
+        if (Math.random() < 0.55) {
+          g.fillStyle = '#ffca7a';
+          g.shadowColor = '#ff9d3c';
+          g.shadowBlur = 10;
+          g.fillRect(x, y, w, h);
+        }
+      } else {
+        // sky reflection glint
+        g.fillStyle = `rgba(255,255,255,${Math.random() * 0.25})`;
+        g.fillRect(x, y, w, h);
+      }
+    }
+  }
+  // frame
+  g.strokeStyle = '#b8c4cc';
+  g.lineWidth = 3;
+  g.strokeRect(2, 2, 508, 252);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+// deck cream / balustrade
+function makeRailTexture() {
+  const c = makeCanvas(2, 2);
+  const g = c.getContext('2d');
+  g.fillStyle = '#cfd8dd';
+  g.fillRect(0, 0, 2, 2);
+  return new THREE.CanvasTexture(c);
+}
+
+// lifeboat texture with marking stripe
+function makeLifeboatTexture() {
+  const c = makeCanvas(128, 512);
+  const g = c.getContext('2d');
+  g.fillStyle = '#f4f6f8';
+  g.fillRect(0, 0, 128, 512);
+  // side stripe
+  g.fillStyle = '#1f3b52';
+  g.fillRect(24, 0, 10, 512);
+  g.fillRect(94, 0, 10, 512);
+  // hull dark bottom
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, '#f4f6f8');
+  grad.addColorStop(0.55, '#e2e8ec');
+  grad.addColorStop(1, '#9fb0bc');
+  g.fillStyle = grad;
+  g.fillRect(0, 30, 128, 482);
+  // label
+  g.fillStyle = '#b3392b';
+  g.font = 'bold 22px sans-serif';
+  g.textAlign = 'center';
+  g.fillText('VIRT', 64, 150);
+  g.fillStyle = '#cfd8dd';
+  g.font = '16px sans-serif';
+  g.fillText('08', 64, 180);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// MSC wave logo (drawn as a canvas texture for the facade)
+function makeLogoTexture(color) {
+  const c = makeCanvas(128, 128);
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 128, 128);
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(40, 96);
+  g.bezierCurveTo(20, 60, 45, 50, 64, 70);
+  g.bezierCurveTo(80, 55, 108, 58, 88, 92);
+  g.bezierCurveTo(90, 72, 74, 66, 66, 80);
+  g.bezierCurveTo(58, 66, 44, 74, 48, 96);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Scrambled mesh-like hull pattern for organic feel on lower hull
+function makeHullPattern(color, bg) {
+  const c = makeCanvas(256, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = color;
+  g.lineWidth = 3;
+  for (let i = 0; i < 8; i++) {
+    g.beginPath();
+    const y = i * 32 + 16;
+    g.moveTo(0, y);
+    g.bezierCurveTo(64, y - 12, 192, y + 12, 256, y);
+    g.stroke();
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+// Soft deck surface
+function makeDeckTexture(base, lineColor) {
+  const c = makeCanvas(256, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = base;
+  g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = lineColor;
+  g.lineWidth = 2;
+  for (let i = 0; i < 32; i++) {
+    const y = i * 8;
+    g.strokeRect(0, y, 256, 7);
+  }
+  for (let i = 0; i < 32; i++) {
+    const x = i * 8;
+    g.strokeRect(x, 0, 7, 256);
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+// seas/ocean
+const seaTex = null;
+
+// ============================================================
+// MATERIALS
+// ============================================================
+const hullTex = makeHullTexture();
+const hullDarkTex = makeHullTexture();
+
+const portholeTex = makePortholeTexture();
+const superDayTex = makeSuperTexture(false);
+const superNightTex = makeSuperTexture(true);
+
+const railMat = new THREE.MeshStandardMaterial({ color: 0xd7dde1, roughness: 0.35, metalness: 0.6 });
+const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf4f7f9, roughness: 0.5, metalness: 0.08 });
+const whiteRough = new THREE.MeshStandardMaterial({ color: 0xf4f7f9, roughness: 0.62, metalness: 0.05 });
+const whiteMat2 = new THREE.MeshStandardMaterial({ color: 0xe9eef1, roughness: 0.55, metalness: 0.06 });
+const hullMat = new THREE.MeshStandardMaterial({ map: hullTex, roughness: 0.4, metalness: 0.35 });
+const hullDarkMat = new THREE.MeshStandardMaterial({ color: 0x2e2621, roughness: 0.7, metalness: 0.2 });
+const hullRedMat = new THREE.MeshStandardMaterial({ color: 0x221914, roughness: 0.6, metalness: 0.15 });
+const redMat = new THREE.MeshStandardMaterial({ color: 0xb3392b, roughness: 0.45, metalness: 0.25 });
+const redMat2 = new THREE.MeshStandardMaterial({ color: 0x8f2820, roughness: 0.5, metalness: 0.2 });
+const deckMat = new THREE.MeshStandardMaterial({ color: 0xe9eef0, roughness: 0.6, metalness: 0.05 });
+const deckWarm = new THREE.MeshStandardMaterial({ color: 0xf3f7f8, roughness: 0.55, metalness: 0.04 });
+const deckBlue = new THREE.MeshStandardMaterial({ color: 0x3d6a86, roughness: 0.55, metalness: 0.1 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x18242f, roughness: 0.7, metalness: 0.2 });
+const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x24323f, roughness: 0.45, metalness: 0.55 });
+const bronzeMat = new THREE.MeshStandardMaterial({ color: 0x9c7a45, roughness: 0.35, metalness: 0.8 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x0e1a26, roughness: 0.1, metalness: 0.75, transparent: true, opacity: 0.85 });
+const lifeMat = new THREE.MeshStandardMaterial({ map: makeLifeboatTexture(), roughness: 0.35, metalness: 0.3 });
+const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8, metalness: 0.02 });
+const cushionMat = new THREE.MeshStandardMaterial({ color: 0xb3392b, roughness: 0.85, metalness: 0.02 });
+const greenMat = new THREE.MeshStandardMaterial({ color: 0x3f6b3f, roughness: 0.9, metalness: 0.02 });
+const treeMat = new THREE.MeshStandardMaterial({ color: 0x2f4f33, roughness: 0.95, metalness: 0.0 });
+const matBlue = new THREE.MeshStandardMaterial({ color: 0x2f6f9f, roughness: 0.15, metalness: 0.05, transparent: true, opacity: 0.92 });
+const pubMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f7, roughness: 0.35, metalness: 0.25 });
+const lifeRingMat = new THREE.MeshStandardMaterial({ color: 0xd7e4ec, roughness: 0.4, metalness: 0.3 });
+const blackMat = new THREE.MeshStandardMaterial({ color: 0x141a20, roughness: 0.9, metalness: 0.1 });
+
+// ============================================================
+// SHIP BUILDING
+// ============================================================
+const ship = new THREE.Group();
+scene.add(ship);
+
+// Geometry cache
+const boxGeoCache = new Map();
+function getBox(w, h, d) {
+  const key = [w, h, d].map(n => n.toFixed(2)).join('_');
+  if (!boxGeoCache.has(key)) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    boxGeoCache.set(key, g);
+  }
+  return boxGeoCache.get(key);
+}
+
+// Add thin detail to a box group
+function addBox(w, h, d, mat, x = 0, y = 0, z = 0, parent = ship) {
+  const m = new THREE.Mesh(getBox(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
+// deck plinth
+function addDeck(y, w, d, z, mat = deckMat, parent = ship) {
+  return addBox(w, 0.5, d, mat, 0, y, z, parent);
+}
+
+// ---------- HULL ----------
+// Hull is a swept wedge: use a custom parametric shape built from side sections.
+function buildHull() {
+  const segments = 48; // along length
+  const halfLen = 165;
+  const rows = 5;      // radial ring sections
+  const positions = [];
+  const indices = [];
+  const colors = [];
+
+  // cross-section shape (y offset, x radius factor)
+  // deck level y = 0
+  const section = [
+    { r: 0.0, y: -30 },  // keel
+    { r: 0.72, y: -21 },
+    { r: 0.94, y: -9 },
+    { r: 1.0, y: 1.0 },  // sheer top
+  ];
+
+  // beam profile along length (0..1 t, t=0 stern, 1 bow)
+  function beamAt(t) {
+    const bow = 0.2 + Math.pow(Math.abs(t - 0.78) / 0.42, 0.7) * 0.9;
+    const stern = 0.9 - Math.pow(Math.abs(t - 0.12) / 0.30, 1.4) * 0.86;
+    return 1.0 * (1.0 - 0.40 * bow - 0.24 * stern);
+  }
+
+  for (let r = 0; r < rows; r++) {
+    const sec = section[r];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const z = -halfLen + t * 2 * halfLen;
+      const beam = beamAt(t);
+      const x = sec.r * 19.0 * beam;
+      const y = sec.y;
+      positions.push(x, y, z);
+    }
+  }
+
+  for (let r = 0; r < rows - 1; r++) {
+    for (let i = 0; i < segments; i++) {
+      const a = r * (segments + 1) + i;
+      const b = a + 1;
+      const c = a + segments + 1;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  // deck top ring at y ~ 0 (last ring is shear)
+  const topRow = (rows - 1) * (segments + 1);
+  for (let i = 0; i < segments; i++) {
+    const a = topRow + i;
+    const b = a + 1;
+    indices.push(a, topRow + segments, b, b, topRow + segments, b + 1);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({
+    map: hullTex,
+    roughness: 0.38,
+    metalness: 0.4,
+    side: THREE.DoubleSide
+  });
+
+  const hull = new THREE.Mesh(geo, mat);
+  hull.castShadow = false;
+  hull.receiveShadow = true;
+  ship.add(hull);
+
+  // dark bottom band: separate dark overlay on lower hull rings
+  // Build a matching geometry with dark color for bottom 60%
+  const darkGeo = new THREE.BufferGeometry();
+  const darkPositions = [];
+  const darkIndices = [];
+  const rowsDark = 3;
+  for (let r = 0; r < rowsDark; r++) {
+    const sec = section[r];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const z = -halfLen + t * 2 * halfLen;
+      const beam = beamAt(t);
+      const x = sec.r * 19.0 * beam;
+      const y = sec.y - 1.5;
+      darkPositions.push(x, y, z);
+    }
+  }
+  for (let r = 0; r < rowsDark - 1; r++) {
+    for (let i = 0; i < segments; i++) {
+      const a = r * (segments + 1) + i;
+      const b = a + 1;
+      const c = a + segments + 1;
+      const d = c + 1;
+      darkIndices.push(a, c, b, b, c, d);
+    }
+  }
+  darkGeo.setAttribute('position', new THREE.Float32BufferAttribute(darkPositions, 3));
+  darkGeo.setIndex(darkIndices);
+  darkGeo.computeVertexNormals();
+  const darkMesh = new THREE.Mesh(darkGeo, new THREE.MeshStandardMaterial({
+    color: 0x1e1814, roughness: 0.7, metalness: 0.2, side: THREE.DoubleSide
+  }));
+  ship.add(darkMesh);
+
+  // freeboard stripe (red band along upper hull) — thin decorative band on superstructure deck line later
+  return hull;
+}
+
+buildHull();
+
+// ---------- Superstructure deck plates ----------
+const deckProfiles = [
+  // y, zFront, zBack, halfW (trapezoid from front to back, we use simple rectangles with per-level taper)
+  { y: 0,  zF: 78,  zB: -88, hw: 15.4, mat: deckMat },   // deck 2 (waist)
+  { y: 6,  zF: 82,  zB: -92, hw: 15.0, mat: deckWarm },  // deck 3
+  { y: 12, zF: 86,  zB: -94, hw: 14.5, mat: deckMat },   // deck 4
+  { y: 18, zF: 88,  zB: -92, hw: 13.8, mat: deckWarm },  // deck 5
+  { y: 24, zF: 88,  zB: -90, hw: 13.0, mat: deckMat },   // deck 6 (promenade)
+  { y: 30, zF: 88,  zB: -88, hw: 12.2, mat: deckWarm },  // deck 7
+  { y: 36, zF: 86,  zB: -86, hw: 11.2, mat: deckMat },   // deck 8
+  { y: 42, zF: 84,  zB: -82, hw: 10.0, mat: deckWarm },  // deck 9
+  { y: 48, zF: 80,  zB: -76, hw: 8.6,  mat: deckMat },   // deck 10
+  { y: 54, zF: 74,  zB: -68, hw: 7.2,  mat: deckWarm },  // deck 11
+  { y: 60, zF: 66,  zB: -60, hw: 5.6,  mat: deckMat },   // deck 12
+  { y: 65, zF: 58,  zB: -52, hw: 4.4,  mat: deckWarm },  // deck 13
+  { y: 69, zF: 50,  zB: -44, hw: 3.6,  mat: deckMat },   // deck 14
+  { y: 72.5, zF: 44, zB: -36, hw: 3.0, mat: deckWarm },  // deck 15
+  { y: 75.5, zF: 38, zB: -30, hw: 2.5, mat: deckMat },   // deck 16
+  { y: 78.0, zF: 32, zB: -24, hw: 2.0, mat: deckWarm },  // deck 17
+  { y: 80.0, zF: 26, zB: -18, hw: 1.4, mat: deckMat },   // deck 18 (boat deck)
+];
+
+for (const p of deckProfiles) {
+  addDeck(p.y, p.hw * 2, p.zF - p.zB, (p.zF + p.zB) / 2, p.mat, ship);
+}
+
+// ---------- Main deck / promenade detail ----------
+// Forward open deck at deck 2 level (z 78..115)
+addDeck(0.25, 24, 34, 95, deckWarm, ship);
+addDeck(0.25, 16, 26, 108, deckWarm, ship);
+
+// Aft open deck deck 2 (z -95..-135)
+addDeck(0.25, 22, 32, -110, deckWarm, ship);
+
+// ---------- Superstructure walls: build face rectangles with window stripe texture ----------
+function addSuperWall(w, h, mat, x, y, z, rotY = 0) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(x, y, z);
+  m.rotation.y = rotY;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  ship.add(m);
+  return m;
+}
+
+const superW = (hw) => hw * 2;
+
+// build walls between deck levels along the perimeter using simple boxes with window texture via custom material
+const superMatDay = new THREE.MeshStandardMaterial({ map: superDayTex, roughness: 0.45, metalness: 0.08 });
+const superMatNight = new THREE.MeshStandardMaterial({ map: superNightTex, roughness: 0.45, metalness: 0.08 });
+const superMat = superMatDay;
+
+function buildSuperStructure() {
+  // build core volume with layered boxes (this gives the stepped profile)
+  for (let i = 1; i < deckProfiles.length - 1; i++) {
+    const p0 = deckProfiles[i - 1];
+    const p1 = deckProfiles[i];
+    const hw = p1.hw;
+    const zF = p1.zF;
+    const zB = p1.zB;
+    const y0 = p0.y;
+    const y1 = p1.y;
+
+    // walls on all 4 sides
+    const frontW = hw * 2;
+    const backW = hw * 2;
+    const sideH = y1 - y0;
+
+    // floor
+    addBox(hw * 2, 0.4, zF - zB, p1.mat, 0, y0 + 0.2, (zF + zB) / 2);
+
+    // 4 corner posts & facade using simple quads with window texture
+    addBox(0.5, sideH, 0.5, darkMetalMat, -hw, y0 + sideH / 2, zF);
+    addBox(0.5, sideH, 0.5, darkMetalMat, hw, y0 + sideH / 2, zF);
+    addBox(0.5, sideH, 0.5, darkMetalMat, -hw, y0 + sideH / 2, zB);
+    addBox(0.5, sideH, 0.5, darkMetalMat, hw, y0 + sideH / 2, zB);
+
+    // facade planes with window texture
+    // front (+z)
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, sideH), superMat);
+    front.position.set(0, y0 + sideH / 2, zF);
+    front.castShadow = true; front.receiveShadow = true;
+    ship.add(front);
+    // back (-z)
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, sideH), superMat);
+    back.position.set(0, y0 + sideH / 2, zB);
+    back.rotation.y = Math.PI;
+    back.castShadow = true; back.receiveShadow = true;
+    ship.add(back);
+    // sides
+    const sideL = new THREE.Mesh(new THREE.PlaneGeometry(zF - zB, sideH), superMat);
+    sideL.position.set(-hw, y0 + sideH / 2, (zF + zB) / 2);
+    sideL.rotation.y = Math.PI / 2;
+    sideL.castShadow = true; sideL.receiveShadow = true;
+    ship.add(sideL);
+    const sideR = new THREE.Mesh(new THREE.PlaneGeometry(zF - zB, sideH), superMat);
+    sideR.position.set(hw, y0 + sideH / 2, (zF + zB) / 2);
+    sideR.rotation.y = -Math.PI / 2;
+    sideR.castShadow = true; sideR.receiveShadow = true;
+    ship.add(sideR);
+
+    // recessed windows as dark insets on front face
+    for (let wx = -hw + 1.2; wx < hw - 0.8; wx += 2.2) {
+      const insetH = Math.min(1.6, sideH * 0.4);
+      const inset = new THREE.Mesh(new THREE.PlaneGeometry(0.32, insetH), new THREE.MeshStandardMaterial({ color: 0x0a141d, roughness: 0.9 }));
+      inset.position.set(wx, y0 + sideH / 2, zF + 0.01);
+      ship.add(inset);
+    }
+  }
+}
+
+buildSuperStructure();
+
+// ---------- Balconies / promenade railings (key for look) ----------
+function buildRailing(x0, x1, z, y, height = 1.1, orient = 'z') {
+  // posts
+  const steps = orient === 'z' ? Math.floor(Math.abs(z - z)) : Math.floor(Math.abs(x1 - x0));
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    const x = x0 + (x1 - x0) * t;
+    addBox(0.12, height, 0.12, railMat, x, y + height / 2, z);
+  }
+  // top rail
+  addBox(x1 - x0, 0.08, 0.08, railMat, (x0 + x1) / 2, y + height, z);
+  if (orient === 'x') {
+    addBox(0.08, 0.08, z, railMat, (x0 + x1) / 2, y + 0.6, z);
+  } else {
+    addBox(0.08, 0.08, Math.abs(z - z), railMat, 0, 0, 0); // noop
+  }
+}
+
+// Generate rounded top railings along promenade decks
+function addRailingRun(w, z, y, height = 1.15) {
+  const n = Math.floor(w / 1.6);
+  for (let i = 0; i <= n; i++) {
+    const x = -w / 2 + i * (w / n);
+    addBox(0.1, height, 0.1, railMat, x, y + height / 2, z);
+  }
+  addBox(w, 0.09, 0.09, railMat, 0, y + height, z);
+  addBox(w, 0.05, 0.04, railMat, 0, y + height * 0.55, z);
+  addBox(0.05, height * 0.8, 0.05, railMat, -w / 2, y + height * 0.4, z);
+  addBox(0.05, height * 0.8, 0.05, railMat, w / 2, y + height * 0.4, z);
+}
+
+// Balconies for promenade levels (y 24..36, centered z 88 front)
+function addBalconyLine(y, zFront, depth) {
+  // half width deck hw
+  const p = deckProfiles.find(d => Math.abs(d.y - y) < 0.1);
+  if (!p) return;
+  const hw = p.hw;
+  // two long balcony strips along z front face
+  for (const side of [-1, 1]) {
+    // main walk
+    addBox(hw * 2 - 2, 0.35, depth, deckWarm, 0, y + 0.1, zFront - depth / 2);
+    // railing
+    addRailingRun(hw * 2 - 2, zFront - depth + 0.2, y + 0.4, 1.15);
+    // front railing line along x
+    addBox(hw * 2 - 2, 1.1, 0.12, railMat, 0, y + 0.4 + 0.55, zFront - depth + 0.25);
+    // balustrade posts
+    const n = Math.floor((hw * 2 - 2) / 1.4);
+    for (let i = 0; i <= n; i++) {
+      const x = -hw + 1 + i * (2 * (hw - 1)) / Math.max(1, n);
+      addBox(0.06, 1.1, 0.06, railMat, x, y + 0.95, zFront - depth + 0.25);
+    }
+  }
+  // side railings along x sides
+  for (const side of [-1, 1]) {
+    const x = side * (hw - 0.4);
+    addBox(0.12, 1.1, Math.abs(depth), railMat, x, y + 0.95, zFront - depth / 2);
+  }
+}
+
+for (const y of [30, 36, 42, 48]) {
+  addBalconyLine(y, deckProfiles.find(d => d.y === y)?.zF ?? 86, 2.6);
+}
+
+// ---------- Portholes on hull ----------
+(function addPortholes() {
+  const rows = [-14, -8, -2];
+  const colsPerRow = 34;
+  for (const y of rows) {
+    for (let i = 0; i < colsPerRow; i++) {
+      const t = 0.08 + i * (0.84 / colsPerRow);
+      const z = -165 + t * 330;
+      const beam = 1.0 - 0.40 * (0.2 + Math.pow(Math.abs(t - 0.78) / 0.42, 0.7) * 0.9) - 0.24 * (0.9 - Math.pow(Math.abs(t - 0.12) / 0.30, 1.4) * 0.86);
+      const r = (0.94 * 19.0 * beam);
+      for (const side of [-1, 1]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshStandardMaterial({ map: portholeTex, roughness: 0.3, metalness: 0.7 }));
+        m.position.set(side * r * 0.999, y, z);
+        m.rotation.y = side * Math.PI / 2;
+        ship.add(m);
+      }
+    }
+  }
+})();
+
+// ============================================================
+// LIFEboats & DAVITS
+// ============================================================
+const boatStations = [
+  // deck y, zFront, zBack, hw (centered), count per side
+  { y: 6,  zF: 78,  zB: -80,  hw: 14.5 },
+  { y: 12, zF: 84,  zB: -84,  hw: 13.5 },
+  { y: 18, zF: 86,  zB: -84,  hw: 12.8 },
+  { y: 24, zF: 86,  zB: -82,  hw: 12.2 },
+  { y: 30, zF: 86,  zB: -80,  hw: 11.4 },
+  { y: 36, zF: 84,  zB: -76,  hw: 10.4 },
+  { y: 42, zF: 82,  zB: -72,  hw: 9.2  },
+  { y: 48, zF: 78,  zB: -66,  hw: 8.0  },
+];
+
+function buildLifeboats() {
+  for (const s of boatStations) {
+    const length = Math.min(14, (s.zF - s.zB) * 0.62);
+    const n = Math.max(3, Math.floor((s.zF - s.zB) / 16));
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const z = s.zF - t * (s.zF - s.zB);
+      for (const side of [-1, 1]) {
+        // davit arm
+        const ax = side * s.hw;
+        const armLen = 3.4;
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, armLen), darkMetalMat);
+        arm.position.set(ax, s.y + 4.2, z + 0.5);
+        arm.rotation.y = side * Math.PI / 2;
+        arm.castShadow = true;
+        ship.add(arm);
+
+        const winch = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.6), darkMetalMat);
+        winch.position.set(ax + side * 0.4, s.y + 3.85, z + 0.5);
+        ship.add(winch);
+
+        // davit triangle cable
+        const cableMat = new THREE.MeshStandardMaterial({ color: 0x888f96, roughness: 0.6, metalness: 0.8 });
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 5), cableMat);
+        cable.position.set(ax + side * 1.2, s.y + 2.7, z + 1.2);
+        ship.add(cable);
+
+        // boat
+        const boat = new THREE.Mesh(new THREE.CapsuleGeometry(1.9, length * 0.55, 8, 12), lifeMat);
+        boat.position.set(ax + side * 2.2, s.y + 0.2, z);
+        boat.rotation.x = Math.PI / 2;
+        boat.castShadow = true;
+        ship.add(boat);
+
+        // boat cover (white rounded)
+        const coverMat = new THREE.MeshStandardMaterial({ color: 0xf7fafc, roughness: 0.5 });
+        const cover = new THREE.Mesh(new THREE.CapsuleGeometry(1.75, length * 0.5, 8, 10), coverMat);
+        cover.position.set(ax + side * 2.2, s.y + 0.15, z);
+        cover.rotation.x = Math.PI / 2;
+        ship.add(cover);
+
+        // cabin roof
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 1.2), whiteRough);
+        roof.position.set(ax + side * 2.0, s.y + 1.0, z + 1.6);
+        ship.add(roof);
+      }
+    }
+  }
+}
+buildLifeboats();
+
+// ============================================================
+// Funnels
+// ============================================================
+const funnelGroup = new THREE.Group();
+ship.add(funnelGroup);
+
+function buildFunnels() {
+  const funnelData = [
+    { y: 78, r: 4.6, h: 14, z: -18, color: 0xf4f7f9 },
+    { y: 78, r: 4.6, h: 14, z: -28, color: 0xf4f7f9 },
+    { y: 78, r: 4.6, h: 14, z: -38, color: 0xf4f7f9 },
+    { y: 78, r: 4.6, h: 14, z: -48, color: 0xf4f7f9 },
+  ];
+
+  for (const f of funnelData) {
+    const geo = new THREE.CylinderGeometry(f.r * 0.82, f.r, f.h, 32, 1, false);
+    const mat = new THREE.MeshStandardMaterial({ color: f.color, roughness: 0.42, metalness: 0.3 });
+    const funnel = new THREE.Mesh(geo, mat);
+    funnel.position.set(0, f.y + f.h / 2, f.z);
+    funnel.castShadow = true;
+    funnel.receiveShadow = true;
+    ship.add(funnel);
+
+    // top band
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(f.r * 0.84, f.r * 0.82, 1.6, 32),
+      new THREE.MeshStandardMaterial({ color: 0xb3392b, roughness: 0.4, metalness: 0.25 })
+    );
+    band.position.set(0, f.y + f.h - 0.8, f.z);
+    ship.add(band);
+
+    // inner disc
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(f.r * 0.78, 32),
+      new THREE.MeshStandardMaterial({ color: 0x0d1620, roughness: 0.9 })
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(0, f.y + f.h - 0.4, f.z);
+    ship.add(disc);
+
+    // MSC logo (red) on front
+    const logoTex = makeLogoTexture('#b3392b');
+    const logo = new THREE.Mesh(
+      new THREE.PlaneGeometry(f.r * 0.45, f.r * 0.45),
+      new THREE.MeshBasicMaterial({ map: logoTex, transparent: true })
+    );
+    logo.position.set(0, f.y + f.h * 0.52, f.z + f.r * 0.83);
+    ship.add(logo);
+  }
+
+  // exhaust stacks behind funnels
+  for (let i = 0; i < 2; i++) {
+    const ex = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 1.9, 5, 12),
+      new THREE.MeshStandardMaterial({ color: 0x333d47, roughness: 0.6, metalness: 0.4 })
+    );
+    ex.position.set(-6, 78 + 2.5, -58 + i * 12);
+    ship.add(ex);
+  }
+}
+buildFunnels();
+
+// ---------- Bridge/front top superstructure ----------
+// (already stepped, add bridge house)
+{
+  const bridgeY = deckProfiles[deckProfiles.length - 2].y;
+  const bridge = new THREE.Group();
+  // bridge cabins
+  addBox(2.4, 2.6, 5.0, new THREE.MeshStandardMaterial({ color: 0xf2f6f8, roughness: 0.3, metalness: 0.3 }), 0, bridgeY + 1.3, 8);
+  addBox(2.0, 2.0, 4.0, new THREE.MeshStandardMaterial({ color: 0xdde7ee, roughness: 0.25, metalness: 0.4, transparent: true, opacity: 0.9 }), 0, bridgeY + 1.5, 8);
+  // windows
+  for (let i = 0; i < 7; i++) {
+    addBox(0.25, 1.1, 0.2, new THREE.MeshStandardMaterial({ color: 0x1c3040, roughness: 0.2, metalness: 0.8 }), -0.8 + i * 0.28, bridgeY + 1.5, 8 + 2.6);
+  }
+  // bridge roof
+  addBox(2.6, 0.2, 5.4, darkMetalMat, 0, bridgeY + 2.9, 8);
+}
+
+// ============================================================
+// Furniture / props
+// ============================================================
+
+// ---------- Promenade deck furniture (D1 at y=30ish) ----------
+function buildPromenade(y, zF, zB, hw) {
+  // benches along both sides
+  const n = Math.floor((zF - zB) / 5);
+  for (let i = 0; i < n; i++) {
+    const z = zB + 2 + i * 5;
+    // bench on port side
+    const benchP = new THREE.Group();
+    addBox(0.15, 0.65, 2.2, woodMat, -hw + 2, y + 0.35, z, ship);
+    for (let b = -1; b <= 1; b++) {
+      addBox(0.15, 0.15, 0.55, woodMat, -hw + 2, y + 0.75, z + b * 0.9, ship);
+    }
+    // bench on starboard
+    addBox(0.15, 0.65, 2.2, woodMat, hw - 2, y + 0.35, z, ship);
+    for (let b = -1; b <= 1; b++) {
+      addBox(0.15, 0.15, 0.55, woodMat, hw - 2, y + 0.75, z + b * 0.9, ship);
+    }
+  }
+}
+buildPromenade(24, 84, -76, 12.5);
+
+// ---------- Life rings along rail ----------
+function addLifeRing(x, y, z, rotY = 0, parent = ship) {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.18, 8, 24), lifeRingMat);
+  ring.rotation.x = Math.PI / 2;
+  g.add(ring);
+  const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 20), lifeRingMat);
+  fill.rotation.x = Math.PI / 2;
+  fill.position.y = 0.05;
+  g.add(fill);
+  g.position.set(x, y, z);
+  g.rotation.y = rotY;
+  parent.add(g);
+}
+// life rings along promenade railings
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 8; i++) {
+    addLifeRing(side * (deckProfiles[5].hw - 0.8), 30 + 1.15, 60 - i * 14, side * Math.PI / 2);
+  }
+}
+
+// ---------- Pool deck (deck 8 area) ----------
+function buildPoolDeck() {
+  const y = 42; // deck 9 level top
+  // pool water
+  const pool = new THREE.Mesh(new THREE.BoxGeometry(16, 0.4, 20), matBlue);
+  pool.position.set(0, y - 0.2, -30);
+  pool.receiveShadow = true;
+  ship.add(pool);
+
+  // pool decking edge
+  addBox(19, 0.3, 23, deckWarm, 0, y - 0.4, -30, ship);
+  // edge pillars
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) {
+      addBox(0.3, 1.2, 0.3, darkMetalMat, i * 8, y + 0.2, -30 + j * 9, ship);
+    }
+  }
+
+  // two small hot tubs
+  for (const [hx, hz] of [[8, -10], [-8, -48]]) {
+    addBox(4, 0.5, 4, darkMetalMat, hx, y + 0.1, hz, ship);
+    addBox(3.2, 0.4, 3.2, matBlue, hx, y + 0.2, hz, ship);
+  }
+}
+buildPoolDeck();
+
+// ---------- Dining / lounges ----------
+function buildDining(y, z, x, w, d, cols, rows) {
+  // upper and lower dining room
+  const upper = addBox(w, 5, d, deckMat, x, y + 2.5, z);
+  const lower = addBox(w * 0.9, 4.5, d * 0.9, deckMat, x, y - 0.8, z);
+  // ceiling lights
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      addBox(0.2, 0.1, 0.2, new THREE.MeshStandardMaterial({ color: 0xfff3d0, emissive: 0xffe9a0, emissiveIntensity: 0.8 }), x + (i - (cols - 1) / 2) * 1.8, y + 4.9, z + (j - (rows - 1) / 2) * 1.8, ship);
+    }
+  }
+  // chairs
+  const chair = () => {
+    const c = new THREE.Group();
+    addBox(0.5, 0.12, 0.5, woodMat, 0, 0, 0, c);
+    return c;
+  };
+  const makeChair = (bx, bz, rot) => {
+    const ch = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), woodMat);
+    seat.position.y = 0.45;
+    ch.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.12), woodMat);
+    back.position.set(0, 0.8, -0.2);
+    back.rotation.x = -0.15;
+    ch.add(back);
+    ch.position.set(bx, y, bz);
+    ch.rotation.y = rot;
+    ship.add(ch);
+  };
+  const rowsUsed = 3;
+  const colsUsed = 4;
+  const stepZ = (z + d / 2) - (rowsUsed - 1) * 1.6;
+  const stepX = x + (w / 2) - 1.5;
+  for (let i = 0; i < rowsUsed; i++) {
+    for (let j = 0; j < colsUsed; j++) {
+      makeChair(stepZ + i * 3.2, x - colsUsed * 0.9 + j * 1.8, 0);
+      makeChair(stepZ + i * 3.2, x + colsUsed * 0.9 - j * 1.8, Math.PI);
+    }
+  }
+}
+buildDining(30, -40, 0, 15, 8, 4, 3);
+
+// ---------- Theaters/lounges ----------
+buildDining(36, -60, 0, 11, 7, 4, 2);
+
+// ---------- Decks 10-14 top few, lower decks ----------
+// Solarium / Spa (deck 12 area)
+{
+  const y = 54;
+  addBox(10, 5, 8, deckWarm, 0, y + 2.5, -48);
+  // windows
+  for (let i = 0; i < 8; i++) {
+    addBox(0.5, 1.6, 0.3, glassMat, -4 + i * 1.0, y + 2.8, -44);
+  }
+  for (const side of [-1, 1]) {
+    addBox(0.3, 4, 0.3, darkMetalMat, side * 5, y + 2.2, -48);
+  }
+}
+
+// Jogging track deck (deck 11 area)
+{
+  const y = 60;
+  addBox(12, 0.3, 14, deckMat, 0, y + 0.15, -56);
+  for (const side of [-1, 1]) {
+    addBox(0.15, 1.0, 0.15, railMat, side * 6, y + 0.65, -56);
+    addBox(0.15, 0.15, 14, railMat, side * 6, y + 1.15, -56);
+  }
+}
+
+// Deck 13 galley
+{
+  const y = 65;
+  addBox(8, 4, 6, deckMat, 0, y + 2, -40);
+  for (let i = 0; i < 5; i++) {
+    addBox(0.5, 1.2, 0.2, glassMat, -3 + i * 1.4, y + 2.6, -37);
+  }
+  // galley racks
+  addBox(6, 2, 0.4, darkMetalMat, 0, y + 1.0, -37);
+}
+
+// ============================================================
+// SOLARIUM & GARDENS DECK (D14 level top)
+// ============================================================
+function buildGardenDeck() {
+  const y = 69; // deck 14
+  // garden bed
+  addBox(8, 0.5, 6, deckWarm, 0, y + 0.25, -30);
+  // trees
+  for (const [tx, tz] of [[-3, -32], [3, -28], [0, -24]]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 1.8, 8), woodMat);
+    trunk.position.set(tx, y + 1.4, tz);
+    ship.add(trunk);
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(1.4, 10, 8), greenMat);
+    crown.position.set(tx, y + 2.6, tz);
+    crown.scale.y = 1.1;
+    ship.add(crown);
+  }
+  // plants
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * Math.PI * 2;
+    const px = Math.cos(a) * 4;
+    const pz = -30 + Math.sin(a) * 3;
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.5, 6), redMat);
+    pot.position.set(px, y + 0.4, pz);
+    ship.add(pot);
+    const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), greenMat);
+    shrub.position.set(px, y + 0.75, pz);
+    ship.add(shrub);
+  }
+  // garden furniture
+  addBox(4, 0.4, 1.5, woodMat, 0, y + 0.4, -25);
+  for (let i = -1; i <= 1; i++) {
+    addBox(0.1, 0.4, 0.1, woodMat, i * 1.6, y + 0.2, -25);
+  }
+  addBox(0.1, 0.7, 1.5, woodMat, -2, y + 0.35, -25);
+  addBox(0.1, 0.7, 1.5, woodMat, 2, y + 0.35, -25);
+}
+buildGardenDeck();
+
+// ---------- Top deck pool area (D17) ----------
+function buildTopPool() {
+  const y = 78;
+  addBox(14, 0.4, 12, deckWarm, 0, y - 0.2, -8);
+  const water = new THREE.Mesh(new THREE.BoxGeometry(12, 0.4, 10), matBlue);
+  water.position.set(0, y - 0.1, -8);
+  ship.add(water);
+  for (const [tx, tz] of [[5, 0], [-5, 0], [0, 4]]) {
+    const tan = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.6), bronzeMat);
+    tan.position.set(tx, y + 0.4, tz);
+    ship.add(tan);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.15, 0.3), woodMat);
+    seat.position.set(tx, y + 0.7, tz);
+    ship.add(seat);
+  }
+}
+buildTopPool();
+
+// ---------- Bridge wings (top deck rail) ----------
+function addBowRail() {
+  addRailingRun(26, 150, 0.4, 1.15);
+  addRailingRun(26, 150, 0.4, 1.15);
+}
+addBowRail();
+
+// ---------- Bow spray rail ----------
+(function buildSprayRail() {
+  // bulwark around fore deck
+  const y = 0;
+  // forward deck edge
+  addBox(22, 1.2, 0.8, whiteMat, 0, y + 0.6, 120);
+  addBox(22, 1.2, 0.8, whiteMat, 0, y + 0.6, 124);
+  // railing
+  addRailingRun(22, 120, y + 1.2, 1.1);
+  // sheer lines
+  for (let i = 0; i < 5; i++) {
+    const t = i / 5;
+    const z = 114 - t * 10;
+    addBox(0.06, 1.0, 0.06, railMat, -10 + t * 20, y + 0.5, z);
+  }
+})();
+
+// ---------- Boat deck cap rail (deck 18) ----------
+{
+  const p = deckProfiles[deckProfiles.length - 1];
+  addRailingRun(p.hw * 2 - 2, p.zF - 1, p.y + 1.15, 1.1);
+  addRailingRun(p.hw * 2 - 2, p.zB + 1, p.y + 1.15, 1.1);
+  addBox(0.12, 1.1, p.zF - p.zB - 2, railMat, -p.hw + 1, p.y + 0.9, (p.zF + p.zB) / 2);
+  addBox(0.12, 1.1, p.zF - p.zB - 2, railMat, p.hw - 1, p.y + 0.9, (p.zF + p.zB) / 2);
+  addBox(0.08, 0.08, p.zF - p.zB - 2, railMat, -p.hw + 1, p.y + 1.15, (p.zF + p.zB) / 2);
+  addBox(0.08, 0.08, p.zF - p.zB - 2, railMat, p.hw - 1, p.y + 1.15, (p.zF + p.zB) / 2);
+}
+
+// ---------- Bulwark at main deck sides (walkable perimeter) ----------
+{
+  // Deck 2 perimeter bulwarks with openings for promenade
+  addBox(2, 1.1, 30, whiteMat, -14, 0.55, 30);
+  addBox(2, 1.1, 30, whiteMat, 14, 0.55, 30);
+  addBox(2, 1.1, 30, whiteMat, -14, 0.55, -30);
+  addBox(2, 1.1, 30, whiteMat, 14, 0.55, -30);
+  // railings on top of deck 2 perimeter
+  addRailingRun(28, 30, 1.2, 1.1);
+  addRailingRun(28, -30, 1.2, 1.1);
+}
+
+// ---------- Cannons / mast details ----------
+// AFT mast (antenna)
+{
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 12, 8), darkMetalMat);
+  mast.position.set(0, 84, -30);
+  ship.add(mast);
+  for (let i = 0; i < 4; i++) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 0.05), bronzeMat);
+    bar.position.set(0, 85 - i * 2, -30);
+    ship.add(bar);
+  }
+  const winch = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 2, 12), redMat);
+  winch.position.set(0, 78, -30);
+  ship.add(winch);
+}
+
+// Aft bridge houses / boat deck equipment
+{
+  addBox(6, 3, 4, darkMetalMat, 0, 82, -20);
+  addBox(4, 2, 3, whiteRough, 0, 85, -20);
+}
+
+// Lifeboat station signs / numbers
+(function addBoatSigns() {
+  const signMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 });
+  for (const s of boatStations) {
+    for (const side of [-1, 1]) {
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.6), signMat);
+      sign.position.set(side * (s.hw + 0.1), s.y + 2.0, s.zB + 4);
+      sign.rotation.y = side * Math.PI / 2;
+      ship.add(sign);
+    }
+  }
+})();
+
+// ============================================================
+// SEAM / ERECTIONS FOR ORGANIC SHAPE
+// ============================================================
+
+// Extra stern details: propeller area and stern thrusters
+(function buildSternDetails() {
+  // bottom dark area
+  addBox(10, 2, 30, hullRedMat, 0, -16, -165);
+  addBox(10, 1.5, 12, darkMetalMat, 0, -12, -168);
+  // stern doors
+  addBox(8, 8, 0.3, whiteRough, 0, -2, -166);
+  addBox(6, 5, 0.4, new THREE.MeshStandardMaterial({ color: 0xdfe6ea, roughness: 0.3, metalness: 0.2 }), 0, 0, -166);
+  // stern thruster openings
+  for (const side of [-1, 1]) {
+    addBox(0.2, 3, 2.5, darkMetalMat, side * 16, -8, -150);
+  }
+  // ladder platform
+  addBox(2, 0.4, 4, deckWarm, 0, -10, -163);
+})();
+
+// Bow thruster / forecastle deck
+(function buildBowDeck() {
+  const y = 0;
+  addBox(16, 0.4, 12, deckWarm, 0, y + 0.2, 150);
+  // anchor windlass
+  addBox(3, 1.2, 2, darkMetalMat, -12, y + 0.6, 152);
+  // winch drum
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.6, 10), bronzeMat);
+  drum.rotation.z = Math.PI / 2;
+  drum.position.set(-12, y + 1.6, 152);
+  ship.add(drum);
+  // bow cap rail railing
+  addRailingRun(14, 154, y + 1.2, 1.1);
+})();
+
+// ============================================================
+// SHIP "ORGANIC SHAPE" MOLDING / extra trim
+// ============================================================
+
+// Amber / white light strips under rails (dusk glow - pure material, visible at day too as subtle)
+const underRailMat = new THREE.MeshStandardMaterial({
+  color: 0xffd68a, emissive: 0xffa640, emissiveIntensity: 0.0, roughness: 0.2, metalness: 0.2
+});
+
+// Add nav lights
+function addNavLight(x, y, z, col, parent = ship) {
+  const g = new THREE.Group();
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: col, emissiveIntensity: 2.0 }));
+  g.add(bulb);
+  const caseMat = new THREE.MeshStandardMaterial({ color: 0x1a222a, roughness: 0.5 });
+  const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.15, 12), caseMat);
+  housing.rotation.z = Math.PI / 2;
+  g.add(housing);
+  g.position.set(x, y, z);
+  parent.add(g);
+}
+// deck 2 side lights
+for (const side of [-1, 1]) {
+  addNavLight(side * 14, 2.2, 60, 0x44ff66);
+  addNavLight(side * 14, 2.2, 20, 0x44ff66);
+  addNavLight(side * 14, 2.2, -20, 0x44ff66);
+  addNavLight(side * 14, 2.2, -60, 0x44ff66);
+}
+// stern light
+addNavLight(0, 2.2, -166, 0x4466ff);
+// bow light
+addNavLight(0, 2.2, 166, 0xff4444);
+
+// ============================================================
+// RAILING LIGHTS (under promenade railings — glow at night)
+// ============================================================
+(function addUnderRailGlow() {
+  const groups = [];
+  for (const y of [30, 36, 42, 48]) {
+    const p = deckProfiles.find(d => d.y === y);
+    if (!p) continue;
+    for (const side of [-1, 1]) {
+      const x = side * (p.hw - 0.5);
+      const z = p.zF - 1.5;
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, p.zF - p.zB - 2), underRailMat);
+      rail.position.set(x, y + 1.12, z);
+      ship.add(rail);
+    }
+  }
+})();
+
+// ============================================================
+// PROXY for under-rail glow with day/night exposure
+// ============================================================
+let railGlowMats = [];
+(function collectRailGlow() {
+  railGlowMats.push(underRailMat);
+})();
+
+// ============================================================
+// OCEAN
+// ============================================================
+const oceanGeo = new THREE.PlaneGeometry(4000, 4000, 140, 140);
+oceanGeo.rotateX(-Math.PI / 2);
+
+const oceanUniforms = {
+  uTime: { value: 0 },
+  uSunDir: { value: new THREE.Vector3(0.3, 0.2, 0.1) },
+  uSunColor: { value: new THREE.Color(0xfff0cc) },
+  uSkyTop: { value: new THREE.Color(0x1a5f9e) },
+  uSkyHorizon: { value: new THREE.Color(0x9ec9e0) },
+  uNight: { value: 0.0 },
+  uWaveScale: { value: 0.0032 }
+};
+
+const oceanMat = new THREE.ShaderMaterial({
+  uniforms: oceanUniforms,
+  vertexShader: `
+    uniform float uTime;
+    uniform float uWaveScale;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    varying float vH;
+    float wave(vec2 p, float t, float s) {
+      float w = 0.0;
+      w += sin(p.x * 1.7 + t * 1.3 + p.y * 0.8) * 0.5;
+      w += sin(p.x * 2.9 - t * 1.7 - p.y * 1.4) * 0.3;
+      w += sin(p.y * 3.7 + t * 2.1 + p.x * 0.9) * 0.2;
+      return w * s;
+    }
+    void main() {
+      vec3 p = position;
+      float h = wave(p.xz, uTime, uWaveScale);
+      p.y += h;
+      vH = h;
+      // fake normal from derivatives
+      float e = 0.35;
+      float hL = wave(p.xz - vec2(e, 0.0), uTime, uWaveScale);
+      float hR = wave(p.xz + vec2(e, 0.0), uTime, uWaveScale);
+      float hD = wave(p.xz - vec2(0.0, e), uTime, uWaveScale);
+      float hU = wave(p.xz + vec2(0.0, e), uTime, uWaveScale);
+      vec3 n = normalize(vec3((hL - hR) * 2.2, 1.0, (hD - hU) * 2.2));
+      vNormal = n;
+      vec4 wp = modelMatrix * vec4(p, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uSunDir, uSunColor, uSkyTop, uSkyHorizon;
+    uniform float uNight;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    varying float vH;
+    void main() {
+      vec3 n = normalize(vNormal);
+      vec3 viewDir = normalize(cameraPosition - vWorldPos);
+      float ndv = max(dot(n, viewDir), 0.0);
+      // fresnel
+      float fres = pow(1.0 - ndv, 3.0) * 0.8;
+      // sky mix
+      vec3 col = mix(uSkyHorizon, uSkyTop, 0.55 + 0.45 * ndv);
+      // sun reflection
+      float spec = pow(max(dot(reflect(-uSunDir, n), viewDir), 0.0), 45.0);
+      col += uSunColor * spec * 2.2;
+      // broad sheen
+      float sheen = pow(max(dot(n, normalize(uSunDir)), 0.0), 4.0);
+      col += uSunColor * sheen * 0.18;
+      // night darkening
+      col *= mix(1.0, 0.10, uNight);
+      // moon specular (simplified, use sun dir negated)
+      float moonSpec = pow(max(dot(reflect(normalize(vec3(-uSunDir.x, -uSunDir.y, -uSunDir.z)), n), viewDir), 0.0), 220.0);
+      col += vec3(0.7, 0.85, 1.0) * moonSpec * (1.0 - uNight) * 0.0;
+      col += vec3(0.55, 0.68, 0.9) * moonSpec * uNight * 1.2;
+      // add wave highlight band
+      col += vec3(1.0, 0.95, 0.85) * pow(max(1.0 - abs(vH) * 2.4, 0.0), 8.0) * (1.0 - uNight) * 0.12;
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+  side: THREE.FrontSide
+});
+
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.position.y = -30;
+ocean.receiveShadow = false;
+scene.add(ocean);
+
+// ============================================================
+// SUN SET / MOON RAIN CLOUDS
+// ============================================================
+// Cloud layer — several large dark-blue flat cards near horizon (billboarded)
+const cloudGroup = new THREE.Group();
+scene.add(cloudGroup);
+const cloudTex = makeCloudTexture();
+function makeCloudTexture() {
+  const c = makeCanvas(512, 256);
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 512, 256);
+  const rand = mulberry32(1234);
+  for (let i = 0; i < 26; i++) {
+    const x = 60 + rand() * 392;
+    const y = 90 + rand() * 80;
+    const w = 70 + rand() * 140;
+    const h = 22 + rand() * 30;
+    const grd = g.createRadialGradient(x, y, 5, x, y, w / 2);
+    grd.addColorStop(0, `rgba(255,255,255,${0.5 + rand() * 0.4})`);
+    grd.addColorStop(0.6, `rgba(225,235,245,${0.25 + rand() * 0.2})`);
+    grd.addColorStop(1, 'rgba(200,215,230,0)');
+    g.fillStyle = grd;
+    g.beginPath();
+    g.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+const cloudMat = new THREE.MeshBasicMaterial({
+  map: cloudTex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  opacity: 0.85, fog: false
+});
+for (let i = 0; i < 26; i++) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(620, 310), cloudMat);
+  m.position.set((i - 13) * 180 + (i % 2) * 90, 320 + (i % 4) * 50, (i % 3 - 1) * 700);
+  m.material = new THREE.MeshBasicMaterial({
+    map: cloudTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.75, fog: false
+  });
+  cloudGroup.add(m);
+}
+
+// ============================================================
+// RAIN / STORM PARTICLES
+// ============================================================
+const rainGeoPool = [];
+function createRainSystem(count, color) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const vel = new Float32Array(count * 3);
+  const rng = mulberry32(99);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (rng() - 0.5) * 500;
+    pos[i * 3 + 1] = rng() * 200 - 40;
+    pos[i * 3 + 2] = (rng() - 0.5) * 500;
+    vel[i * 3] = (rng() - 0.5) * 6;
+    vel[i * 3 + 1] = -(30 + rng() * 40);
+    vel[i * 3 + 2] = (rng() - 0.5) * 6;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color: color, size: 0.9, transparent: true, opacity: 0.6, depthWrite: false
+  });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  scene.add(points);
+  return { points, pos, vel, count };
+}
+
+let rain = null;
+function setRain(count) {
+  if (rain) scene.remove(rain.points);
+  rain = count > 0 ? createRainSystem(count, 0xaac8dd) : null;
+}
+setRain(0);
+
+// ============================================================
+// WRECK/other: buoy line (for sea)
+// ============================================================
+// (skip)
+
+// ============================================================
+// MOON / SUN + SKY CYCLE
+// ============================================================
+const skyState = {
+  sunAngle: 0.35 * Math.PI * 2, // 0..2pi where 0.35 = day
+  sunSpeed: 0.02, // per second full cycle 2pi
+  timeOfDay: 0.35,
+  speed: 0.00005, // 1 = normal, 60x faster with slider
+  autoPlay: true,
+  sunIntensity: 2.2,
+  hemiIntensity: 0.85,
+  nightFactor: 0.0,
+  fogColor: 0x9ec9e0,
+  fogNear: 420,
+  fogFar: 1500,
+  exposure: 1.0,
+};
+
+// sun position
+const sunDir = new THREE.Vector3(0.3, 0.2, 0.1);
+const sunPos = new THREE.Vector3();
+function updateSunPosition(tod) {
+  const a = tod * Math.PI * 2;
+  sunDir.set(Math.cos(a + 0.35), Math.sin(a + 0.35) * 0.75, 0.35).normalize();
+  sunPos.copy(sunDir).multiplyScalar(1200);
+  sunLight.position.copy(sunPos);
+  sunLight.target.position.set(0, 0, -40);
+  moonLight.position.copy(sunDir).multiplyScalar(900);
+  moonLight.position.y -= 200;
+
+  const d = sunDir.y;
+  const isDay = d > -0.05;
+  const nightFactor = isDay ? 0 : 1;
+  skyState.sunIntensity = isDay ? 2.2 * (0.4 + d * 0.6) : 0.1;
+  sunLight.intensity = skyState.sunIntensity;
+  sunLight.color.setHSL(0.1 + d * 0.15, 0.5, isDay ? 0.9 : 0.5);
+  skyState.hemiIntensity = isDay ? 0.85 : 0.15;
+  hemi.intensity = skyState.hemiIntensity;
+  hemi.color.setRGB(0.75, 0.85, 1.0);
+  nightBoost.intensity = isDay ? 0.0 : 0.4;
+  fillLight.intensity = isDay ? 0.45 : 0.05;
+  fillLight.color.setHex(0x9ec8f0);
+
+  // sky colors
+  const t = Math.max(0, Math.min(1, d * 2 + 0.4));
+  const topCol = new THREE.Color().lerpColors(new THREE.Color(0xffe8b0), new THREE.Color(0x1a3a5c), nightFactor);
+  const horCol = new THREE.Color().lerpColors(new THREE.Color(0xffe1a0), new THREE.Color(0x2a3d4d), nightFactor);
+  skyMat.uniforms.uTop.value.copy(topCol);
+  skyMat.uniforms.uHorizon.value.copy(horCol);
+  skyMat.uniforms.uDown.value.setRGB(0.16, 0.20, 0.26);
+  skyMat.uniforms.uSun.value.copy(isDay ? new THREE.Color(0xfff1cc) : new THREE.Color(0xcfe4ff));
+  skyMat.uniforms.uSunDir.value.copy(sunDir);
+
+  // sun/moon disc visibility
+  const visDay = Math.max(0, Math.min(1, (d + 0.15) / 0.3));
+  const visNight = Math.max(0, Math.min(1, (-d + 0.15) / 0.3));
+  sunDisc.visible = isDay;
+  moonDisc.visible = !isDay;
+  sunDisc.position.copy(sunDir).multiplyScalar(1400);
+  moonDisc.position.copy(sunDir).multiplyScalar(1400);
+  (sunDisc.material.opacity = 0.95, moonDisc.material.opacity = 0.9);
+
+  // fog
+  scene.fog.color.copy(horCol).lerp(new THREE.Color(0x2a3d4d), nightFactor);
+  scene.fog.near = isDay ? 420 : 300;
+  scene.fog.far = isDay ? 1500 : 900;
+
+  // ocean uniforms
+  oceanUniforms.uSunDir.value.copy(sunDir);
+  oceanUniforms.uSunColor.value.copy(isDay ? new THREE.Color(0xfff0cc) : new THREE.Color(0xa0b8d8));
+  oceanUniforms.uSkyTop.value.copy(topCol);
+  oceanUniforms.uSkyHorizon.value.copy(horCol);
+  oceanUniforms.uNight.value = nightFactor;
+
+  // exposure
+  renderer.toneMappingExposure = isDay ? 1.0 : 0.4;
+}
+
+// ============================================================
+// CONTROLS — PointerLock + walking with collision
+// ============================================================
+const pointer = new PointerLockControls(camera, document.body);
+pointer.enabled = false;
+
+const keys = {};
+const walkState = {
+  yaw: 0,
+  pitch: 0,
+  vel: new THREE.Vector3(),
+  moveDir: new THREE.Vector2(),
+  bobPhase: 0,
+  bobAmp: 0.0,
+  speed: 0.0,
+  isOnDeck: null,
+  climbVel: 0,
+};
+
+// movement helpers
+const DECK_LEVELS = [0.0, 6, 12, 18, 24, 30, 36, 42, 48, 54, 60, 65, 69, 72.5, 75.5, 78, 80];
+const DECK_NAMES = {
+  0: 'D2 waist deck',
+  6: 'D3',
+  12: 'D4',
+  18: 'D5',
+  24: 'D6 promenade',
+  30: 'D7 promenade',
+  36: 'D8',
+  42: 'D9',
+  48: 'D10 pool deck',
+  54: 'D11',
+  60: 'D12 jogging track',
+  65: 'D13 galley',
+  69: 'D14 garden deck',
+  72.5: 'D15',
+  75.5: 'D16',
+  78: 'D17 top deck',
+  80: 'D18 boat deck',
+};
+
+// Simplified capsule colliders: array of {cx, cz, r, y0, y1, top} (top = standable height at that position)
+const colliders = [
+  // Superstructure footprint (walkable floor is at deck top; we allow walking on whole deck)
+  // We'll implement as "no-walk" volumes in addition to "walkable" surfaces.
+];
+
+// Walkable surfaces (y, minZ, maxZ, minX, maxX)
+const walkSurfaces = [
+  { y: 0, minX: -16, maxX: 16, minZ: -88, maxZ: 78 },     // deck 2 waist
+  { y: 6, minX: -15, maxX: 15, minZ: -92, maxZ: 82 },     // deck 3
+  { y: 12, minX: -14.5, maxX: 14.5, minZ: -94, maxZ: 86 }, // deck 4
+  { y: 18, minX: -13.8, maxX: 13.8, minZ: -92, maxZ: 88 }, // deck 5
+  { y: 24, minX: -13, maxX: 13, minZ: -90, maxZ: 88 },     // deck 6
+  { y: 30, minX: -12.2, maxX: 12.2, minZ: -88, maxZ: 88 }, // deck 7
+  { y: 36, minX: -11.2, maxX: 11.2, minZ: -86, maxZ: 86 }, // deck 8
+  { y: 42, minX: -10, maxX: 10, minZ: -82, maxZ: 84 },     // deck 9
+  { y: 48, minX: -8.6, maxX: 8.6, minZ: -76, maxZ: 80 },   // deck 10
+  { y: 54, minX: -7.2, maxX: 7.2, minZ: -68, maxZ: 74 },   // deck 11
+  { y: 60, minX: -5.6, maxX: 5.6, minZ: -60, maxZ: 66 },   // deck 12
+  { y: 65, minX: -4.4, maxX: 4.4, minZ: -52, maxZ: 58 },   // deck 13
+  { y: 69, minX: -3.6, maxX: 3.6, minZ: -44, maxZ: 50 },   // deck 14
+  { y: 72.5, minX: -3.0, maxX: 3.0, minZ: -36, maxZ: 44 }, // deck 15
+  { y: 75.5, minX: -2.5, maxX: 2.5, minZ: -30, maxZ: 38 }, // deck 16
+  { y: 78, minX: -2.0, maxX: 2.0, minZ: -24, maxZ: 32 },   // deck 17
+  { y: 80, minX: -1.4, maxX: 1.4, minZ: -18, maxZ: 26 },   // deck 18
+  // open promenades at deck 2 (y=0) fore/aft
+  { y: 0, minX: -12, maxX: 12, minZ: 78, maxZ: 130 },
+  { y: 0, minX: -11, maxX: 11, minZ: -130, maxZ: -88 },
+];
+
+function getGroundHeight(x, z) {
+  // topmost walk surface containing (x,z)
+  let best = null;
+  for (const s of walkSurfaces) {
+    if (x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ) {
+      if (!best || s.y > best.y) best = s;
+    }
+  }
+  return best ? best.y : null;
+}
+
+// Stairs auto-connect: at fixed points, pressing E moves up/down to next deck level within walk bounds
+const stairs = [
+  // position {x,z} between decks — represented as platform strips
+];
+
+// We'll implement "stairs" as: at fixed z corridor, pressing E climbs nearest deck.
+// Simplest: put stairwell shafts at front center (x=0, z=-20) connecting all decks.
+const stairAx = 0;
+const stairZ = -20;
+
+// collision: walk inside ship (avoid going into walls) — check superstructure volume
+// For each deck, walls at hw; at level 0 no walls in the very center (promenade)
+function isColliding(x, z, radius) {
+  // Keep within overall hull bounds
+  if (Math.abs(x) > 30 || z < -170 || z > 170) return true;
+  // For any walkable level check whether outside of corresponding deck
+  return false; // handled by surface containment
+}
+
+// ---------- Collision radius
+const PLAYER_RADIUS = 0.55;
+const STEP_UP = 1.4;
+
+function checkSurface(x, z) {
+  let best = null;
+  for (const s of walkSurfaces) {
+    if (x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ) {
+      if (!best || s.y > best.y) best = s;
+    }
+  }
+  return best;
+}
+
+// camera and pointer lock state
+let isWalking = false;
+let mode = 'walk'; // walk | fly | cinema
+
+// pointer lock
+const overlay = document.getElementById('overlay');
+const hint = document.getElementById('hint');
+document.addEventListener('pointerlockchange', () => {
+  isWalking = document.pointerLockElement === document.body && mode === 'walk';
+  if (isWalking) {
+    overlay.classList.add('hidden');
+    hint.style.display = 'block';
+  } else {
+    hint.style.display = 'none';
+  }
+});
+
+overlay.addEventListener('click', () => {
+  if (mode !== 'walk') {
+    document.getElementById('mode').value = 'walk';
+    mode = 'walk';
+  }
+  document.body.requestPointerLock();
+});
+
+// ---------- Day/night controls
+const sunSlider = document.getElementById('sunSlider');
+const autoPlayBtn = document.getElementById('autoplay');
+sunSlider.addEventListener('input', () => {
+  skyState.timeOfDay = parseFloat(sunSlider.value);
+  skyState.autoPlay = false;
+  autoPlayBtn.textContent = 'AUTO CYCLE: OFF';
+});
+autoPlayBtn.addEventListener('click', () => {
+  skyState.autoPlay = !skyState.autoPlay;
+  autoPlayBtn.textContent = 'AUTO CYCLE: ' + (skyState.autoPlay ? 'ON' : 'OFF');
+});
+
+// ---------- Weather controls
+const weatherSel = document.getElementById('weather');
+weatherSel.addEventListener('change', () => {
+  const w = weatherSel.value;
+  const counts = { clear: 0, cloudy: 0, rain: 2600, storm: 6000 };
+  setRain(counts[w] || 0);
+  cloudGroup.children.forEach((c) => {
+    if (w === 'clear') {
+      c.material.opacity = 0;
+      c.visible = false;
+    } else {
+      c.visible = true;
+      c.material.opacity = w === 'cloudy' ? 0.9 : 0.75;
+      c.material.color.setHex(w === 'storm' ? 0x333a40 : 0xe8eef2);
+    }
+  });
+  if (w === 'rain' || w === 'storm') {
+    scene.fog.near = 250;
+    scene.fog.far = 900;
+    renderer.toneMappingExposure = 0.8;
+  } else {
+    scene.fog.near = 420;
+    scene.fog.far = 1500;
+    renderer.toneMappingExposure = 1.0;
+  }
+});
+// apply default cloudy
+setRain(0);
+cloudGroup.children.forEach((c) => { c.visible = true; c.material.opacity = 0.9; });
+
+// ---------- Camera modes
+const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+orbitControls.enabled = true;
+orbitControls.enableDamping = true;
+orbitControls.target.set(0, 20, 0);
+orbitControls.maxPolarAngle = Math.PI * 0.49;
+orbitControls.minDistance = 60;
+orbitControls.maxDistance = 900;
+orbitControls.zoomSpeed = 0.9;
+orbitControls.enablePan = false;
+
+document.getElementById('mode').addEventListener('change', (e) => {
+  mode = e.target.value;
+  orbitControls.enabled = (mode !== 'walk');
+  pointer.enabled = (mode === 'walk');
+  if (mode === 'walk') {
+    if (document.pointerLockElement !== document.body) {
+      document.body.requestPointerLock();
+    }
+  } else if (document.pointerLockElement === document.body) {
+    document.exitPointerLock();
+  }
+  if (mode === 'fly') {
+    // snap camera above deck center to give a cinematic overview
+    camera.position.set(0, 200, 320);
+    orbitControls.target.set(0, 40, 0);
+  }
+  if (mode === 'cinema') {
+    camera.position.set(0, 150, 400);
+    orbitControls.target.set(0, 40, -20);
+  }
+});
+
+// ---------- Key handling
+document.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code === 'KeyE') {
+    // stairs auto-connect
+    autoClimb();
+  }
+  if (e.code === 'Space' && isWalking) {
+    walkState.climbVel = 2.2;
+  }
+  if (e.code === 'KeyF' && mode === 'walk') {
+    // toggle between levels? no-op
+  }
+});
+document.addEventListener('keyup', (e) => {
+  keys[e.code] = false;
+});
+
+function autoClimb() {
+  // find current deck based on camera y
+  const y = camera.position.y;
+  const targetY = Math.min(...DECK_LEVELS.filter(v => v > y + 0.6).concat([Infinity]));
+  if (targetY === Infinity) return;
+  // require within corridor near stair area
+  const z = camera.position.z;
+  if (Math.abs(z - stairZ) > 6) return;
+  const steps = Math.round((targetY - y) / 6);
+  walkState.climbVel = steps * 2.0;
+  walkState.bobPhase = 0;
+}
+
+// ---------- Main loop
+const clock = new THREE.Clock();
+let rainUpdateAcc = 0;
+
+function updatePlayer(dt) {
+  if (!isWalking) return;
+  const forward = new THREE.Vector3(-Math.sin(pointer.getDirection().x), 0, -Math.cos(pointer.getDirection().x)).normalize();
+  // simpler: use yaw/pitch stored
+  const yaw = walkState.yaw;
+  const pitch = walkState.pitch;
+  const speed = (keys['ShiftLeft'] ? 5.0 : 2.4);
+
+  const input = new THREE.Vector2();
+  if (keys['KeyW'] || keys['ArrowUp']) input.y += 1;
+  if (keys['KeyS'] || keys['ArrowDown']) input.y -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) input.x += 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) input.x -= 1;
+  if (input.lengthSq() > 1) input.normalize();
+
+  const dirX = input.x * -Math.sin(yaw) + input.y * -Math.sin(yaw) * 0; // placeholder
+  // simpler yaw-based
+  const dx = input.x * -Math.sin(yaw) + input.y * Math.cos(yaw);
+  const dz = input.x * Math.cos(yaw) + input.y * Math.sin(yaw);
+
+  const targetVX = dx * speed;
+  const targetVZ = dz * speed;
+  walkState.vel.x += (targetVX - walkState.vel.x) * Math.min(1, dt * 10);
+  walkState.vel.z += (targetVZ - walkState.vel.z) * Math.min(1, dt * 10);
+
+  let px = camera.position.x + walkState.vel.x * dt;
+  let pz = camera.position.z + walkState.vel.z * dt;
+
+  // clamp within ship bounds
+  const surf = checkSurface(px, pz);
+  if (!surf) {
+    // try to slide back if crossing boundary
+    // If both coords are slightly outside, attempt axis correction
+    if (checkSurface(camera.position.x, pz)) {
+      pz = camera.position.z;
+    } else if (checkSurface(px, camera.position.z)) {
+      px = camera.position.x;
+    } else {
+      // clamp to nearest deck
+      px = camera.position.x;
+      pz = camera.position.z;
+    }
+  }
+
+  // vertical: use climb velocity or find nearest surface height
+  let groundY = getGroundHeight(camera.position.x, camera.position.z);
+  if (surf) {
+    if (surf.y > groundY + 0.01) groundY = surf.y;
+  }
+
+  // ground smoothing
+  let targetY = groundY ?? camera.position.y;
+  if (walkState.climbVel > 0) {
+    targetY = camera.position.y + walkState.climbVel * dt;
+    walkState.climbVel = Math.max(0, walkState.climbVel - dt * 6);
+  }
+
+  const dy = targetY - camera.position.y;
+  walkState.bobPhase += (walkState.vel.length() > 0.2 ? dt * 11 : 0);
+  const bob = Math.sin(walkState.bobPhase) * 0.06;
+  const bobX = Math.cos(walkState.bobPhase * 0.5) * 0.04;
+
+  camera.position.x = px;
+  camera.position.z = pz;
+  camera.position.y += dy + bob;
+
+  // head bob
+  const bobSpeed = walkState.vel.length() > 0.5 ? 0.9 : 0.4;
+  walkState.bobPhase += dt * 8 * bobSpeed;
+
+  // simple step up check (climbVel handled via E and space)
+  // vertical position relative to deck center -> bob only
+}
+
+// Raycast stairs to help when user is not near stairZ? Simpler: E works within corridor
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // time of day update
+  if (skyState.autoPlay) {
+    skyState.timeOfDay += dt * 0.006 * (keys['ShiftLeft'] ? 4 : 1);
+  }
+  sunSlider.value = skyState.timeOfDay.toFixed(2);
+  updateSunPosition(skyState.timeOfDay);
+
+  // time label
+  const hours = Math.floor(skyState.timeOfDay * 24);
+  const mins = Math.floor((skyState.timeOfDay * 24 % 1) * 60);
+  document.getElementById('sunState').textContent = `${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
+
+  // ocean animation
+  oceanUniforms.uTime.value = clock.getElapsedTime();
+  ocean.position.y = -30 + Math.sin(clock.elapsedTime * 0.5) * 0.2;
+
+  // ship bobbing
+  ship.position.y = Math.sin(clock.elapsedTime * 0.5) * 0.18;
+  ship.rotation.z = Math.sin(clock.elapsedTime * 0.5 + 1.0) * 0.003;
+  ship.rotation.x = Math.sin(clock.elapsedTime * 0.35 + 2.0) * 0.002;
+
+  // ocean rotation
+  ocean.rotation.z = 0;
+
+  // clouds drift
+  for (let i = 0; i < cloudGroup.children.length; i++) {
+    const c = cloudGroup.children[i];
+    c.position.x += dt * 2.5;
+    if (c.position.x > 900) c.position.x = -900;
+  }
+
+  // rain update
+  if (rain) {
+    const pos = rain.pos;
+    for (let i = 0; i < rain.count; i++) {
+      pos[i * 3] += rain.vel[i * 3] * dt;
+      pos[i * 3 + 1] += rain.vel[i * 3 + 1] * dt;
+      pos[i * 3 + 2] += rain.vel[i * 3 + 2] * dt;
+      // reset above
+      if (pos[i * 3 + 1] < -35) {
+        pos[i * 3] = (Math.random() - 0.5) * 500;
+        pos[i * 3 + 1] = 160 + Math.random() * 60;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 500;
+      }
+    }
+    rain.points.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // camera mode handling
+  if (mode === 'walk' && isWalking) {
+    updatePlayer(dt);
+    // Pointer lock direction
+    // apply pitch via camera rotation
+    camera.rotation.set(walkState.pitch, walkState.yaw, 0, 'YXZ');
+    // under-rail glow update
+    const isNight = scene.fog.color.getHex() < 0x445566;
+    underRailMat.emissiveIntensity = isNight ? 0.9 : 0.05;
+    underRailMat.emissive = isNight ? new THREE.Color(0xffb347) : new THREE.Color(0xffb347);
+  } else if (mode === 'fly' || mode === 'cinema') {
+    orbitControls.update();
+  }
+
+  // continuous climb via E held? handled via keydown only, okay.
+
+  // render
+  renderer.render(scene, camera);
+}
+animate();
+
+// ---------- Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- Init: pointer lock on overlay
+// (already handled in overlay click; also default mode = walk but not locked)
+mode = 'walk';
+document.getElementById('mode').value = 'walk';
+orbitControls.enabled = false;
+pointer.enabled = false;
+
+// force mode UI sync
+document.getElementById('mode').value = 'walk';
+</script>
+</body>
+</html>
+```
+Need to:
+
+1. Implement autoClimb properly for stairs: E key should move up a level.
+2. Fix updatePlayer: it references `pointer.getDirection()` unnecessarily.
+3. The walkSurfaces list doesn't allow walking on promenade decks (y=30 etc) wide enough — it does, minX -12.2..12.2. But promenade decks have balconies blocking. It's fine.
+4. Need to define walkState more cleanly, and update key controls: WASD movement uses yaw; mouse look changes yaw/pitch. But PointerLockControls in newer three handles its own movement if used; here we're not using pointer.lock for movement, so I'll implement mouse look manually: on mousemove when pointerLockElement, walkState.yaw -= movementX * 0.0025; pitch += movementY * 0.0025 (clamp).
+5. The camera orientation: I set camera.rotation.set(pitch, yaw, 0). Need camera.lookAt? With 'YXZ' order, rotation.set(pitch, yaw, 0, 'YXZ') sets pitch around X and yaw around Y. That works: camera.rotation.order='YXZ'; camera.rotation.set(pitch, yaw, 0).
+
+Wait, in three.js, the YXZ order with Euler: pitch around X (pitch up positive?), yaw around Y. If pitch positive rotates looking up? Let me recall: Euler order 'YXZ' means rotation applied as yaw around Y first, then pitch around X. If we set rotation.x = pitch positive, that rotates around local X axis... For a camera looking down -Z, positive x-rotation tilts the view upward? Let's see: rotating around X axis by positive angle: the -Z direction moves toward +Y? Rotation around X: y' = y cos - z sin... for vector (0,0,-1): y' = -(-1) sin = sin θ... hmm: rotation matrix around X: [1,0,0; 0,cosθ,-sinθ; 0,sinθ,cosθ]. Apply to (0,0,-1): y' = 0*cos - (-1)*sin = sinθ; z' = 0*sin + (-1)*cosθ = -cosθ. So positive pitch → looking up (y increases). Good: pitch positive = look up. Mouse down (movementY positive) should look down: pitch -= movementY * 0.0025. Clamp pitch to [-1.4, 1.4].
+
+6. Add proper stairs: when within stair corridor (|z+20| < 3 and |x| < 3) and current deck, press E → target next deck up within walkSurfaces list, animate climb. I'll implement a climbing state: when E pressed, set walkState.climbTarget = next deck y. In updatePlayer, if climbTarget set, move y toward it at 6 units/s; when close, clear. Also allow holding W to climb? Keep E only.
+
+7. Fix the "autoClimb" for next deck: compute next higher deck from current camera y.
+
+8. The boatStation sign placement may float oddly, fine.
+
+9. Add deck-specific floor textures? deckMat is fine but repetitive. Add pool highlights maybe. Not essential.
+
+10. Deck 6 promenade level should have open edge between deck and upper hull? We added balconies at front only. That's OK.
+
+11. Sun/disc visibility: sunDisc.visible = isDay - when night, disc visible? Actually disc should be hidden during night except moon. Also during day the sun disc should be in the sky — position it at sunDir*1400 which is outside sky sphere? Sky sphere radius 1600, camera far 4000, fine. But sun disc positioned at sunPos (1200) while sky at 1600 — inside sky. OK.
+
+Also when sun below horizon, sunLight still lights ship but intensity is low. Fine.
+
+12. Sky dome uniforms update in updateSunPosition: uOpacity unused fine.
+
+13. Need to ensure the ship is visible from orbit view: camera at (0,200,320), ship centered. Good.
+
+14. OrbitControls import path: 'three/addons/controls/OrbitControls.js' via importmap works with unpkg three@0.160.0 — OrbitControls imports from 'three' which maps. Yes.
+
+15. Potential issue: scene.fog on cloud meshes — we set fog:false, fine.
+
+16. The rain points need to be re-positioned with velocities relative to camera? Fine as is.
+
+17. Performance: 26 cloud planes with 512x256 textures each sharing same texture — good.
+
+18. The canvas texture `cloudTex` created with mulberry32 before function definition — I defined makeCloudTexture using mulberry32 after declaration? I defined makeCloudTexture referencing mulberry32 defined below. Function hoisting: makeCloudTexture is a function declaration, mulberry32 is also function declaration, so fine.
+
+Wait — actually I declared `const cloudTex = makeCloudTexture();` before `function mulberry32` — but function declarations are hoisted, so mulberry32 exists. Fine.
+
+19. Hull geometry: I compute normals with computeVertexNormals on indexed geometry — should be fine but smoothing across sections might look weird. Acceptable.
+
+20. Porthole placement math: I computed beam using t from 0.08 to 0.92 and r = 0.94*19*beam. Should be roughly matching hull side. OK.
+
+21. The superstructure front walls are PlaneGeometry facing +Z for front wall at zF — good, visible from outside. But back wall facing -Z — set rotation.y = PI — good. Side walls rotated ±PI/2 — good.
+
+However: the front walls on adjacent deck levels cover each other — stepped profile means outer walls of lower level stick out beyond upper? No, actually upper levels have smaller hw so they're inset. The facade planes for level i face outward at zF of that level, which for lower levels is further forward than the level above. So each level's front wall is visible. Good.
+
+But issue: the superstructure walls extend the full height between decks as separate planes per level, each with window texture, creating continuous facade with stacked grid — acceptable stylized.
+
+22. The promo: under-rail glow uses emissiveIntensity updated — I update it every frame in walk mode. OK.
+
+23. Add lighting for interior deck visibility: add small ambient point lights? Might be heavy. Add a couple of area lights on promenade deck using PointLights with low intensity, toggled at night. Let's add 4 PointLights near deck 7 promenade and one at pool deck. To keep perf fine, 4-6 point lights with shadows off.
+
+Actually a simpler approach: add emissive strips as floor light strips along promenade decks, so night looks alive. I'll add long thin emissive bars at deck level edges.
+
+24. Deck 14 garden deck at y=69 and deck 17 top deck at y=78 — gap between 69 and 72.5 etc. is fine.
+
+25. IMPORTANT: The walk surfaces list uses decks from deckProfiles which are at y: 0,6,12,... — but deck platforms were added with addDeck(y, w, d, z) which places top at y+0.5? addDeck(y,...) calls addBox(w, 0.5, d, mat, 0, y, z) — the box is 0.5 tall centered at y, so its top is y+0.25. So floor surface is at y+0.25. My walkSurfaces y values should match +0.25. Minor. Let me set walkSurfaces y = deckProfiles y + 0.25.
+
+26. Add "stairs" with more reality: a stairwell at the stern (z=-20? I set stairZ=-20 but that's within superstructure where deck floor at y values... the stair corridor at x=0, z=-20 will pass through multiple decks; fine visually since we don't model stairs.
+
+Better to add visual stair wells: small railed openings along z=-20. Eh — add railing gaps: skip, but add a few "stairs" black box strips descending from deck to deck at the stern near z=-20 to suggest stairwells. I'll add 3 boxes.
+
+27. Also update the "controls" info: D1 etc.
+
+28. The pointer lock: when clicking overlay, requestPointerLock; when exiting lock, show overlay again? Currently overlay hidden class removed only in pointerlockchange. When lock lost while mode walk, we should show overlay. Let's handle: in pointerlockchange, if not locked and mode==='walk', show overlay and pause movement (isWalking false). Add button to re-lock.
+
+Let me also add a pause when tab hidden — fine.
+
+29. The updatePlayer: after movement, ensure camera doesn't clip below floor: set camera.y = groundY + eyeHeight + bob. I'll compute groundY from checkSurface and set camera.position.y = groundY + 1.6 + bob.
+
+But when walking on different decks with steep climbs (stairs), the camera will step up instantly. Since E climbs the whole way and floors differ by 6 units, instant teleport. That's ugly. Better: when on same deck columns, allow walking forward and gravity keeps y at ground; if crossing a wall there's no wall. To allow level changes, user must use stairs at stair corridor; at the stair corridor, we can treat it as a vertical ramp: if near stair corridor, find surface below/above and move y toward it gradually while moving.
+
+Simplest acceptable: within the stair corridor (|z - stairZ| < 3.5, |x| < 3), compute all walkable surfaces sorted; if the surface above is within reach (|surf.y - camera.y| < 2), the camera gradually rises while moving forward. Implement: check surfaces above/below; if any within 1.5, interpolate y toward it while moving.
+
+That'll create nice stair ascent effect.
+
+30. Also prevent falling through: if no surface found below within 30 (shouldn't happen within ship), freeze position.
+
+Let me restructure updatePlayer:
+
+```js
+function updatePlayer(dt) {
+  const speed = keys['ShiftLeft'] ? 5.0 : 2.4;
+  ...input...
+  // direction
+  const dx = input.x * -Math.sin(yaw) + input.y * Math.cos(yaw);
+  const dz = input.x * Math.cos(yaw) + input.y * Math.sin(yaw);
+
+  let nx = camera.position.x + dx * speed * dt;
+  let nz = camera.position.z + dz * speed * dt;
+
+  // collision against deck bounds
+  let groundY = currentGroundY;
+  // determine allowed extents at current level
+  const surf = checkSurface(camera.position.x, camera.position.z);
+  if (surf) {
+    // attempt move with sliding
+    let okX = checkSurface(nx, camera.position.z);
+    if (!okX) nx = camera.position.x;
+    let okZ = checkSurface(nx, nz);
+    if (!okZ) nz = camera.position.z;
+  } else {
+    // on deck 2 promenade: surfaces exist everywhere? deck 2 surface at 0.25 covers minX -12.. etc. Actually walkSurfaces deck 2 covers -16..16. CheckSurface returns that. Fine.
+  }
+
+  // stair climb assist
+  let targetY = null;
+  const stairIn = Math.abs(nz - stairZ) < 3.5 && Math.abs(nx) < 3.0;
+  if (surf) {
+    const nextUp = walkSurfaces.filter(s => s.y > surf.y + 0.3 && s.y < surf.y + 3 && ...).find(s => s.y <= camera.position.y + 1.5) ...
+```
+
+Simplify stair: if within stair corridor, and there exists surface with |s.y - camera.y| < 1.2, smoothly move y toward s.y at rate 8*dt, and allow horizontal movement toward it.
+
+Actually easier and feels fine: within stair corridor, after horizontal movement, compute the set of surfaces within 3 units of current height; if the nearest surface above or below is within 2.5 units, lerp camera.y toward it. This makes walking into the stairwell at deck level and pressing W step up to next level. But the stair corridor is a column at x=0,z=-20 — only one column, so walking around the column on the promenade doesn't trigger. 
+
+But wait — stairZ=-20 is inside the superstructure footprint where all decks overlap (minZ up to -94, minX up to 15) so stair corridor at (0,-20) is inside the ship. But is it inside the deck area? Yes the superstructure footprint covers z -94..86. The corridor is inside the structure, i.e., under the deck. Hmm, that means the stairwell would be inside the building. Real ships have stairwells enclosed. Visually, we can make the corridor a dark vertical shaft with lights.
+
+Alternatively make stairs along the exterior near the aft open deck where it's visible: place stair corridor at z=-110 (aft open deck level 0) up to deck 6 area? That's complex.
+
+Let me place the main stair corridor near the bow open deck: x=0, z=105 (outside the superstructure which ends at 86) up to deck 8? The forward open deck is deck 2 (y=0.25) only; upper decks don't extend forward past z=86. Hmm.
+
+Alternative: make the stair corridor at the aft open deck z=-110 up through deck 18: but upper decks at z=-110? deck profiles zB goes to -94 minimum. So no.
+
+Simplest: place stair corridor within the superstructure at x = 0, z = -20. Add a railed open shaft (columns around it, dark interior). Users walking in it will see a dark shaft with glowing floor at each level. I'll add a visual stair shaft: two long black boxes from y=0 to y=80 at x=±2.2, z=-20, width 0.3, with a few light strips. And note in UI.
+
+Also add red "stairs" marker strip at the bottom of the shaft.
+
+That's acceptable and simple.
+
+Additionally, the current deck's deck floor is walkable around; the shaft is inside.
+
+To make it more walkable, add stair openings: on each deck level, the shaft occupies x in [-2.5, 2.5], z in [-22, -18]. Walking within it hits the climb assist.
+
+Implementation of assist: on each frame, if |nz - stairZ| < 3.0 and |nx| < 2.6 (approx), find the surface whose y is closest to camera.y among walkSurfaces within the shaft x/z bounds; if |s.y - camera.y| < 2.0, set camera.y = lerp(camera.y, s.y, 1 - exp(-8*dt)) — but also allow continuous crossing if both surfaces exist within 6 units. Simpler: while in shaft, compute lowest surface above and highest below; lerp camera.y toward nearest.
+
+That's fine.
+
+31. Also fix: checkSurface uses walkSurfaces with x/z extents of each deck; the shaft is within all decks, so at (0,-20) there's a surface at every deck level. When camera.y is at deck 3 (y=6.25) and it walks within shaft, the climb assist will see surface at y=0.25 (below) and 12.25 (above) — both more than 2 units away unless near. The lerp threshold 2.0 will only trigger when close. But walking horizontally into the shaft at deck 3 (y=6.25), the nearest surfaces are 0.25 (6 away) and 12.25 (6 away) — so no assist, and gravity doesn't apply since we set y to currentSurf.y — good, camera stays at 6.25. To move down, press E at the shaft → target below.
+
+OK, so E does the climb with animation: set climbTarget = next higher surface (within the shaft) or drop. Animate y toward target at rate 8/s. Horizontal movement in shaft still allowed. That works well.
+
+32. Also the Space key adds climbVel 2.2 — removed; instead space toggles climb to next surface if near? Let me remove space climbVel logic and just use E.
+
+33. Add "toggle camera F" - maybe toggles mouse sensitivity or hide UI. I'll make F toggle the controls panel.
+
+Now also: The overlay re-appears on lock exit in walk mode — clicking it re-locks. Good.
+
+34. Some issues with deckProfiles: I placed superstructure walls with 16 levels, but the top level y=80, and funnels at y=78 — funnels on top of the top deck (boat deck) which is at y=80, so funnels from 78 sit inside? Funnels should be placed on deck 18 (y=80) — I set funnel positions y=78 with h=14, so they span 78-92, base is at 78+0=78 which is 2 units below deck 18 at 80. Slight intersection, fine visually? Better set funnel base y=80. I'll set funnel y start at 80.
+
+Also bridge at bridgeY + ... where bridgeY = deckProfiles[-2].y = 78 (deck 17). The bridge should be on deck 18 top (80). I'll adjust.
+
+35. Let's also add water foam around hull at waterline? The hull is dark red below waterline hidden by water at -30. The sea is at y=-30. The hull bottom is at -30. So the sea surface hides the bottom. Fine.
+
+36. Add bow wave? Skip.
+
+37. Clouds: place at y 320-460 — the sky sphere radius 1600. Fine.
+
+38. The rain particles fall from y=160 down to -35 — the ship is at y 0-90. Good.
+
+39. Add distant horizon glow at night: skip.
+
+40. Ensure pointer lock request on overlay click works even if pointer is already locked elsewhere; fine.
+
+41. One more requirement: "walk on deck 7 next to the lifeboats". Deck 7 = y 30 level, and lifeboat stations are at y=30 (station 5) on both sides — but the deck 7 walk surface is only 24 wide with balconies; lifeboats are outside the superstructure at the sides. So walking on deck 7 in front of lifeboats means the balcony edge. That's fine — visually next to them.
+
+But wait — lifeboats should be mounted at the outer edge of each deck along the sides. On my layout, the boats are mounted at x = ±(s.hw + 2.2) — outside the hull superstructure at those levels. But the lifeboat stations for lower decks have zF=78, zB=-80 while the deck z range is 78..-88. The boats hang outside. Good.
+
+But my walkSurfaces at deck y=30 have minX ±12.2, while deckProfiles hw at y=30 is 12.2 and lifeboats are at ±(12.2+2.2)=14.4. Good.
+
+42. Make sure the walkable decks are not blocked by the promenade balcony strips: balconies at deck 30 z=86 depth 2.6 and x from -12 to 12? The addBalconyLine adds a walk strip across the front at y+0.1, which would be a floor slab at y 30.1..30.45 — but walkSurfaces for deck 30 at y=30.25 minZ -88..88 — walking at the front would collide with balcony but visually fine since I can't detect. It's OK.
+
+43. The scene may be dark on the ship due to hemi intensity. OK.
+
+44. Add fog color matching horizon so the sea disappears into fog at distance — done via sky/horizon.
+
+45. Ocean should also get fog to blend. The shader material doesn't receive fog. Add fog mixing manually: in ocean fragment shader, use uFogColor, uFogNear, uFogFar and mix. Let's add.
+
+46. Also make the ocean not cover the ship hull when ship bobs — ocean at -30, ship bottom at -30. Fine.
+
+47. The `walkSurfaces` for deck 0 minZ -88..78 while the deck is 0.25 top. Fine.
+
+48. Check horizon line: the sea plane is 4000x4000 with camera far 4000; sky at 1600. The ocean far edge beyond fog (1500) so it fades into fog color = horizon color. Good.
+
+49. Rain and ship: The rain is world-space, so it falls around the ship. Fine.
+
+50. The under-rail glow uses MeshStandardMaterial with emissive — at day emissiveIntensity 0.05 — fine.
+
+51. Additional: add "sun glare" - no.
+
+52. Make sure the ship doesn't scale weirdly. Length 330 wide beam ~38, height ~95 (funnels). It's about 1:1 scale. Walking speed 2.4 units/s, running 5. FOV 68. Fine. Ship length 330m at 1:1 — at 2.4 units/s it takes 137s to walk the ship. Maybe increase walking speed to 3.5 m/s and running 7.5. I'll use 3.2 / 7.
+
+53. The camera height 1.6.
+
+54. Need to add a "climb to top deck" convenience: E cycles to next surface above within shaft. Fine.
+
+55. Add labels for decks? Not needed.
+
+56. Also, when in fly/cinema mode the under-rail glow shouldn't update. Handled.
+
+57. OrbitControls and pointer: In walk mode, pointer.lock. Mousemove handler should be attached to document when locked. I'll add mousemove handler that updates walkState.yaw/pitch only when document.pointerLockElement === document.body.
+
+58. Also prevent scrolling etc.
+
+59. Also add collision with railings? Not needed.
+
+60. Add "ship detail": MSC logo on hull between bow and superstructure — I'll add a big red "M" emblem on the hull mid section (z=-10..10) using canvas texture plane on both sides. Also add white/red hull stripe. Let's add a red stripe along the upper hull at y=2? The hull surface at deck 2 is white; there's a red boot-top (dark) already. Fine.
+
+Let me add the hull logo: place planes at x=±(19*beam*0.97), y=4, z=0, size 20x20.
+
+But hull y at that z is the deck line... hull top is y=1.0? The section's top ring is y=1.0 (sheer). So the hull side goes up to y=1. Put the logo at y=0.5? That's very low, on the upper hull right below the superstructure deck. Hmm, real ships have logo on upper hull above the deck 2 deck? No — on cruise ships the deck 2 (waist) is the top of the hull and the logo goes on the superstructure facade or on the hull below the promenade deck. On MSC ships, the MSC logo is on the hull between bow and superstructure (on the forward and aft sections), typically around deck 2-3 level, i.e., y ~ 1-6. The bow section is at z=90..130 with the hull top at y=1 (small area). The aft open deck too.
+
+I'll place logo at z=105 (forward open deck area, x=±(beam*0.94), y=0.5). Actually the deck 2 forward open deck is at y=0.25 top with the hull underneath up to y=1. The logo at y=0.6, z=105.
+
+Hmm, the forward open deck is 24 wide at z=95, 16 wide at 108 — but those are platforms added at y=0.25, so the hull at z=105 is at beam ~? The hull beam at t for z=105: t = (105+165)/330 = 0.818; beam = 1 - 0.40*(bow factor) ... bow factor at t=0.818: |0.818-0.78|/0.42=0.0905^0.7 ≈ 0.19 → 0.2+0.19*0.9=0.371 → beam factor = 1-0.148=0.852. So half beam = 19*0.852 = 16.2. That matches the deck platform of 16 wide at z=108. Good.
+
+I'll place the logo at z=104, x=±15, y=0.55, size 12.
+
+61. Add "superstructure breakaway" forward - skip.
+
+62. Add exterior stair towers? skip.
+
+63. The promenade at deck 24 (D6) is the biggest walkway. The requirement emphasizes deck 7 with lifeboats — deck 7 = y30. Good.
+
+Now also ensure the deck 7 walk area isn't covered by balconies blocking the front; the balconies are at the front (z=86) and extend across x — I'll remove the front balcony walk at zF=86 for deck 30 to leave a promenade; actually adding balconies makes it richer. The walkable surface at y=30.25 spans z -88..88 so people can walk in front of the balcony (between balcony and railing)? The balcony occupies z 83.4..86 at y 30.1..30.45 — that overlaps walkable surface z 83.4..86 but it's furniture not a wall, so walking through it is OK visually. Fine.
+
+64. Add some cabins interior: skip.
+
+65. Let me finalize the code with all fixes and write it out. I'll also add a subtle "footstep" dust? No.
+
+66. Need to double-check `superDayTex` used for front/back walls of each deck: the window grid at 512x256 for each wall — for a wall of height 6 and width 24, the windows will stretch; acceptable.
+
+67. The night windows will light the ship at night — emissive? I used MeshStandardMaterial with map; at night, the map is dark with emissive yellow windows, but the material is not emissive so at night the whole ship becomes dark. To make night windows glow, I could add emissiveMap. Let's add emissive: 0xffffff, emissiveMap: night ? tex : null? Can't switch per material easily; can swap material at night. I'll create two materials and swap all facade meshes at night. Simpler: keep both and toggle by traversing ship. But swapping requires tagging meshes. Alternative: use a single material with emissive set to a dark warm color and emissiveMap = the same texture — at day the emissive will add some brightness but that's fine since it's subtle. Actually the texture is white-ish at day so emissive would wash it out. I'll use low emissive intensity (0.15) with emissiveMap = texture. At night the yellow windows will glow (emissiveMap multiplies base color). Let's do: superMat = new MeshStandardMaterial({map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.22, roughness: 0.45}). At day, the whole surface gets 22% of the white texture — slight brightening, acceptable. At night the yellow windows glow.
+
+I'll do that with the day texture only (it already has the window pattern). The night texture isn't needed then. Simplify: use one texture with both patterns? Let's keep the day texture but make windows bright at night via emissive. Good.
+
+68. Also add emissive to interior lights on promenade decks. Add PointLights: 3 at deck 7 (y=30) with warm color, and 2 at pool deck. Intensity 8, distance 30. At night these will make decks glow — but PointLights don't affect emissive surfaces (they do illuminate white surfaces). The decks are white so they'll be lit. Good. Add 6 point lights total.
+
+69. Set the `underRailMat` emissiveIntensity in animate (not just walk mode) based on night.
+
+Let me write the final code now, carefully.
+
+Also add window glints and any additional organic detail: hull sheer skirts (a red trim stripe around hull upper edge) — add red thin boxes along the hull edge? Complex; skip, but add a red stripe via a decal plane along the hull sides at y=0.6? skip.
+
+Add bow bulbous shape: the hull geometry already has a rounded bow via beam profile.
+
+One more: the hull doubleSide and computeVertexNormals may produce weird shading on the deck top ring (the top ring is at y=1.0 but the deck platform covers it at y=0.25). OK.
+
+Also I should ensure the hull mesh's normals point outward: for the swept geometry, the winding may be inverted. I'll set material.side = DoubleSide (already) so it's visible regardless.
+
+Performance: 26 cloud planes * 512x256 textures = fine.
+
+Now writing the final version. I'll be careful with the code so it runs.
+
+Key sections order:
+1. imports
+2. renderer, scene, camera
+3. lights, sky
+4. textures
+5. ship build
+6. ocean
+7. clouds, rain
+8. controls (pointer, orbit, keys)
+9. animation loop
+
+Let me carefully write the walking.
+
+I'll write the final code now.
+
+For the glass/cabin windows on the superstructure I already have window insets.
+
+Let me also add cabins along the superstructure facades: for the lower decks (6, 12, 18) add a row of small cabin blocks along the hull side. Maybe skip to reduce complexity.
+
+Add "benches" and planters on promenade decks. I have benches.
+
+Add "pool deck" furniture: loungers (nice detail):
+```js
+function addLounger(x, z, rot, y) { ... }
+```
+I'll add a few.
+
+Add a "marina"/life ring etc. Fine.
+
+Add some details on the deck 17 top deck: the pool + a helipad? skip.
+
+Now write it.
+
+One concern: `makeCanvas` returns a canvas without setting style — used with CanvasTexture, fine.
+
+Also `renderer.outputColorSpace` defaults to SRGB in r160. Good.
+
+Let me make sure texture colorSpace set for color maps: hullTex, superTex, lifeboatTex, logoTex — set to SRGBColorSpace. I'll set in each.
+
+Time to write the final document. I'll aim for correctness over excessive length.
+
+Also fix: `addRailingRun(w, z, y, height)` — I defined it as (w, z, y, height) and calls use addRailingRun(28, 30, 1.2, 1.1) → w=28, z=30, y=1.2. OK.
+
+In `addBalconyLine` I referenced deckProfiles.find by y — I pass y explicitly. Fine.
+
+The `walkSurfaces` y values must be deckProfiles y + 0.25.
+
+Stairs: E key → compute next deck up within shaft.
+
+Also on level deck changes, if the camera is at y=30 and presses E at shaft, target 36.
+
+Implementation of climb:
+```js
+let climbTarget = null;
+function tryClimb(dir) {
+  const surf = checkSurface(camera.position.x, camera.position.z);
+  if (!surf) return;
+  if (Math.abs(camera.position.z - stairZ) > 4 || Math.abs(camera.position.x) > 2.6) return;
+  const up = walkSurfaces.filter(s => s.y > surf.y + 0.3).sort((a,b)=>a.y-b.y)[0];
+  const dn = walkSurfaces.filter(s => s.y < surf.y - 0.3).sort((a,b)=>b.y-a.y)[0];
+  if (dir > 0 && up) climbTarget = up.y;
+  if (dir < 0 && dn) climbTarget = dn.y;
+}
+```
+E key alternates direction each press? I'll make E go up if on a lower deck relative to center... Let's make E = up, Q = down? But Q isn't mentioned. I'll make E cycle up, and holding E? Let's do: E key → climb up; Shift+E? Simpler: E key toggles based on whether an up surface exists within 4 units: if the surface above the current deck's +3 is within 3 and exists, go up; else go down to the highest surface below. Hmm.
+
+Simplest UX: E = climb to the next level above; holding Shift+E = descend? Or make E press cycle through all levels in order: press E once → up one level; press again → up another; to go down, press E repeatedly? That's odd.
+
+Alternative: E = up if the key is pressed and not held; but we can't detect hold easily in keydown (repeats). Actually keydown repeats when held. I can use e.repeat! keydown fires repeatedly while held, and e.repeat is true for repeats. So on first keydown (not repeat), climb one level up. For down, Shift+E with !e.repeat → down. I'll do that: E = up, Shift+E = down.
+
+Hmm, but Shift is used for running. Shift+E is only while E is pressed, fine.
+
+Let me implement: in keydown: if (e.code === 'KeyE') { if (e.repeat) break; tryClimb(e.shiftKey ? -1 : 1); }
+
+Also, to make it obvious, on-screen hint: "E = stairs (Shift+E down)".
+
+Now writing the final code.
+
+Additional visual: add a big red "VIRT" name on bow stern? skip.
+
+Also I should double check the shadow camera covers the ship: left/right ±240, top/bottom ±240 — ship length 330 along Z, shadow camera is oriented along light direction, so it covers about 240 in both directions in light space — ship length 330 exceeds; some parts won't cast shadows. Increase to ±400. Shadow map 2048 → fine.
+
+Also disable shadow for the ocean (not set anyway).
+
+Let me also add `renderer.shadowMap.autoUpdate = true`.
+
+Now writing out the whole file.
+
+I need to double check `PointerLockControls` import exists in r160 — yes, three/examples/jsm/controls/PointerLockControls.js.
+
+Actually since I implement my own mouse look, maybe don't import PointerLockControls at all to reduce dependency issues. I'll just use document.pointerLockElement and the standard pointer lock API. Yes, simpler and avoids module issues.
+
+So remove the PointerLockControls import.
+
+Mouse look:
+```js
+document.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement !== document.body) return;
+  walkState.yaw -= e.movementX * 0.0025;
+  walkState.pitch -= e.movementY * 0.0025;
+  walkState.pitch = Math.max(-1.35, Math.min(1.35, walkState.pitch));
+});
+```
+Note camera.rotation.set(pitch, yaw, 0) with order YXZ. Default Euler order is XYZ; setting rotation.set(x,y,z,0) — I need to pass 'YXZ' as the 4th arg: camera.rotation.set(pitch, yaw, 0, 'YXZ').
+
+OK writing now. Final answer below.
+
+Let me write the code with care and completeness.
+
+One more detail: `scene.background` set to a color, but the sky dome covers it. Fine.
+
+For the fog color at night: `scene.fog.color.copy(horCol).lerp(...)`. Since horCol is dark at night, good.
+
+I'll also add a subtle sun glow sprite for the sun disc — the sphere at 1400 distance with additive blending.
+
+Let me make the sky dome fog: false by default in ShaderMaterial (ShaderMaterial ignores fog unless fog:true and fog chunks). Good.
+
+Now, the ship's white hull at night will be dark, with warm windows — good.
+
+Also add cabin lights as small emissive squares on the superstructure facades? The window grid serves.
+
+Final code writing now.
+
+Regarding the lifeboats: they're placed at ±(s.hw+2.2) which for deck 30 is 14.4 — outside the hull half-beam at that deck (12.2). But the hull half-beam at deck 30 level is around 12.2-15? The deck 30 hw=12.2, so the hull must be at least that wide. The boat sits just outside, but there's no railing under it... Fine.
+
+I need to make sure the lifeboat visual isn't intersecting the deck of the level above (deck 36 hw=11.2 < 12.2). Boats hang at y 30 to 32 — under deck 36 (y 36). Fine.
+
+Write it.
+
+For the walk corridor at the stair, add visual railing around the shaft on each deck:
+```js
+// stair shaft enclosure
+for (const side of [-1,1]) {
+  addBox(0.12, 1.2, 44, railMat, side*2.8, 1.2, -20);
+}
+```
+But that would block the walk on each deck. That's fine — you walk up within the shaft.
+
+Hmm, but the shaft at x=±2.8 z=-20 spans all decks from y=0 to 80 — I'll add posts at each deck level only. Simpler: add a railing around the shaft on the top few decks. I'll skip walls; the shaft will look like an open feature with a light strip.
+
+Add a vertical light strip at x=±2.9, z=-20 with a warm emissive material to suggest stairwell light.
+
+OK, writing the final answer now. Also remember to set walkSurfaces y = deck y + 0.25.
+
+Let me also define `currentGroundY` computed each frame from camera x,z for use in collision.
+
+Final code:
+
+I'll write it now in full.
+
+Note: `renderer.domElement` is appended; the overlay is a separate div on top. The overlay covers the canvas. In walk mode with pointer lock, the canvas receives input. Good.
+
+Also, when the user clicks the overlay in walk mode, requestPointerLock. When the lock is lost (Esc), show the overlay again.
+
+Writing now.<|think:end|>```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MSC Virtuosa — A Day at Sea</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #0a1420;
+    font-family: "Segoe UI", Trebuchet MS, Verdana, sans-serif;
+    color: #e8f2f8; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+  #overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(ellipse at 50% 42%, rgba(10,26,40,0.5), rgba(3,10,18,0.93));
+    transition: opacity 0.8s ease; cursor: pointer;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  #overlay h1 {
+    font-size: clamp(28px, 5vw, 58px); letter-spacing: 7px; font-weight: 300;
+    margin: 0 0 4px 0; color: #fff;
+    text-shadow: 0 0 34px rgba(90,180,255,0.6);
+  }
+  #overlay .sub { font-size: 14px; letter-spacing: 4px; font-weight: 300; color: #9fc8e8; margin-bottom: 22px; }
+  #overlay .msc {
+    font-family: Georgia, serif; font-size: 46px; letter-spacing: 11px;
+    color: #e2543f; font-weight: bold; margin: 0 0 22px 0;
+    text-shadow: 0 0 26px rgba(226,84,63,0.7);
+  }
+  #overlay .controls-box {
+    background: rgba(10,30,48,0.55);
+    border: 1px solid rgba(140,200,240,0.25);
+    border-radius: 12px; padding: 16px 30px;
+    font-size: 14px; line-height: 2.0; letter-spacing: 0.5px;
+    color: #cfe8f7; margin-bottom: 20px;
+    backdrop-filter: blur(4px);
+  }
+  #overlay .controls-box b { color: #ffd84a; font-weight: 600; }
+  #overlay .gear {
+    font-size: 12.5px; color: #9fc8e8; letter-spacing: 3px;
+    text-transform: uppercase; margin-top: 10px; opacity: 0.85;
+  }
+  #hint {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 9; font-size: 13px; letter-spacing: 1px; color: rgba(220,235,245,0.75);
+    background: rgba(8,20,32,0.45); border: 1px solid rgba(140,200,240,0.15);
+    padding: 8px 18px; border-radius: 20px; pointer-events: none;
+    transition: opacity 0.5s; white-space: nowrap;
+  }
+  #controls {
+    position: fixed; top: 14px; right: 14px; z-index: 11;
+    background: rgba(8,22,36,0.58);
+    border: 1px solid rgba(140,200,240,0.2);
+    border-radius: 10px; padding: 12px 14px;
+    font-size: 12.5px; line-height: 1.75; color: #cfe8f7;
+    backdrop-filter: blur(6px); width: 212px;
+  }
+  #controls h3 { margin: 0 0 8px 0; font-size: 12px; letter-spacing: 2px; color: #9fc8e8; font-weight: 600; }
+  #controls .row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  #controls label { color: #9fc8e8; }
+  #controls select, #controls input[type="range"] {
+    background: rgba(10,30,48,0.7); color: #e8f2f8;
+    border: 1px solid rgba(140,200,240,0.25); border-radius: 6px;
+    padding: 3px 6px; font-size: 12px; width: 98px; outline: none;
+  }
+  #controls input[type="range"] { width: 86px; }
+  #controls button {
+    width: 100%; margin-top: 6px; background: rgba(226,84,63,0.25);
+    color: #ffb4a3; border: 1px solid rgba(226,84,63,0.5);
+    border-radius: 6px; padding: 5px; font-size: 12px; cursor: pointer; letter-spacing: 1px;
+  }
+  #controls button:hover { background: rgba(226,84,63,0.45); color: #fff; }
+  #sunState { color: #ffd84a; font-weight: 600; }
+  @media (max-width: 760px) { #controls { display: none; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="overlay">
+  <div class="msc">MSC</div>
+  <h1>VIRTUOSA</h1>
+  <div class="sub">&mdash; A DAY AT SEA &mdash;</div>
+  <div class="controls-box">
+    <b>W A S D</b> / <b>Arrows</b> &nbsp;move &nbsp;&bull;&nbsp; <b>Mouse</b> look<br>
+    <b>Shift</b> run &nbsp;&bull;&nbsp; <b>E</b> stairs (<b>Shift+E</b> down)<br>
+    <b>F</b> toggle control panel
+  </div>
+  <div style="color:#9fc8e8;font-size:13px;letter-spacing:3px;">CLICK TO BOARD THE SHIP</div>
+  <div class="gear">Generated entirely in your browser</div>
+</div>
+
+<div id="hint"></div>
+
+<div id="controls">
+  <h3>AT SEA</h3>
+  <div class="row"><label for="weather">Weather</label>
+    <select id="weather">
+      <option value="cloudy" selected>Cloudy</option>
+      <option value="clear">Clear</option>
+      <option value="rain">Rain</option>
+      <option value="storm">Storm</option>
+    </select>
+  </div>
+  <div class="row"><label for="mode">Mode</label>
+    <select id="mode">
+      <option value="walk">Walk (FP)</option>
+      <option value="fly">Fly (Orbit)</option>
+      <option value="cinema">Cinema</option>
+    </select>
+  </div>
+  <div class="row"><label for="sunSlider">Sun</label>
+    <input id="sunSlider" type="range" min="0" max="1" step="0.005" value="0.35">
+  </div>
+  <div class="row"><span>Clock</span><span id="sunState">08:24</span></div>
+  <button id="autoplay">AUTO CYCLE: ON</button>
+  <div style="margin-top:8px;font-size:11px;color:#7ea8c4;letter-spacing:0.5px;line-height:1.8;">
+    D2 waist &bull; D6 promenade &bull; <b style="color:#ffd84a">D7 + lifeboats</b><br>
+    D8 &bull; D10 pool &bull; D12 track &bull; D14 gardens &bull; D17 pool deck &bull; D18 boat deck
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* =========================================================================
+   MSC VIRTUOSA — fully procedural cruise ship
+   Day/night cycle • weather • walkable decks • lifeboats on deck 7
+   ========================================================================= */
+
+/* ------------------------------- Renderer ------------------------------- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9ec9e0);
+scene.fog = new THREE.Fog(0x9ec9e0, 420, 1500);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.4, 4000);
+camera.position.set(0, 1.75, 120);
+camera.rotation.order = 'YXZ';
+
+/* ------------------------------- Lights --------------------------------- */
+const hemi = new THREE.HemisphereLight(0xbddcf0, 0x2a3542, 0.85);
+scene.add(hemi);
+
+const sunLight = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+const sc = sunLight.shadow.camera;
+sc.left = -420; sc.right = 420; sc.top = 420; sc.bottom = -420;
+sc.near = 1; sc.far = 2200;
+sunLight.shadow.bias = -0.0007;
+sunLight.shadow.normalBias = 2.0;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x9ec8f0, 0.45);
+fillLight.position.set(-300, 220, -300);
+scene.add(fillLight);
+
+const nightBoost = new THREE.AmbientLight(0x223344, 0.0);
+scene.add(nightBoost);
+
+const moonLight = new THREE.DirectionalLight(0x88aacc, 0.0);
+moonLight.position.set(-120, 260, -60);
+scene.add(moonLight);
+
+// warm deck lamps (point lights) — visible at night
+const deckLamps = [];
+function addDecklamp(x, y, z, intensity) {
+  const l = new THREE.PointLight(0xffd9a0, 0.0, 26, 1.8);
+  l.position.set(x, y, z);
+  scene.add(l);
+  deckLamps.push(l);
+  return l;
+}
+addDecklamp(0, 30.6, 20, 9);
+addDecklamp(0, 30.6, -20, 9);
+addDecklamp(0, 36.6, 20, 7);
+addDecklamp(0, 48.6, 20, 7);
+addDecklamp(0, 69.6, 0, 8);
+addDecklamp(0, 78.6, -8, 8);
+
+/* -------------------------------- Sky ----------------------------------- */
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  depthWrite: false,
+  uniforms: {
+    uTop:      { value: new THREE.Color(0x1a5f9e) },
+    uHorizon:  { value: new THREE.Color(0x9ec9e0) },
+    uSun:      { value: new THREE.Color(0xfff1cc) },
+    uSunDir:   { value: new THREE.Vector3(0.3, 0.2, 0.1) },
+    uDown:     { value: new THREE.Color(0x2b4a66) }
+  },
+  vertexShader: `
+    varying vec3 vDir;
+    void main() {
+      vDir = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform vec3 uTop, uHorizon, uSun, uSunDir, uDown;
+    varying vec3 vDir;
+    void main() {
+      vec3 d = normalize(vDir);
+      float h = d.y;
+      vec3 c = mix(uHorizon, uTop, smoothstep(0.0, 0.72, h));
+      if (h < 0.0) c = mix(uHorizon, uDown, smoothstep(0.0, -0.55, h));
+      float s = max(dot(d, normalize(uSunDir)), 0.0);
+      c += uSun * pow(s, 40.0) * 0.9;
+      c += uSun * pow(s, 8.0) * 0.22;
+      gl_FragColor = vec4(c, 1.0);
+    }`
+});
+const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(1600, 32, 18), skyMat);
+skyMesh.frustumCulled = false;
+scene.add(skyMesh);
+
+// sun / moon discs
+const sunDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(42, 20, 14),
+  new THREE.MeshBasicMaterial({ color: 0xfff3d4, fog: false, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })
+);
+const moonDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(28, 20, 14),
+  new THREE.MeshBasicMaterial({ color: 0xcfe4ff, fog: false, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })
+);
+scene.add(sunDisc, moonDisc);
+
+/* ------------------------- Procedural textures -------------------------- */
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+const sRGB = THREE.SRGBColorSpace;
+
+function makeHullTexture() {
+  const c = makeCanvas(1024, 512);
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0.0, '#ffffff');
+  grad.addColorStop(0.42, '#f3f6f8');
+  grad.addColorStop(0.85, '#e3eaee');
+  grad.addColorStop(1.0, '#d3dcdf');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 1024, 512);
+  for (let i = 0; i < 8000; i++) {
+    g.fillStyle = `rgba(150,165,175,${Math.random() * 0.06})`;
+    g.fillRect(Math.random() * 1024, Math.random() * 512, 2, 2);
+  }
+  g.strokeStyle = 'rgba(130,148,160,0.22)';
+  g.lineWidth = 2;
+  for (let i = 0; i < 12; i++) {
+    const y = 40 + i * 40;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(1024, y); g.stroke();
+  }
+  for (let i = 0; i < 20; i++) {
+    const x = 50 + i * 50;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 512); g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+function makePortholeTexture() {
+  const c = makeCanvas(256, 256);
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  g.strokeStyle = 'rgba(60,70,80,0.85)';
+  g.lineWidth = 7;
+  g.beginPath(); g.arc(128, 128, 86, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(215,225,232,0.9)';
+  g.lineWidth = 4;
+  g.beginPath(); g.arc(128, 128, 78, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#101a24';
+  g.beginPath(); g.arc(128, 128, 62, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(205,215,222,0.9)';
+  for (let i = 0; i < 28; i++) {
+    const a = i / 28 * Math.PI * 2;
+    g.beginPath();
+    g.arc(128 + Math.cos(a) * 70, 128 + Math.sin(a) * 70, 3.2, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  return t;
+}
+
+// superstructure facade with windows; emissive map lets windows glow at night
+function makeSuperTexture() {
+  const c = makeCanvas(512, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = '#eef3f6';
+  g.fillRect(0, 0, 512, 256);
+  const cols = 16, rows = 8;
+  const mX = 8, mY = 10, gap = 7;
+  const w = (512 - mX * 2 - gap * (cols - 1)) / cols;
+  const h = (256 - mY * 2 - gap * (rows - 1)) / rows;
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      const x = mX + i * (w + gap);
+      const y = mY + j * (h + gap);
+      g.fillStyle = 'rgba(200,215,228,0.55)';
+      g.fillRect(x, y, w, h);
+      if (Math.random() < 0.5) {
+        g.fillStyle = 'rgba(255,246,214,0.95)';
+        g.fillRect(x, y, w, h);
+      }
+    }
+  }
+  g.strokeStyle = '#b9c5cc';
+  g.lineWidth = 3;
+  g.strokeRect(2, 2, 508, 252);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+
+function makeLifeboatTexture() {
+  const c = makeCanvas(128, 512);
+  const g = c.getContext('2d');
+  g.fillStyle = '#f4f6f8';
+  g.fillRect(0, 0, 128, 512);
+  g.fillStyle = '#1f3b52';
+  g.fillRect(24, 0, 10, 512);
+  g.fillRect(94, 0, 10, 512);
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, '#f6f9fa');
+  grad.addColorStop(0.5, '#e3eaee');
+  grad.addColorStop(1, '#9fb0bc');
+  g.fillStyle = grad;
+  g.fillRect(0, 30, 128, 482);
+  g.fillStyle = '#b3392b';
+  g.font = 'bold 24px sans-serif';
+  g.textAlign = 'center';
+  g.fillText('VIRT', 64, 150);
+  g.fillStyle = '#cfd8dd';
+  g.font = '16px sans-serif';
+  g.fillText('08', 64, 182);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  return t;
+}
+
+function makeLogoTexture(color) {
+  const c = makeCanvas(128, 128);
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 128, 128);
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(40, 96);
+  g.bezierCurveTo(20, 60, 45, 50, 64, 70);
+  g.bezierCurveTo(80, 55, 108, 58, 88, 92);
+  g.bezierCurveTo(90, 72, 74, 66, 66, 80);
+  g.bezierCurveTo(58, 66, 44, 74, 48, 96);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  return t;
+}
+
+function makeDeckTexture(base, lineColor) {
+  const c = makeCanvas(256, 256);
+  const g = c.getContext('2d');
+  g.fillStyle = base;
+  g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = lineColor;
+  g.lineWidth = 2;
+  for (let i = 0; i < 32; i++) {
+    g.strokeRect(0, i * 8, 256, 7);
+    g.strokeRect(i * 8, 0, 7, 256);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  return t;
+}
+
+function makeCloudTexture() {
+  const c = makeCanvas(512, 256);
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 512, 256);
+  function mulberry32(a) {
+    return function() {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(1234);
+  for (let i = 0; i < 30; i++) {
+    const x = 40 + rand() * 432;
+    const y = 90 + rand() * 80;
+    const w = 70 + rand() * 150;
+    const h = 20 + rand() * 34;
+    const grd = g.createRadialGradient(x, y, 4, x, y, w / 2);
+    grd.addColorStop(0, `rgba(255,255,255,${0.45 + rand() * 0.4})`);
+    grd.addColorStop(0.62, `rgba(222,234,244,${0.22 + rand() * 0.2})`);
+    grd.addColorStop(1, 'rgba(198,214,230,0)');
+    g.fillStyle = grd;
+    g.beginPath();
+    g.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = sRGB;
+  return t;
+}
+
+/* ------------------------------ Materials ------------------------------- */
+const hullTex = makeHullTexture();
+const portholeTex = makePortholeTexture();
+const superTex = makeSuperTexture();
+const lifeTex = makeLifeboatTexture();
+const logoRedTex = makeLogoTexture('#b3392b');
+
+const superMat = new THREE.MeshStandardMaterial({
+  map: superTex,
+  emissive: 0xffffff,
+  emissiveMap: superTex,
+  emissiveIntensity: 0.24,
+  roughness: 0.44,
+  metalness: 0.08
+});
+
+const railMat = new THREE.MeshStandardMaterial({ color: 0xd7dde1, roughness: 0.35, metalness: 0.6 });
+const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf4f7f9, roughness: 0.5, metalness: 0.08 });
+const whiteRough = new THREE.MeshStandardMaterial({ color: 0xeef3f5, roughness: 0.62, metalness: 0.05 });
+const deckMat = new THREE.MeshStandardMaterial({ color: 0xe9eef0, roughness: 0.6, metalness: 0.05 });
+const deckWarm = new THREE.MeshStandardMaterial({ color: 0xf3f7f8, roughness: 0.55, metalness: 0.04 });
+const deckBlue = new THREE.MeshStandardMaterial({ color: 0x3d6a86, roughness: 0.55, metalness: 0.1 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x18242f, roughness: 0.7, metalness: 0.2 });
+const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x24323f, roughness: 0.45, metalness: 0.55 });
+const bronzeMat = new THREE.MeshStandardMaterial({ color: 0x9c7a45, roughness: 0.35, metalness: 0.8 });
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x0e1a26, roughness: 0.1, metalness: 0.75, transparent: true, opacity: 0.85 });
+const lifeMat = new THREE.MeshStandardMaterial({ map: lifeTex, roughness: 0.35, metalness: 0.3 });
+const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8, metalness: 0.02 });
+const cushionMat = new THREE.MeshStandardMaterial({ color: 0xb3392b, roughness: 0.85, metalness: 0.02 });
+const greenMat = new THREE.MeshStandardMaterial({ color: 0x3f6b3f, roughness: 0.9, metalness: 0.0 });
+const treeMat = new THREE.MeshStandardMaterial({ color: 0x2f4f33, roughness: 0.95, metalness: 0.0 });
+const matBlue = new THREE.MeshStandardMaterial({ color: 0x2f6f9f, roughness: 0.15, metalness: 0.05, transparent: true, opacity: 0.92 });
+const lifeRingMat = new THREE.MeshStandardMaterial({ color: 0xd7e4ec, roughness: 0.4, metalness: 0.3 });
+const hullDarkMat = new THREE.MeshStandardMaterial({ color: 0x1e1814, roughness: 0.7, metalness: 0.2 });
+const hullRedMat = new THREE.MeshStandardMaterial({ color: 0x221914, roughness: 0.6, metalness: 0.15 });
+const railGlowMat = new THREE.MeshStandardMaterial({
+  color: 0x333333, emissive: 0xffb347, emissiveIntensity: 0.0, roughness: 0.3, metalness: 0.2
+});
+
+const hullMat = new THREE.MeshStandardMaterial({
+  map: hullTex, roughness: 0.38, metalness: 0.4, side: THREE.DoubleSide
+});
+
+/* =========================================================================
+   SHIP
+   ========================================================================= */
+const ship = new THREE.Group();
+scene.add(ship);
+
+const boxGeoCache = new Map();
+function getBox(w, h, d) {
+  const key = [w, h, d].map(n => n.toFixed(2)).join('_');
+  if (!boxGeoCache.has(key)) boxGeoCache.set(key, new THREE.BoxGeometry(w, h, d));
+  return boxGeoCache.get(key);
+}
+function addBox(w, h, d, mat, x = 0, y = 0, z = 0, parent = ship) {
+  const m = new THREE.Mesh(getBox(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+function addDeck(y, w, d, z, mat = deckMat) {
+  return addBox(w, 0.5, d, mat, 0, y, z);
+}
+
+/* ------------------------------- HULL ----------------------------------- */
+(function buildHull() {
+  const segments = 52;
+  const rows = 4;
+  const halfLen = 165;
+  const section = [
+    { r: 0.0, y: -30 },
+    { r: 0.70, y: -20 },
+    { r: 0.93, y: -8 },
+    { r: 1.0, y: 1.2 }
+  ];
+  function beamAt(t) {
+    const bow = 0.20 + Math.pow(Math.abs(t - 0.78) / 0.42, 0.70) * 0.90;
+    const stern = 0.90 - Math.pow(Math.abs(t - 0.12) / 0.30, 1.4) * 0.86;
+    return 1.0 - 0.40 * bow - 0.24 * stern;
+  }
+  function positionsFor(dy) {
+    const pos = [];
+    for (let r = 0; r < rows; r++) {
+      const sec = section[r];
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const z = -halfLen + t * 2 * halfLen;
+        const beam = beamAt(t);
+        pos.push(sec.r * 19.0 * beam, sec.y + dy, z);
+      }
+    }
+    return pos;
+  }
+  function buildMesh(pos, mat) {
+    const idx = [];
+    for (let r = 0; r < rows - 1; r++) {
+      for (let i = 0; i < segments; i++) {
+        const a = r * (segments + 1) + i;
+        const b = a + 1;
+        const c = a + segments + 1;
+        const d = c + 1;
+        idx.push(a, c, b, b, c, d);
+      }
+    }
+    const top = (rows - 1) * (segments + 1);
+    for (let i = 0; i < segments; i++) {
+      const a = top + i;
+      const b = a + 1;
+      idx.push(a, top + segments, b, b, top + segments, b + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat);
+    m.receiveShadow = true;
+    m.castShadow = false;
+    ship.add(m);
+    return m;
+  }
+  buildMesh(positionsFor(0), hullMat);
+  buildMesh(positionsFor(-1.6), hullDarkMat);
+})();
+
+/* ------------------------- Deck profile & superstructure ---------------- */
+const deckProfiles = [
+  { y: 0.25, zF: 78,  zB: -88, hw: 15.4, mat: deckMat },
+  { y: 6.25, zF: 82,  zB: -92, hw: 15.0, mat: deckWarm },
+  { y: 12.25, zF: 86, zB: -94, hw: 14.5, mat: deckMat },
+  { y: 18.25, zF: 88, zB: -92, hw: 13.8, mat: deckWarm },
+  { y: 24.25, zF: 88, zB: -90, hw: 13.0, mat: deckMat },
+  { y: 30.25, zF: 88, zB: -88, hw: 12.2, mat: deckWarm },
+  { y: 36.25, zF: 86, zB: -86, hw: 11.2, mat: deckMat },
+  { y: 42.25, zF: 84, zB: -82, hw: 10.0, mat: deckWarm },
+  { y: 48.25, zF: 80, zB: -76, hw: 8.6, mat: deckMat },
+  { y: 54.25, zF: 74, zB: -68, hw: 7.2, mat: deckWarm },
+  { y: 60.25, zF: 66, zB: -60, hw: 5.6, mat: deckMat },
+  { y: 65.25, zF: 58, zB: -52, hw: 4.4, mat: deckWarm },
+  { y: 69.25, zF: 50, zB: -44, hw: 3.6, mat: deckMat },
+  { y: 72.75, zF: 44, zB: -36, hw: 3.0, mat: deckWarm },
+  { y: 75.75, zF: 38, zB: -30, hw: 2.5, mat: deckMat },
+  { y: 78.25, zF: 32, zB: -24, hw: 2.0, mat: deckWarm },
+  { y: 80.25, zF: 26, zB: -18, hw: 1.4, mat: deckMat }
+];
+
+for (const p of deckProfiles) {
+  addDeck(p.y, p.hw * 2, p.zF - p.zB, (p.zF + p.zB) / 2, p.mat);
+}
+
+// superstructure facades
+function buildSuperStructure() {
+  for (let i = 1; i < deckProfiles.length; i++) {
+    const p0 = deckProfiles[i - 1];
+    const p1 = deckProfiles[i];
+    const hw = p1.hw, zF = p1.zF, zB = p1.zB;
+    const y0 = p0.y + 0.02, y1 = p1.y;
+    const sideH = y1 - y0;
+
+    // corner posts
+    for (const sx of [-1, 1]) {
+      for (const sz of [1, -1]) {
+        addBox(0.5, sideH, 0.5, darkMetalMat, sx * hw, y0 + sideH / 2, sz * (sz === 1 ? zF : zB));
+      }
+    }
+
+    // front facade
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, sideH), superMat);
+    front.position.set(0, y0 + sideH / 2, zF);
+    front.castShadow = true; front.receiveShadow = true;
+    ship.add(front);
+    // back facade
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, sideH), superMat);
+    back.position.set(0, y0 + sideH / 2, zB);
+    back.rotation.y = Math.PI;
+    back.castShadow = true; back.receiveShadow = true;
+    ship.add(back);
+    // side facades
+    const sL = new THREE.Mesh(new THREE.PlaneGeometry(zF - zB, sideH), superMat);
+    sL.position.set(-hw, y0 + sideH / 2, (zF + zB) / 2);
+    sL.rotation.y = Math.PI / 2;
+    sL.castShadow = true; sL.receiveShadow = true;
+    ship.add(sL);
+    const sR = new THREE.Mesh(new THREE.PlaneGeometry(zF - zB, sideH), superMat);
+    sR.position.set(hw, y0 + sideH / 2, (zF + zB) / 2);
+    sR.rotation.y = -Math.PI / 2;
+    sR.castShadow = true; sR.receiveShadow = true;
+    ship.add(sR);
+
+    // window recess dark insets on front
+    for (let wx = -hw + 1.2; wx < hw - 0.8; wx += 2.2) {
+      const insetH = Math.min(1.7, sideH * 0.42);
+      const inset = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.3, insetH),
+        new THREE.MeshStandardMaterial({ color: 0x0a141d, roughness: 0.95 })
+      );
+      inset.position.set(wx, y0 + sideH / 2, zF + 0.012);
+      ship.add(inset);
+    }
+  }
+}
+buildSuperStructure();
+
+/* ------------------------------ Open decks ------------------------------ */
+addDeck(0.25, 24, 34, 95, deckWarm);   // forward promenade at D2
+addDeck(0.25, 16, 26, 108, deckWarm);
+addDeck(0.25, 22, 32, -110, deckWarm); // aft promenade at D2
+
+/* ------------------------------ Railings -------------------------------- */
+function addRailingRun(w, z, y, height = 1.15) {
+  const n = Math.max(2, Math.floor(w / 1.6));
+  for (let i = 0; i <= n; i++) {
+    const x = -w / 2 + i * (w / n);
+    addBox(0.1, height, 0.1, railMat, x, y + height / 2, z);
+  }
+  addBox(w, 0.09, 0.09, railMat, 0, y + height, z);
+  addBox(w, 0.05, 0.04, railMat, 0, y + height * 0.55, z);
+  addBox(0.05, height * 0.8, 0.05, railMat, -w / 2, y + height * 0.4, z);
+  addBox(0.05, height * 0.8, 0.05, railMat, w / 2, y + height * 0.4, z);
+}
+
+// Balconies on promenade / upper decks
+function addBalconyLine(y, zFront, depth) {
+  const p = deckProfiles.find(d => Math.abs(d.y - y) < 0.05);
+  if (!p) return;
+  const hw = p.hw;
+  for (const side of [-1, 1]) {
+    addBox(hw * 2 - 2, 0.35, depth, deckWarm, 0, y + 0.1, zFront - depth / 2);
+    addRailingRun(hw * 2 - 2, zFront - depth + 0.2, y + 0.4, 1.15);
+    for (let i = 0; i <= 22; i++) {
+      const x = -hw + 1 + i * (2 * (hw - 1)) / 22;
+      addBox(0.06, 1.1, 0.06, railMat, x, y + 0.95, zFront - depth + 0.25);
+    }
+  }
+  for (const side of [-1, 1]) {
+    addBox(0.12, 1.1, Math.abs(depth), railMat, side * (hw - 0.4), y + 0.95, zFront - depth / 2);
+  }
+}
+[30, 36, 42, 48].forEach(y => addBalconyLine(y, 88, 2.6));
+
+// Portholes on hull
+(function addPortholes() {
+  const rows = [-16, -10, -4];
+  const colsPerRow = 34;
+  const pMat = new THREE.MeshStandardMaterial({ map: portholeTex, roughness: 0.3, metalness: 0.7 });
+  for (const y of rows) {
+    for (let i = 0; i < colsPerRow; i++) {
+      const t = 0.08 + i * (0.84 / colsPerRow);
+      const z = -165 + t * 330;
+      const bow = 0.20 + Math.pow(Math.abs(t - 0.78) / 0.42, 0.70) * 0.90;
+      const stern = 0.90 - Math.pow(Math.abs(t - 0.12) / 0.30, 1.4) * 0.86;
+      const beam = 1.0 - 0.40 * bow - 0.24 * stern;
+      const r = 0.93 * 19.0 * beam;
+      for (const side of [-1, 1]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), pMat);
+        m.position.set(side * r * 0.997, y, z);
+        m.rotation.y = side * Math.PI / 2;
+        ship.add(m);
+      }
+    }
+  }
+})();
+
+/* ------------------------------ Lifeboats ------------------------------- */
+const boatStations = [
+  { y: 6.25, zF: 78, zB: -80, hw: 14.5 },
+  { y: 12.25, zF: 84, zB: -84, hw: 13.5 },
+  { y: 18.25, zF: 86, zB: -84, hw: 12.8 },
+  { y: 24.25, zF: 86, zB: -82, hw: 12.2 },
+  { y: 30.25, zF: 86, zB: -80, hw: 11.4 },
+  { y: 36.25, zF: 84, zB: -76, hw: 10.4 },
+  { y: 42.25, zF: 82, zB: -72, hw: 9.2 },
+  { y: 48.25, zF: 78, zB: -66, hw: 8.0 }
+];
+
+(function buildLifeboats() {
+  for (const s of boatStations) {
+    const n = Math.max(3, Math.floor((s.zF - s.zB) / 16));
+    const length = 13;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const z = s.zF - t * (s.zF - s.zB);
+      for (const side of [-1, 1]) {
+        const ax = side * s.hw;
+        // davit arm
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3.6), darkMetalMat);
+        arm.position.set(ax, s.y + 4.2, z + 0.6);
+        arm.rotation.y = side * Math.PI / 2;
+        arm.castShadow = true;
+        ship.add(arm);
+        const winch = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.75, 0.6), darkMetalMat);
+        winch.position.set(ax + side * 0.45, s.y + 3.85, z + 0.6);
+        ship.add(winch);
+        // cable
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 5),
+          new THREE.MeshStandardMaterial({ color: 0x888f96, roughness: 0.6, metalness: 0.8 }));
+        cable.position.set(ax + side * 1.2, s.y + 2.7, z + 1.3);
+        ship.add(cable);
+        // boat
+        const boat = new THREE.Mesh(new THREE.CapsuleGeometry(1.9, length * 0.55, 8, 12), lifeMat);
+        boat.position.set(ax + side * 2.2, s.y + 0.2, z);
+        boat.rotation.x = Math.PI / 2;
+        boat.castShadow = true;
+        ship.add(boat);
+        // cover
+        const cover = new THREE.Mesh(new THREE.CapsuleGeometry(1.75, length * 0.5, 8, 10),
+          new THREE.MeshStandardMaterial({ color: 0xf7fafc, roughness: 0.5 }));
+        cover.position.set(ax + side * 2.2, s.y + 0.15, z);
+        cover.rotation.x = Math.PI / 2;
+        ship.add(cover);
+        // station sign
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.6),
+          new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 }));
+        sign.position.set(ax + side * 2.2, s.y + 1.1, z - length * 0.5 - 1.1);
+        sign.rotation.y = side * Math.PI / 2;
+        ship.add(sign);
+      }
+    }
+  }
+})();
+
+/* ------------------------------ Funnels --------------------------------- */
+(function buildFunnels() {
+  const funnelZ = [-14, -26, -38, -50];
+  const logoTex = logoRedTex;
+  for (let i = 0; i < 4; i++) {
+    const z = funnelZ[i];
+    const f = { r: 4.6, h: 14, baseY: 80.25 };
+    const funnel = new THREE.Mesh(
+      new THREE.CylinderGeometry(f.r * 0.82, f.r, f.h, 32, 1, false),
+      new THREE.MeshStandardMaterial({ color: 0xf4f7f9, roughness: 0.42, metalness: 0.3 })
+    );
+    funnel.position.set(0, f.baseY + f.h / 2, z);
+    funnel.castShadow = true; funnel.receiveShadow = true;
+    ship.add(funnel);
+
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(f.r * 0.84, f.r * 0.82, 1.7, 32),
+      new THREE.MeshStandardMaterial({ color: 0xb3392b, roughness: 0.4, metalness: 0.25 })
+    );
+    band.position.set(0, f.baseY + f.h - 0.85, z);
+    ship.add(band);
+
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(f.r * 0.76, 32),
+      new THREE.MeshStandardMaterial({ color: 0x0d1620, roughness: 0.9 })
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(0, f.baseY + f.h - 0.4, z);
+    ship.add(disc);
+
+    const logo = new THREE.Mesh(
+      new THREE.PlaneGeometry(f.r * 0.46, f.r * 0.46),
+      new THREE.MeshBasicMaterial({ map: logoTex, transparent: true })
+    );
+    logo.position.set(0, f.baseY + f.h * 0.52, z + f.r * 0.83);
+    ship.add(logo);
+  }
+  // exhaust stacks behind funnels
+  for (let i = 0; i < 2; i++) {
+    const ex = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5, 1.9, 5, 12),
+      new THREE.MeshStandardMaterial({ color: 0x333d47, roughness: 0.6, metalness: 0.4 })
+    );
+    ex.position.set(-6, 82, -56 + i * 12);
+    ship.add(ex);
+  }
+})();
+
+/* ------------------------------ Bridge ---------------------------------- */
+{
+  const by = 78.25;
+  addBox(2.6, 2.8, 5.4, new THREE.MeshStandardMaterial({ color: 0xf2f6f8, roughness: 0.3, metalness: 0.3 }), 0, by + 1.6, 2);
+  addBox(2.2, 2.2, 4.2, new THREE.MeshStandardMaterial({ color: 0xd9e6ef, roughness: 0.25, metalness: 0.4, transparent: true, opacity: 0.92 }), 0, by + 1.7, 2);
+  for (let i = 0; i < 7; i++) {
+    addBox(0.24, 1.2, 0.2, new THREE.MeshStandardMaterial({ color: 0x1c3040, roughness: 0.15, metalness: 0.8 }), -0.8 + i * 0.28, by + 1.7, 4.3);
+  }
+  addBox(2.8, 0.22, 5.6, darkMetalMat, 0, by + 3.15, 2);
+  addBox(1.0, 1.0, 1.0, darkMetalMat, 0, by + 4.2, 2);
+}
+
+/* ---------------------------- Aft & bow details ------------------------- */
+{
+  // stern details
+  addBox(10, 2, 30, hullRedMat, 0, -16, -165);
+  addBox(10, 1.5, 12, darkMetalMat, 0, -12, -168);
+  addBox(8, 8, 0.3, whiteRough, 0, -2, -166);
+  addBox(6, 5, 0.4, new THREE.MeshStandardMaterial({ color: 0xdfe6ea, roughness: 0.3, metalness: 0.2 }), 0, 0, -166);
+  for (const side of [-1, 1]) addBox(0.2, 3, 2.5, darkMetalMat, side * 16, -8, -150);
+  addBox(2, 0.4, 4, deckWarm, 0, -10, -163);
+  // ladder platforms on stern
+  for (let i = 0; i < 3; i++) addBox(1.5, 0.25, 2, darkMetalMat, 0, -6 - i * 2.6, -164);
+
+  // bow
+  addBox(16, 0.4, 12, deckWarm, 0, 0.2, 150);
+  addBox(3, 1.2, 2, darkMetalMat, -12, 0.6, 152);
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.6, 10), bronzeMat);
+  drum.rotation.z = Math.PI / 2;
+  drum.position.set(-12, 1.6, 152);
+  ship.add(drum);
+  addRailingRun(14, 154, 1.2, 1.1);
+  // fore deck edge
+  addBox(22, 1.2, 0.8, whiteMat, 0, 0.6, 120);
+  addBox(22, 1.2, 0.8, whiteMat, 0, 0.6, 124);
+  addRailingRun(22, 120, 1.2, 1.1);
+}
+
+/* ------------------------------ Aft mast -------------------------------- */
+{
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 13, 8), darkMetalMat);
+  mast.position.set(0, 86, -30);
+  ship.add(mast);
+  for (let i = 0; i < 4; i++) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(6, 0.05, 0.05), bronzeMat);
+    bar.position.set(0, 87 - i * 2.2, -30);
+    ship.add(bar);
+  }
+  const winch = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 2, 12), redMat);
+  winch.position.set(0, 80, -30);
+  ship.add(winch);
+  addBox(6, 3, 4, darkMetalMat, 0, 82, -20);
+  addBox(4, 2, 3, whiteRough, 0, 85, -20);
+}
+
+/* ------------------------------ Bow ladder -------------------------------- */
+{
+  addBox(1.2, 0.25, 3, darkMetalMat, 14.4, 0.6, 138);
+  for (let i = 0; i < 5; i++) {
+    addBox(0.12, 0.8, 0.12, railMat, 13.9, 1.6 + i * 0.8, 140 - i * 0.55);
+    addBox(0.12, 0.8, 0.12, railMat, 14.9, 1.6 + i * 0.8, 140 - i * 0.55);
+  }
+}
+
+/* ------------------------ Deck furniture & props ------------------------- */
+function addBench(x, z, y, rot = 0) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.65, 2.2), woodMat);
+  seat.position.y = 0.35;
+  g.add(seat);
+  for (const b of [-1, 0, 1]) {
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.55), woodMat);
+    back.position.set(0, 0.75, b * 0.9);
+    g.add(back);
+  }
+  g.position.set(x, y, z);
+  g.rotation.y = rot;
+  ship.add(g);
+}
+function addLounger(x, z, y, rot = 0) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 1.6), woodMat);
+  seat.position.y = 0.4;
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.25), woodMat);
+  back.position.set(0, 0.85, -0.65);
+  back.rotation.x = -0.18;
+  g.add(back);
+  g.position.set(x, y, z);
+  g.rotation.y = rot;
+  ship.add(g);
+}
+function addLifeRing(x, y, z, rot = 0) {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.18, 8, 24), lifeRingMat);
+  ring.rotation.x = Math.PI / 2;
+  g.add(ring);
+  const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 20), lifeRingMat);
+  fill.rotation.x = Math.PI / 2;
+  fill.position.y = 0.05;
+  g.add(fill);
+  g.position.set(x, y, z);
+  g.rotation.y = rot;
+  ship.add(g);
+}
+function addPlanter(x, z, y, r = 0.9) {
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.24, 0.55, 8), redMat);
+  pot.position.set(x, y + 0.28, z);
+  ship.add(pot);
+  const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 0.75, 1), greenMat);
+  shrub.position.set(x, y + 0.28 + r * 0.75, z);
+  shrub.scale.y = 1.2;
+  ship.add(shrub);
+}
+function addLoungeSet(x, z, y) {
+  addBox(2.2, 0.35, 0.6, woodMat, x, y + 0.2, z);
+  addBox(0.15, 0.6, 0.6, woodMat, x - 0.95, y + 0.55, z);
+  addBox(0.15, 0.6, 0.6, woodMat, x + 0.95, y + 0.55, z);
+  const cush = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 0.65), cushionMat);
+  cush.position.set(x, y + 0.42, z);
+  ship.add(cush);
+  const snug = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.8), woodMat);
+  snug.position.set(x, y + 0.55, z - 0.75);
+  ship.add(snug);
+}
+function addBarTop(x, z, y, w = 2.6, d = 0.8) {
+  addBox(w, 0.18, d, woodMat, x, y + 1.05, z);
+  addBox(w * 0.06, 1.0, d * 0.8, woodMat, x - w * 0.44, y + 0.52, z);
+  addBox(w * 0.06, 1.0, d * 0.8, woodMat, x + w * 0.44, y + 0.52, z);
+  addBox(0.25, 0.5, 0.25, whiteRough, x - w * 0.3, y + 1.3, z);
+  addBox(0.25, 0.5, 0.25, whiteRough, x + w * 0.3, y + 1.3, z);
+}
+
+/* Promenade D6 and D7 benches and plants */
+for (const y of [24.25, 30.25, 36.25]) {
+  for (let i = 0; i < 7; i++) {
+    const z = 70 - i * 15;
+    addBench(-9.5, z, y + 0.25, 0);
+    addBench(9.5, z, y + 0.25, Math.PI);
+    if (i % 2 === 0) addPlanter(-7.5, z, y + 0.25, 0.7);
+    addLounger(-6.5, z + 4, y + 0.25, 0.4);
+    addLounger(6.5, z - 4, y + 0.25, -0.4);
+  }
+  addRailingRun(22, 86, y + 1.15, 1.1);
+}
+
+/* Deck 7 extra: life rings along the outer rail near the boats */
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 6; i++) {
+    addLifeRing(side * 12.0, 30.25 + 1.2, 62 - i * 16, side * Math.PI / 2);
+  }
+}
+
+/* Pool deck */
+function buildPoolDeck() {
+  const y = 42.25;
+  addBox(19, 0.3, 23, deckWarm, 0, y - 0.3, -30);
+  const pool = new THREE.Mesh(new THREE.BoxGeometry(16, 0.4, 20), matBlue);
+  pool.position.set(0, y - 0.1, -30);
+  pool.receiveShadow = true;
+  ship.add(pool);
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) {
+      addBox(0.3, 1.2, 0.3, darkMetalMat, i * 8, y + 0.2, -30 + j * 9);
+    }
+  }
+  // loungers around the pool
+  for (let i = 0; i < 8; i++) {
+    addLounger(-11.5, -44 + i * 6, y + 0.25, 0);
+    addLounger(11.5, -44 + i * 6, y + 0.25, Math.PI);
+  }
+}
+buildPoolDeck();
+
+/* Jogging track deck */
+{
+  const y = 60.25;
+  addBox(12, 0.3, 14, deckMat, 0, y + 0.15, -56);
+  for (const side of [-1, 1]) {
+    addBox(0.15, 1.0, 0.15, railMat, side * 6, y + 0.65, -56);
+    addBox(0.15, 0.15, 14, railMat, side * 6, y + 1.15, -56);
+  }
+  // distance markers
+  for (let i = 0; i < 6; i++) {
+    addBox(0.6, 0.15, 0.15, redMat, -5 + i * 2, y + 0.35, -56 - 6);
+  }
+}
+
+/* Solarium / Spa */
+{
+  const y = 54.25;
+  addBox(10, 5, 8, deckWarm, 0, y + 2.5, -48);
+  for (let i = 0; i < 8; i++) {
+    addBox(0.5, 1.6, 0.3, glassMat, -4 + i * 1.0, y + 2.8, -44);
+  }
+  for (const side of [-1, 1]) addBox(0.3, 4, 0.3, darkMetalMat, side * 5, y + 2.2, -48);
+  addBarTop(0, -44, y, 6, 2);
+}
+
+/* Galley (deck 13) */
+{
+  const y = 65.25;
+  addBox(8, 4, 6, deckMat, 0, y + 2, -40);
+  for (let i = 0; i < 5; i++) {
+    addBox(0.5, 1.2, 0.2, glassMat, -3 + i * 1.4, y + 2.6, -37);
+  }
+  addBox(6, 2, 0.4, darkMetalMat, 0, y + 1.0, -37);
+}
+
+/* Dining room */
+function buildDining(y, z, w, d, cols, rows) {
+  addBox(w, 5, d, deckMat, 0, y + 2.5, z);
+  addBox(w * 0.9, 4.5, d * 0.9, deckMat, 0, y - 0.8, z);
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      addBox(0.2, 0.1, 0.2,
+        new THREE.MeshStandardMaterial({ color: 0xfff3d0, emissive: 0xffe9a0, emissiveIntensity: 1.6 }),
+        -w * 0.35 + i * (w * 0.7 / Math.max(1, cols - 1)),
+        y + 4.9,
+        z - d * 0.3 + j * (d * 0.6 / Math.max(1, rows - 1)));
+    }
+  }
+}
+buildDining(30.25, -40, 15, 8, 4, 3);
+buildDining(36.25, -60, 11, 7, 4, 2);
+buildDining(42.25, -68, 9, 6, 3, 2);
+
+/* Garden deck */
+{
+  const y = 69.25;
+  addBox(8, 0.5, 6, deckWarm, 0, y + 0.25, -30);
+  for (const [tx, tz] of [[-3, -32], [3, -28], [0, -24]]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 1.8, 8), woodMat);
+    trunk.position.set(tx, y + 1.4, tz);
+    ship.add(trunk);
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(1.4, 10, 8), greenMat);
+    crown.position.set(tx, y + 2.6, tz);
+    crown.scale.y = 1.1;
+    ship.add(crown);
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2;
+    const px = Math.cos(a) * 4.2;
+    const pz = -30 + Math.sin(a) * 3.4;
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.5, 6), redMat);
+    pot.position.set(px, y + 0.4, pz);
+    ship.add(pot);
+    const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), greenMat);
+    shrub.position.set(px, y + 0.75, pz);
+    ship.add(shrub);
+  }
+  addLoungeSet(0, -24, y + 0.25);
+  addBarTop(0, -24, y + 0.25, 2.2, 0.8);
+}
+
+/* Top pool deck */
+{
+  const y = 78.25;
+  addBox(14, 0.4, 12, deckWarm, 0, y - 0.2, -8);
+  const water = new THREE.Mesh(new THREE.BoxGeometry(12, 0.4, 10), matBlue);
+  water.position.set(0, y - 0.1, -8);
+  ship.add(water);
+  for (const [tx, tz] of [[5, 0], [-5, 0], [0, 4]]) {
+    const tan = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.6), bronzeMat);
+    tan.position.set(tx, y + 0.4, tz);
+    ship.add(tan);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.15, 0.3), woodMat);
+    seat.position.set(tx, y + 0.7, tz);
+    ship.add(seat);
+  }
+  addLoungeSet(0, 4, y + 0.25);
+}
+
+/* Boat deck cap rail + lifeboat deck stair shaft visual */
+(function stairShaftVisual() {
+  for (const side of [-1, 1]) {
+    addBox(0.12, 1.3, 44, railMat, side * 2.8, 0.65, -20);
+  }
+  const stripMat = new THREE.MeshStandardMaterial({
+    color: 0x333333, emissive: 0xffb347, emissiveIntensity: 0.0, roughness: 0.3
+  });
+  for (const side of [-1, 1]) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 42), stripMat);
+    strip.position.set(side * 2.9, 0.4, -20);
+    ship.add(strip);
+  }
+})();
+
+/* -------------------------------------------------------------------------
+   OCEAN
+   ------------------------------------------------------------------------- */
+const oceanGeo = new THREE.PlaneGeometry(4000, 4000, 160, 160);
+oceanGeo.rotateX(-Math.PI / 2);
+
+const oceanUniforms = {
+  uTime: { value: 0 },
+  uSunDir: { value: new THREE.Vector3(0.3, 0.2, 0.1) },
+  uSunColor: { value: new THREE.Color(0xfff0cc) },
+  uSkyTop: { value: new THREE.Color(0x1a5f9e) },
+  uSkyHorizon: { value: new THREE.Color(0x9ec9e0) },
+  uNight: { value: 0.0 },
+  uFogColor: { value: new THREE.Color(0x9ec9e0) },
+  uFogNear: { value: 420 },
+  uFogFar: { value: 1500 }
+};
+
+const oceanMat = new THREE.ShaderMaterial({
+  uniforms: oceanUniforms,
+  vertexShader: `
+    uniform float uTime;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    varying float vH;
+    float wave(vec2 p, float t, float s) {
+      float w = 0.0;
+      w += sin(p.x * 1.7 + t * 1.3 + p.y * 0.8) * 0.5;
+      w += sin(p.x * 2.9 - t * 1.7 - p.y * 1.4) * 0.3;
+      w += sin(p.y * 3.7 + t * 2.1 + p.x * 0.9) * 0.2;
+      return w * s;
+    }
+    void main() {
+      vec3 p = position;
+      float h = wave(p.xz, uTime, 0.0032);
+      p.y += h;
+      vH = h;
+      float e = 0.35;
+      float hL = wave(p.xz - vec2(e, 0.0), uTime, 0.0032);
+      float hR = wave(p.xz + vec2(e, 0.0), uTime, 0.0032);
+      float hD = wave(p.xz - vec2(0.0, e), uTime, 0.0032);
+      float hU = wave(p.xz + vec2(0.0, e), uTime, 0.0032);
+      vNormal = normalize(vec3((hL - hR) * 2.2, 1.0, (hD - hU) * 2.2));
+      vec4 wp = modelMatrix * vec4(p, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`,
+  fragmentShader: `
+    uniform vec3 uSunDir, uSunColor, uSkyTop, uSkyHorizon, uFogColor;
+    uniform float uNight, uFogNear, uFogFar;
+    varying vec3 vWorldPos;
+    varying vec3 vNormal;
+    varying float vH;
+    void main() {
+      vec3 n = normalize(vNormal);
+      vec3 viewDir = normalize(cameraPosition - vWorldPos);
+      float ndv = max(dot(n, viewDir), 0.0);
+      float fres = pow(1.0 - ndv, 3.0);
+      vec3 col = mix(uSkyHorizon, uSkyTop, 0.5 + 0.5 * ndv);
+      float spec = pow(max(dot(reflect(-uSunDir, n), viewDir), 0.0), 42.0);
+      col += uSunColor * spec * (1.0 - uNight) * 2.4;
+      float sheen = pow(max(dot(n, normalize(uSunDir)), 0.0), 4.0);
+      col += uSunColor * sheen * 0.15 * (1.0 - uNight);
+      float moonSpec = pow(max(dot(reflect(normalize(vec3(-uSunDir.x, -uSunDir.y, -uSunDir.z)), n), viewDir), 0.0), 200.0);
+      col += vec3(0.55, 0.68, 0.9) * moonSpec * uNight * 1.3;
+      col += vec3(1.0, 0.95, 0.85) * pow(max(1.0 - abs(vH) * 2.4, 0.0), 8.0) * (1.0 - uNight) * 0.12;
+      col *= mix(1.0, 0.08, uNight);
+      float fogF = smoothstep(uFogNear, uFogFar, length(vWorldPos.xz));
+      col = mix(col, uFogColor, fogF);
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.position.y = -30;
+scene.add(ocean);
+
+/* ------------------------------- Clouds --------------------------------- */
+const cloudGroup = new THREE.Group();
+scene.add(cloudGroup);
+const cloudTex = makeCloudTexture();
+
+function createClouds() {
+  for (let i = 0; i < 28; i++) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(620, 310), new THREE.MeshBasicMaterial({
+      map: cloudTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.8, fog: false
+    }));
+    m.position.set((i - 14) * 190 + (i % 2) * 95, 320 + (i % 4) * 55, (i % 3 - 1) * 780);
+    m.userData.baseX = m.position.x;
+    cloudGroup.add(m);
+  }
+}
+createClouds();
+
+/* -------------------------------- Rain ---------------------------------- */
+function createRainSystem(count, color) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const vel = new Float32Array(count * 3);
+  const rng = mulberry32(99);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (rng() - 0.5) * 520;
+    pos[i * 3 + 1] = rng() * 200 - 40;
+    pos[i * 3 + 2] = (rng() - 0.5) * 520;
+    vel[i * 3] = (rng() - 0.5) * 6;
+    vel[i * 3 + 1] = -(30 + rng() * 40);
+    vel[i * 3 + 2] = (rng() - 0.5) * 6;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const points = new THREE.Points(geo, new THREE.PointsMaterial({
+    color, size: 0.85, transparent: true, opacity: 0.6, depthWrite: false
+  }));
+  points.frustumCulled = false;
+  scene.add(points);
+  return { points, pos, vel, count };
+}
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let rain = null;
+function setRain(count, color) {
+  if (rain) scene.remove(rain.points);
+  rain = count > 0 ? createRainSystem(count, color || 0xaac8dd) : null;
+}
+setRain(0);
+
+/* =========================================================================
+   SUN / NIGHT CYCLE
+   ========================================================================= */
+const skyState = {
+  timeOfDay: 0.35,
+  autoPlay: true,
+  speed: 0.006
+};
+
+const sunDir = new THREE.Vector3(0.3, 0.2, 0.1);
+
+function updateSunPosition(tod) {
+  const a = tod * Math.PI * 2;
+  sunDir.set(Math.cos(a), Math.sin(a) * 0.82, 0.30).normalize();
+  sunLight.position.copy(sunDir).multiplyScalar(1400);
+  sunLight.target.position.set(0, 0, -40);
+  moonLight.position.copy(sunDir).multiplyScalar(1000);
+  moonLight.position.y -= 260;
+
+  const d = sunDir.y;
+  const isDay = d > -0.06;
+  const nightFactor = isDay ? 0 : 1;
+
+  sunLight.intensity = isDay ? 2.2 * (0.35 + d * 0.65) : 0.12;
+  sunLight.color.setHSL(0.09 + d * 0.16, 0.55, isDay ? 0.92 : 0.45);
+  sunLight.castShadow = isDay;
+  sunLight.visible = isDay;
+
+  hemi.intensity = isDay ? 0.85 : 0.14;
+  hemi.color.setRGB(0.74, 0.85, 1.0);
+  nightBoost.intensity = isDay ? 0.0 : 0.42;
+  fillLight.intensity = isDay ? 0.45 : 0.05;
+
+  const topCol = new THREE.Color().lerpColors(new THREE.Color(0xffe6a8), new THREE.Color(0x122a44), nightFactor);
+  const horCol = new THREE.Color().lerpColors(new THREE.Color(0xffd9a0), new THREE.Color(0x24384a), nightFactor);
+
+  skyMat.uniforms.uTop.value.copy(topCol);
+  skyMat.uniforms.uHorizon.value.copy(horCol);
+  skyMat.uniforms.uDown.value.setRGB(0.14, 0.18, 0.24);
+  skyMat.uniforms.uSun.value.copy(isDay ? new THREE.Color(0xfff1cc) : new THREE.Color(0xcfe4ff));
+  skyMat.uniforms.uSunDir.value.copy(sunDir);
+
+  sunDisc.visible = isDay;
+  moonDisc.visible = !isDay;
+  sunDisc.position.copy(sunDir).multiplyScalar(1500);
+  moonDisc.position.copy(sunDir).multiplyScalar(1500);
+  sunDisc.material.opacity = 0.95;
+  moonDisc.material.opacity = 0.9;
+  moonDisc.scale.setScalar(isDay ? 0.85 : 1.0);
+  sunDisc.scale.setScalar(isDay ? 1.0 : 0.85);
+
+  scene.fog.color.copy(horCol).lerp(new THREE.Color(0x22303a), nightFactor * 0.9);
+  scene.fog.near = isDay ? 420 : 300;
+  scene.fog.far = isDay ? 1500 : 900;
+
+  oceanUniforms.uSunDir.value.copy(sunDir);
+  oceanUniforms.uSunColor.value.copy(isDay ? new THREE.Color(0xfff0cc) : new THREE.Color(0xa0b8d8));
+  oceanUniforms.uSkyTop.value.copy(topCol);
+  oceanUniforms.uSkyHorizon.value.copy(horCol);
+  oceanUniforms.uNight.value = nightFactor;
+  oceanUniforms.uFogColor.value.copy(scene.fog.color);
+  oceanUniforms.uFogNear.value = scene.fog.near;
+  oceanUniforms.uFogFar.value = scene.fog.far;
+  oceanUniforms.uFogColor.value.copy(scene.fog.color);
+
+  renderer.toneMappingExposure = isDay ? 1.0 : 0.45;
+  superMat.emissiveIntensity = isDay ? 0.24 : 1.35;
+  railGlowMat.emissiveIntensity = isDay ? 0.06 : 1.7;
+  deckLamps.forEach(l => { l.intensity = isDay ? 0.0 : 1.8; });
+
+  const hours = Math.floor(tod * 24) % 24;
+  const mins = Math.floor((tod * 24 % 1) * 60);
+  document.getElementById('sunState').textContent =
+    String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+}
+
+/* =========================================================================
+   WALKING SYSTEM
+   ========================================================================= */
+const stairZ = -20; // stairwell column inside superstructure
+
+const walkSurfaces = deckProfiles.map(p => ({
+  y: p.y, minX: -p.hw + 0.5, maxX: p.hw - 0.5, minZ: p.zB + 0.5, maxZ: p.zF - 0.5
+}));
+// open D2 promenades
+walkSurfaces.push({ y: 0.25, minX: -12, maxX: 12, minZ: 78, maxZ: 128 });
+walkSurfaces.push({ y: 0.25, minX: -11, maxX: 11, minZ: -128, maxZ: -88 });
+// forward open deck portions
+walkSurfaces.push({ y: 0.25, minX: -12, maxX: 12, minZ: 95, maxZ: 125 });
+walkSurfaces.push({ y: 0.25, minX: -8, maxX: 8, minZ: 108, maxZ: 128 });
+
+function surfaceAt(x, z) {
+  let best = null;
+  for (const s of walkSurfaces) {
+    if (x >= s.minX && x <= s.maxX && z >= s.minZ && z <= s.maxZ) {
+      if (!best || s.y > best.y) best = s;
+    }
+  }
+  return best;
+}
+
+const walk = {
+  yaw: Math.PI,
+  pitch: 0,
+  velX: 0,
+  velZ: 0,
+  climbTarget: null,
+  bobPhase: 0,
+  speed: 3.2,
+  running: 7.0
+};
+
+const keys = {};
+let mode = 'walk';
+let isWalking = false;
+
+const overlay = document.getElementById('overlay');
+const hint = document.getElementById('hint');
+
+document.addEventListener('pointerlockchange', () => {
+  isWalking = document.pointerLockElement === document.body && mode === 'walk';
+  if (isWalking) {
+    overlay.classList.add('hidden');
+    hint.style.display = 'block';
+  } else {
+    hint.style.display = 'none';
+    if (mode === 'walk') overlay.classList.remove('hidden');
+  }
+});
+
+overlay.addEventListener('click', () => {
+  if (mode !== 'walk') {
+    document.getElementById('mode').value = 'walk';
+    mode = 'walk';
+    orbitControlsEnabled = false;
+  }
+  document.body.requestPointerLock();
+});
+
+/* Mouse look */
+document.addEventListener('mousemove', (e) => {
+  if (document.pointerLockElement !== document.body) return;
+  walk.yaw -= e.movementX * 0.0024;
+  walk.pitch -= e.movementY * 0.0024;
+  walk.pitch = Math.max(-1.35, Math.min(1.35, walk.pitch));
+});
+
+/* Keys */
+document.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code === 'KeyE') {
+    if (!e.repeat) tryClimb(e.shiftKey ? -1 : 1);
+  }
+  if (e.code === 'KeyF') {
+    const panel = document.getElementById('controls');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  }
+  if (mode === 'walk' && e.code === 'Escape') {
+    // browser handles
+  }
+});
+document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+function tryClimb(dir) {
+  const surf = surfaceAt(camera.position.x, camera.position.z);
+  if (!surf) return;
+  if (Math.abs(camera.position.z - stairZ) > 4.5 || Math.abs(camera.position.x) > 2.8) return;
+  if (dir > 0) {
+    const up = walkSurfaces.filter(s => s.y > surf.y + 0.3).sort((a, b) => a.y - b.y)[0];
+    if (up) walk.climbTarget = up.y;
+  } else {
+    const down = walkSurfaces.filter(s => s.y < surf.y - 0.3).sort((a, b) => b.y - a.y)[0];
+    if (down) walk.climbTarget = down.y;
+  }
+}
+
+/* Camera controls */
+const orbitControlsEnabled = { value: false };
+const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+orbitControls.enabled = false;
+orbitControls.target.set(0, 30, -20);
+orbitControls.maxPolarAngle = Math.PI * 0.49;
+orbitControls.minDistance = 40;
+orbitControls.maxDistance = 900;
+orbitControls.zoomSpeed = 0.9;
+orbitControls.enablePan = false;
+
+const modeSel = document.getElementById('mode');
+modeSel.addEventListener('change', (e) => {
+  mode = e.target.value;
+  orbitControls.enabled = (mode !== 'walk');
+  if (mode === 'walk') {
+    if (document.pointerLockElement !== document.body) document.body.requestPointerLock();
+  } else if (document.pointerLockElement === document.body) {
+    document.exitPointerLock();
+  }
+  if (mode === 'fly') {
+    camera.position.set(0, 210, 330);
+    orbitControls.target.set(0, 40, -20);
+  } else if (mode === 'cinema') {
+    camera.position.set(0, 140, 420);
+    orbitControls.target.set(0, 30, -20);
+  }
+});
+
+/* Weather controls */
+const weatherSel = document.getElementById('weather');
+weatherSel.addEventListener('change', () => {
+  const w = weatherSel.value;
+  const counts = { clear: 0, cloudy: 0, rain: 2600, storm: 6200 };
+  setRain(counts[w] || 0, w === 'storm' ? 0x8899aa : 0xaac8dd);
+  cloudGroup.children.forEach(c => {
+    if (w === 'clear') {
+      c.visible = false;
+    } else {
+      c.visible = true;
+      c.material.opacity = w === 'cloudy' ? 0.9 : 0.7;
+      c.material.color.setHex(w === 'storm' ? 0x39414a : 0xe8eef2);
+    }
+  });
+  if (w === 'rain' || w === 'storm') {
+    scene.fog.near = 250;
+    scene.fog.far = 950;
+  } else {
+    scene.fog.near = 420;
+    scene.fog.far = 1500;
+  }
+});
+
+/* Day/night slider + autoplay */
+const sunSlider = document.getElementById('sunSlider');
+const autoplayBtn = document.getElementById('autoplay');
+sunSlider.addEventListener('input', () => {
+  skyState.timeOfDay = parseFloat(sunSlider.value);
+  skyState.autoPlay = false;
+  autoplayBtn.textContent = 'AUTO CYCLE: OFF';
+});
+autoplayBtn.addEventListener('click', () => {
+  skyState.autoPlay = !skyState.autoPlay;
+  autoplayBtn.textContent = 'AUTO CYCLE: ' + (skyState.autoPlay ? 'ON' : 'OFF');
+});
+
+/* -------------------------------------------------------------------------
+   MAIN LOOP
+   ------------------------------------------------------------------------- */
+const clock = new THREE.Clock();
+const initialDekks = walkSurfaces.map(s => s.y);
+let lastT = performance.now();
+
+function updatePlayer(dt) {
+  const running = keys['ShiftLeft'] || keys['ShiftRight'];
+  const speed = running ? walk.running : walk.speed;
+
+  let ix = 0, iy = 0;
+  if (keys['KeyW'] || keys['ArrowUp']) iy += 1;
+  if (keys['KeyS'] || keys['ArrowDown']) iy -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+  if (ix !== 0 || iy !== 0) {
+    const len = Math.hypot(ix, iy);
+    ix /= len; iy /= len;
+  }
+
+  const sinY = Math.sin(walk.yaw);
+  const cosY = Math.cos(walk.yaw);
+  const dx = ix * -sinY + iy * cosY;
+  const dz = ix * cosY + iy * sinY;
+
+  let nx = camera.position.x + dx * speed * dt;
+  let nz = camera.position.z + dz * speed * dt;
+
+  const currentSurf = surfaceAt(camera.position.x, camera.position.z);
+
+  // wall slide
+  if (!surfaceAt(nx, camera.position.z)) nx = camera.position.x;
+  if (!surfaceAt(nx, nz)) nz = camera.position.z;
+
+  // stair climb assist inside shaft
+  if (Math.abs(nz - stairZ) < 3.0 && Math.abs(nx) < 2.9 && currentSurf) {
+    const near = walkSurfaces.filter(s =>
+      Math.abs(s.y - camera.position.y) < 3.0 &&
+      Math.abs(s.y - (currentSurf.y)) < 12
+    ).sort((a, b) => Math.abs(a.y - camera.position.y) - Math.abs(b.y - camera.position.y))[0];
+    if (near) walk.climbTarget = near.y;
+  }
+
+  // vertical movement
+  let targetY = camera.position.y;
+  if (walk.climbTarget !== null) {
+    const diff = walk.climbTarget - camera.position.y;
+    if (Math.abs(diff) < 0.12 * dt) {
+      camera.position.y = walk.climbTarget;
+      walk.climbTarget = null;
+    } else {
+      camera.position.y += Math.sign(diff) * Math.min(Math.abs(diff), 7.0 * dt);
+    }
+  } else if (currentSurf) {
+    targetY = currentSurf.y + 1.62;
+  }
+
+  // bob
+  const horizontalSpeed = Math.hypot(walk.velX, walk.velZ);
+  if (horizontalSpeed > 0.3) {
+    walk.bobPhase += dt * (running ? 13 : 9);
+  }
+  const bobY = Math.sin(walk.bobPhase) * (running ? 0.075 : 0.055);
+  const bobX = Math.cos(walk.bobPhase * 0.5) * (running ? 0.05 : 0.035);
+
+  walk.velX += (dx * speed - walk.velX) * Math.min(1, dt * 11);
+  walk.velZ += (dz * speed - walk.velZ) * Math.min(1, dt * 11);
+
+  camera.position.x += nx - camera.position.x;
+  camera.position.z += nz - camera.position.z;
+  camera.position.y += (targetY - camera.position.y) * Math.min(1, dt * 8) + bobY;
+  camera.position.x += bobX;
+
+  camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ');
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+
+  // day/night progression
+  if (skyState.autoPlay) {
+    skyState.timeOfDay += dt * skyState.speed * (keys['ShiftLeft'] ? 4 : 1);
+    if (skyState.timeOfDay > 1) skyState.timeOfDay -= 1;
+  }
+  sunSlider.value = skyState.timeOfDay.toFixed(3);
+  updateSunPosition(skyState.timeOfDay);
+
+  // ocean
+  oceanUniforms.uTime.value = clock.elapsedTime;
+  ocean.position.y = -30 + Math.sin(clock.elapsedTime * 0.55) * 0.22;
+
+  // ship gentle motion
+  ship.position.y = Math.sin(clock.elapsedTime * 0.5) * 0.18;
+  ship.rotation.z = Math.sin(clock.elapsedTime * 0.5 + 1.0) * 0.0035;
+  ship.rotation.x = Math.sin(clock.elapsedTime * 0.35 + 2.0) * 0.0022;
+
+  // clouds drift
+  for (const c of cloudGroup.children) {
+    c.position.x += dt * 2.2;
+    if (c.position.x > 950) c.position.x = -950;
+  }
+
+  // rain
+  if (rain) {
+    const pos = rain.pos;
+    const count = rain.count;
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] += rain.vel[i * 3] * dt;
+      pos[i * 3 + 1] += rain.vel[i * 3 + 1] * dt;
+      pos[i * 3 + 2] += rain.vel[i * 3 + 2] * dt;
+      if (pos[i * 3 + 1] < -35) {
+        pos[i * 3] = (Math.random() - 0.5) * 520;
+        pos[i * 3 + 1] = 165 + Math.random() * 60;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 520;
+      }
+    }
+    rain.points.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // camera modes
+  if (mode === 'walk' && isWalking) {
+    updatePlayer(dt);
+  } else if (mode === 'fly' || mode === 'cinema') {
+    orbitControls.update();
+    camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ');
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* -------------------------------- Resize -------------------------------- */
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* -------------------------------- Init ---------------------------------- */
+updateSunPosition(skyState.timeOfDay);
+skyState.timeOfDay = 0.35;
+updateSunPosition(skyState.timeOfDay);
+
+// start in walk mode (not locked)
+mode = 'walk';
+orbitControls.enabled = false;
+document.getElementById('mode').value = 'walk';
+camera.position.set(0, 31.9, 60);
+walk.yaw = -Math.PI / 2;
+camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ');
+
+animate();
+</script>
+</body>
+</html>
