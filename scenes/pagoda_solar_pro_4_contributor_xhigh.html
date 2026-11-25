@@ -164,8 +164,8 @@ function islandHeight(x, z){
 
 // ─── renderer / scene / camera ──────────────────────────────
 const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
-renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
@@ -1516,9 +1516,9 @@ function buildPath(){
 // ─── camera intro ───────────────────────────────────────────
 let introPhase = 0; // 0=intro, 1=controls active
 let introTime = 0;
-const introStart = new THREE.Vector3(18, 3.5, 58);
+const introStart = new THREE.Vector3(18, 26, 58);
 const introEnd = new THREE.Vector3(55, 48, 78);
-const introTargetStart = new THREE.Vector3(12, 3, 50);
+const introTargetStart = new THREE.Vector3(12, 6, 50);
 const introTargetEnd = new THREE.Vector3(0, 6, -4);
 let introActive = true;
 
@@ -1531,6 +1531,7 @@ function updateIntro(delta){
   const st = t*t*(3-2*t);
   camera.position.lerpVectors(introStart, introEnd, st);
   controls.target.lerpVectors(introTargetStart, introTargetEnd, st);
+  camera.lookAt(controls.target);
   if(t >= 1){
     introActive = false;
     controls.autoRotate = true;
@@ -1692,37 +1693,34 @@ function animate(){
   updateLighting(timeOfDay);
   todEl.textContent = timeOfDay.toFixed(2);
 
-  // controls
-  controls.update();
-
   // camera intro
   updateIntro(delta);
+
+  // controls
+  if(!introActive) controls.update();
 
   // pagoda door animation
   for(const pf of pagodaFloors){
     pf.currentX += (pf.targetX - pf.currentX) * Math.min(1, delta*4);
     const dx = pf.currentX;
-    const doorVox = [];
     const dw = pf.dw, dh = pf.dh;
     const doorX = pf.doorX, doorZ = pf.doorZ;
+    const baseY = 11 + 3 + pf.floor*(4.5+2.8);
+    const dummy = new THREE.Object3D();
+    let idx = 0;
     for(let iy=0;iy<dh;iy+=0.4){
       for(let ix=-dw/2;ix<=dw/2;ix+=0.4){
-        doorVox.push({x:doorX+ix+dx, y:pf.doorX?11+3+pf.floor*(4.5+2.8)+0.5+iy:0, z:doorZ});
-      }
-    }
-    // rebuild door mesh
-    // (simplified: just transform the existing mesh)
-    if(dx !== 0){
-      const dummy = new THREE.Object3D();
-      for(let i=0;i<pf.mesh.count;i++){
-        dummy.position.set(0,0,0);
+        const x = doorX+ix+dx;
+        const y = baseY+0.5+iy;
+        dummy.position.set(x, y, doorZ+0.075);
         dummy.updateMatrix();
-        pf.mesh.setMatrixAt(i, dummy.matrix);
+        pf.mesh.setMatrixAt(idx++, dummy.matrix);
+        dummy.position.set(x, y, doorZ-0.075);
+        dummy.updateMatrix();
+        pf.mesh.setMatrixAt(idx++, dummy.matrix);
       }
-      // Actually, let's just translate the whole mesh
-      pf.mesh.position.x = dx;
-      // But we need to reset per-frame... use a group
     }
+    pf.mesh.instanceMatrix.needsUpdate = true;
   }
 
   // bird animation
