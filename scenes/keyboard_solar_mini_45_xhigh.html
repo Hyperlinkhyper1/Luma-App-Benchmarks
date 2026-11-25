@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>K7 — 3D Keyboard Assembly</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 28%,#2b3138 0%,#141619 58%,#07080a 100%);font-family:"Helvetica Neue",Arial,sans-serif}
+  canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+  #ui{position:fixed;left:16px;top:16px;display:flex;gap:8px;z-index:10;flex-wrap:wrap}
+  button{appearance:none;cursor:pointer;color:#efe8dc;background:rgba(22,24,28,.66);border:1px solid rgba(255,255,255,.13);
+    border-radius:999px;padding:9px 14px;font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:background .18s,transform .18s,border-color .18s}
+  button:hover{background:rgba(64,70,79,.8);border-color:rgba(255,255,255,.28)}
+  button:active{transform:scale(.97)}
+  #hint{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);color:rgba(235,228,216,.72);
+    font-size:12px;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 10px #000;transition:opacity .8s;z-index:10}
+  @media (max-width:560px){button{padding:8px 11px;font-size:10px} #hint{font-size:11px;bottom:14px;width:90%;text-align:center}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <button id="replay">Replay</button>
+  <button id="rgb">RGB: On</button>
+  <button id="sound">Sound: On</button>
+</div>
+<div id="hint">Click a key or press a key — sound activates on first interaction</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.12;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(35, innerWidth/innerHeight, 0.1, 200);
+const target = new THREE.Vector3(0,-0.85,0);
+let az=-0.55, pol=1.02, dist=15.5, userMoved=false;
+
+const M = {
+ pcb:new THREE.MeshStandardMaterial({color:0x0b1420,metalness:0.4,roughness:0.42}),
+ copper:new THREE.MeshStandardMaterial({color:0xc98146,metalness:0.95,roughness:0.25}),
+ copperDark:new THREE.MeshStandardMaterial({color:0x7d4b28,metalness:0.9,roughness:0.35}),
+ foam:new THREE.MeshStandardMaterial({color:0x141618,roughness:0.96,metalness:0.05}),
+ plate:new THREE.MeshStandardMaterial({color:0xb46b3a,metalness:0.95,roughness:0.24}),
+ case:new THREE.MeshStandardMaterial({color:0x262a2f,metalness:0.55,roughness:0.34}),
+ deck:new THREE.MeshStandardMaterial({color:0x1b1e22,metalness:0.45,roughness:0.4}),
+ capDark:new THREE.MeshStandardMaterial({color:0x34383d,roughness:0.48,metalness:0.15}),
+ capBody:new THREE.MeshStandardMaterial({color:0xd6cdbd,roughness:0.46,metalness:0.05}),
+ capTop:new THREE.MeshStandardMaterial({color:0xeee8dc,roughness:0.3,metalness:0.03}),
+ switch:new THREE.MeshStandardMaterial({color:0x2b2f35,metalness:0.5,roughness:0.42}),
+ switchTop:new THREE.MeshStandardMaterial({color:0x4b515a,metalness:0.7,roughness:0.35}),
+ stem:new THREE.MeshStandardMaterial({color:0x9aa1a9,metalness:0.85,roughness:0.3}),
+ led:new THREE.MeshStandardMaterial({color:0xff7033,emissive:0xff5a20,emissiveIntensity:2.6,roughness:0.3}),
+ trace:new THREE.MeshStandardMaterial({color:0xc47c43,metalness:0.9,roughness:0.3,emissive:0x33140a,emissiveIntensity:0.5})
+};
+
+scene.add(new THREE.HemisphereLight(0xbfd4ff,0x20140e,0.95));
+const sun = new THREE.DirectionalLight(0xfff1dc,2.3);
+sun.position.set(7,15,10); sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left=-9; sun.shadow.camera.right=9; sun.shadow.camera.top=9; sun.shadow.camera.bottom=-9;
+sun.shadow.camera.near=1; sun.shadow.camera.far=45; sun.shadow.bias=-0.0012;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x9ec5ff,0.8); fill.position.set(-9,7,-11); scene.add(fill);
+const accent = new THREE.PointLight(0xff6b2a,16,18,2); accent.position.set(-2,0.8,-3.5); scene.add(accent);
+
+const caseBottom = new THREE.Group();
+const pcb = new THREE.Group();
+const foam = new THREE.Group();
+const plate = new THREE.Group();
+const caseTop = new THREE.Group();
+
+caseBottom.add(new THREE.Mesh(new THREE.BoxGeometry(7.4,0.35,5.4), M.case));
+const feetG = new THREE.CylinderGeometry(0.07,0.09,0.14,12);
+[[-3.35,2.55],[3.35,2.55],[-3.35,-2.55],[3.35,-2.55],[0,2.55],[0,-2.55]].forEach(p=>{
+  const f=new THREE.Mesh(feetG,M.capDark); f.position.set(p[0],-3.27,p[1]); caseBottom.add(f);
+});
+
+const pcbMesh = new THREE.Mesh(new THREE.BoxGeometry(6.8,0.2,4.8), M.pcb);
+pcbMesh.castShadow=true; pcbMesh.receiveShadow=true; pcb.add(pcbMesh);
+[[2.6,0.12,-1.7],[-2.9,0.12,0.8],[-0.4,0.12,-2.2],[2.2,0.12,1.6]].forEach(p=>{
+  const t=new THREE.Mesh(new THREE.BoxGeometry(p[0],0.025,p[1]),M.trace);
+  t.position.set(p[2],p[1],p[3]); pcb.add(t);
+});
+const chip=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.09,0.7),M.switchTop); chip.position.set(2.5,0.15,1.4); pcb.add(chip);
+const usb=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.06,0.24),M.capDark); usb.position.set(-2.8,0.15,-2.3); pcb.add(usb);
+
+const foamMesh=new THREE.Mesh(new THREE.BoxGeometry(6.3,0.3,4.3),M.foam);
+foamMesh.position.y=0; foamMesh.castShadow=true; foamMesh.receiveShadow=true; foam.add(foamMesh);
+
+const plateMesh=new THREE.Mesh(new THREE.BoxGeometry(7.0,0.16,5.0),M.plate);
+plateMesh.position.y=0; plateMesh.castShadow=true; plateMesh.receiveShadow=true; plate.add(plateMesh);
+const trimY=0.085, trimH=0.045;
+[[7.02,0.045,0.06],[7.02,trimH,0.06],[0.06,trimH,5.0],[0.06,trimH,5.0]].forEach(p=>{
+  const tr=new THREE.Mesh(new THREE.BoxGeometry(p[0],p[1],p[2]),M.copperDark); tr.position.y=p[1]+0.002; plate.add(tr);
+});
+
+const deckMesh=new THREE.Mesh(new THREE.BoxGeometry(7.2,0.12,5.2),M.deck);
+deckMesh.position.y=-0.24; deckMesh.castShadow=true; caseTop.add(deckMesh);
+const topMesh=new THREE.Mesh(new THREE.BoxGeometry(7.2,0.25,5.2),M.case);
+topMesh.position.y=0; topMesh.castShadow=true; topMesh.receiveShadow=true; caseTop.add(topMesh);
+const ledBar=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.05,4.0),M.led);
+ledBar.position.set(3.56,-0.355,0); caseTop.add(ledBar);
+const ledBar2=ledBar.clone(); ledBar2.position.x=-3.56; caseTop.add(ledBar2);
+const deckBar=new THREE.Mesh(new THREE.BoxGeometry(5.4,0.03,0.05),M.led);
+deckBar.position.set(0,-0.175,-2.58); caseTop.add(deckBar);
+
+scene.add(caseBottom,pcb,foam,plate,caseTop);
+
+const keys=[], keyMeshes=[];
+const capGeo=[new THREE.BoxGeometry(0.94,0.18,0.94),new THREE.BoxGeometry(0.86,0.17,0.86),new THREE.BoxGeometry(0.72,0.14,0.72)];
+const capMat=[M.capDark,M.capBody,M.capTop];
+const capY=[-0.14,0.02,0.19];
+const legendCache={};
+function legendTexture(txt,accent){
+  if(legendCache[txt+accent])return legendCache[txt+accent];
+  const c=document.createElement('canvas'); c.width=128;c.height=128;
+  const x=c.getContext('2d'); x.clearRect(0,0,128,128);
+  x.font='600 52px Arial, Helvetica, sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+  x.fillStyle=accent?'#d76b34':'#3b3833';
+  if(txt==='Space'){x.fillRect(22,54,84,9);x.fillRect(22,74,84,9);x.fillRect(22,94,84,9);}
+  else x.fillText(txt,64,64);
+  const tex=new THREE.CanvasTexture(c); tex.anisotropy=4;
+  return legendCache[txt+accent]=tex;
+}
+
+function buildSwitch(i,k){
+  const s=new THREE.Group();
+  const h=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.2,0.3,20),M.switch);
+  h.position.y=-0.2; h.castShadow=true; s.add(h);
+  const top=new THREE.Mesh(new THREE.CylinderGeometry(0.105,0.135,0.1,20),M.switchTop);
+  top.position.y=0.02; s.add(top);
+  const st=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,0.46,16),M.stem);
+  st.position.y=0.47; st.castShadow=true; s.add(st);
+  s.position.set(k.x,-1.76,k.z); scene.add(s);
+  keys[i].switch=s;
+}
+
+function buildKey(i,k){
+  const g=new THREE.Group(); g.position.set(k.x,-0.95,k.z);
+  for(let j=0;j<3;j++){
+    const m=new THREE.Mesh(capGeo[j],capMat[j]);
+    m.position.y=capY[j]; m.castShadow=true; m.userData.ki=i;
+    g.add(m); keyMeshes.push(m);
+  }
+  const p=new THREE.Mesh(new THREE.PlaneGeometry(0.62,0.62),
+    new THREE.MeshStandardMaterial({map:legendTexture(k.label,k.accent),transparent:true,roughness:0.5,metalness:0}));
+  p.rotation.x=-Math.PI/2; p.position.y=0.262; p.userData.ki=i;
+  g.add(p); keyMeshes.push(p);
+  g.userData.ki=i;
+  scene.add(g);
+  keys[i].cap=g;
+}
+
+const layout=[];
+for(let c=0;c<7;c++)layout.push({label:String(c+1),c,r:0,w:1,g:'num'});
+layout.splice(0,0,{label:'Esc',c:0,r:0,w:1,g:'mod',accent:true});
+['Q','W','E','R','T','Y','U'].forEach((l,i)=>layout.push({label:l,c:i,r:1,w:1,g:'letter'}));
+['A','S','D','F','G','H','J'].forEach((l,i)=>layout.push({label:l,c:i,r:2,w:1,g:'letter'}));
+layout.push({label:'Caps',c:0,r:3,w:1.5,g:'mod',accent:true});
+['Z','X','C','V','B'].forEach((l,i)=>layout.push({label:l,c:1.5+i,r:3,w:1,g:'letter'}));
+layout.push({label:'Backspace',c:6,r:3,w:1,g:'back'});
+layout.push({label:'Space',c:0,r:4,w:5,g:'space'});
+layout.push({label:'Enter',c:5,r:4,w:2,g:'enter'});
+
+layout.forEach((k,i)=>{
+  k.index=i; k.x=-3.5+k.c+k.w/2; k.z=k.r-2;
+  keys.push({...k,cap:null,switch:null,press:0});
+});
+
+keys.forEach((k,i)=>{buildKey(i,k);buildSwitch(i,k);});
+
+const layerDefs=[
+ {g:pcb,y:-2.60,lift:0.55,delay:0.10,dur:0.85},
+ {g:foam,y:-2.35,lift:1.10,delay:0.70,dur:0.80},
+ {g:plate,y:-2.10,lift:1.80,delay:1.30,dur:0.80},
+ {g:caseTop,y:-0.50,lift:2.35,delay:2.20,dur:0.85}
+];
+caseBottom.position.y=-3.05; pcb.position.y=-2.60; foam.position.y=-2.35; plate.position.y=-2.10; caseTop.position.y=-0.50;
+
+const E=e=>{e=Math.max(0,Math.min(1,e));return 1-Math.pow(1-e,3);};
+const state={time:reduce?6:0};
+
+document.getElementById('replay').onclick=()=>{
+  initAudio();
+  if(!reduce) state.time=0;
+  else state.time=6;
+};
+document.getElementById('rgb').onclick=(function(){
+  let on=true;
+  return function(){
+    on=!on; M.led.emissiveIntensity=on?2.6:0.15;
+    accent.intensity=on?16:1.2;
+    this.textContent='RGB: '+(on?'On':'Off');
+  };
+})();
+document.getElementById('sound').onclick(function(){
+  initAudio(); if(!ac)return;
+  muted=!muted; master.gain.value=muted?0:0.9; this.textContent='Sound: '+(muted?'Off':'On');
+});
+
+/* ---------- audio ---------- */
+let ac=null,master=null,muted=false;
+function initAudio(){
+  if(ac)return;
+  try{
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    master=ac.createGain(); master.gain.value=0.9; master.connect(ac.destination);
+  }catch(e){}
+}
+function blip(f,f2,dur,type,vol){
+  if(!ac||muted)return;
+  const t=ac.currentTime;
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type=type; o.frequency.setValueAtTime(f,t);
+  if(f2!==f)o.frequency.exponentialRampToValueAtTime(Math.max(20,f2),t+dur);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol,t+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.02);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t+dur+0.04);
+  const c=ac.createOscillator(), cg=ac.createGain();
+  c.type='sine'; c.frequency.value=1600+Math.random()*600;
+  cg.gain.setValueAtTime(0.008,t); cg.gain.exponentialRampToValueAtTime(0.0001,t+0.025);
+  c.connect(cg); cg.connect(master); c.start(t); c.stop(t+0.03);
+}
+const SOUND={
+  letter:[430,360,0.07,'square',0.045],
+  num:[560,450,0.06,'triangle',0.042],
+  space:[112,64,0.24,'sine',0.13],
+  enter:[330,160,0.16,'sawtooth',0.07],
+  back:[240,130,0.12,'square',0.07],
+  mod:[680,330,0.11,'triangle',0.06]
+};
+function playSound(lbl){
+  const key=lbl==='Space'?'space':lbl==='Enter'?'enter':lbl==='Backspace'?'back':
+    (lbl==='Esc'||lbl==='Caps')?'mod':'letter';
+  const s=SOUND[key];
+  blip(s[0]+(Math.random()*20-10),s[1]+(Math.random()*20-10),s[2],s[3],s[4]);
+}
+
+function press(i){
+  const k=keys[i]; if(!k||!k.cap)return;
+  k.press=1; playSound(k.label);
+  const h=document.getElementById('hint'); if(h)h.style.opacity='0';
+}
+
+/* ---------- interaction ---------- */
+let dragging=false, moved=false, lastX=0,lastY=0,downX=0,downY=0;
+const canvas=document.getElementById('c');
+function ensureAudio(){initAudio(); if(ac&&ac.state==='suspended')ac.resume();}
+
+canvas.addEventListener('pointerdown',e=>{
+  ensureAudio();
+  dragging=true; moved=false;
+  lastX=downX=e.clientX; lastY=downY=e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if(Math.abs(e.clientX-downX)+Math.abs(e.clientY-downY)>5)moved=true;
+  az-=dx*0.006; pol=Math.max(0.28,Math.min(1.38,pol-dy*0.005));
+});
+canvas.addEventListener('pointerup',e=>{
+  if(!dragging)return;
+  dragging=false;
+  if(moved)return;
+  const r=canvas.getBoundingClientRect();
+  const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+  const rc=new THREE.Raycaster(); rc.setFromCamera(ndc,cam);
+  scene.updateMatrixWorld(true);
+  const hit=rc.intersectObjects(keyMeshes,false)[0];
+  if(hit){
+    let m=hit.object; while(m&&m.userData.ki===undefined)m=m.parent;
+    if(m&&m.userData.ki!==undefined)press(m.userData.ki);
+  }
+});
+canvas.addEventListener('pointercancel',()=>dragging=false);
+canvas.addEventListener('wheel',e=>{e.preventDefault(); dist=Math.max(9,Math.min(30,dist*(1+e.deltaY*0.0012)));}, {passive:false});
+
+window.addEventListener('keydown',e=>{
+  if(e.repeat)return;
+  if(e.code==='Space'||e.code==='Enter'||e.code==='Backspace'||e.code==='Escape')e.preventDefault();
+  ensureAudio();
+  let l=e.key;
+  if(l==='Escape')l='Esc'; else if(l==='CapsLock')l='Caps';
+  else if(l.length===1)l=l.toUpperCase();
+  if(l===' ')l='Space';
+  const i=keys.findIndex(k=>k.label===l);
+  if(i>=0){press(i);}
+});
+
+/* ---------- resize ---------- */
+function resize(){
+  renderer.setSize(innerWidth,innerHeight);
+  cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix();
+  if(!userMoved)dist=15.5/Math.min(1,cam.aspect*0.85);
+  if(reduce)az=-0.55;
+}
+addEventListener('resize',resize); resize();
+
+/* ---------- loop ---------- */
+const clock=new THREE.Clock();
+function tick(){
+  requestAnimationFrame(tick);
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(!reduce)state.time+=dt;
+
+  for(const d of layerDefs)d.g.position.y=d.y+d.lift*(1-E((state.time-d.delay)/d.dur));
+  caseBottom.position.y=-3.05;
+
+  for(let i=0;i<keys.length;i++){
+    const k=keys[i];
+    const sE=E((state.time-(1.8+i*0.05))/0.35);
+    k.switch.position.y=-1.76+2.75*(1-sE);
+    k.press=Math.max(0,k.press-dt*4.2);
+    const cE=E((state.time-(3.28+i*0.042))/0.42);
+    k.cap.position.y=-0.95+4.05*(1-cE)-k.press*0.085;
+  }
+
+  if(!reduce&&!dragging&&state.time>2.0)az+=dt*0.035;
+
+  cam.position.set(target.x+Math.sin(pol)*Math.cos(az)*dist,
+                   target.y+Math.cos(pol)*dist,
+                   target.z+Math.sin(pol)*Math.sin(az)*dist);
+  cam.lookAt(target);
+  renderer.render(scene,cam);
+}
+tick();
+</script>
+</body>
+</html>
