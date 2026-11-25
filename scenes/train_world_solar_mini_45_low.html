@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Miniature Railway — Block Signalling</title>
+<style>
+  :root{
+    --panel: rgba(16,20,28,.82);
+    --panel2: rgba(12,16,23,.62);
+    --line: rgba(150,180,210,.22);
+    --txt: #dfe8f2;
+    --dim: #93a5b8;
+    --accent:#6fd6ff;
+    --green:#4fdc8b;
+    --yellow:#ffcc4d;
+    --red:#ff5f5f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0b0e13;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--txt); -webkit-font-smoothing:antialiased;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+
+  .panel{
+    position:fixed;background:var(--panel);
+    border:1px solid var(--line);border-radius:9px;
+    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    font-size:11.5px; line-height:1.35; user-select:none;
+  }
+  .panel::-webkit-scrollbar{width:6px}
+  .panel::-webkit-scrollbar-thumb{background:rgba(160,190,220,.25);border-radius:3px}
+
+  /* ---------- top bar ---------- */
+  #topbar{
+    top:10px;left:10px;right:10px;height:42px;
+    display:flex;align-items:center;gap:14px;padding:0 12px;
+  }
+  #topbar .title{font-weight:700;font-size:12.5px;letter-spacing:.09em;
+    text-transform:uppercase;color:#cfe6f7;white-space:nowrap;}
+  #topbar .title span{color:var(--accent)}
+  .sep{flex:1}
+  .btn{
+    background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--txt);
+    border-radius:6px;padding:5px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;
+    white-space:nowrap;transition:background .12s,border-color .12s,transform .06s;
+  }
+  .btn:hover{background:rgba(255,255,255,.13);border-color:rgba(150,200,240,.45)}
+  .btn:active{transform:translateY(1px)}
+  .btn.on{background:rgba(111,214,255,.18);border-color:rgba(111,214,255,.6);color:#d8f5ff}
+  .seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--dim);padding:5px 9px;font-size:11.5px;
+    font-family:inherit;cursor:pointer;}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:rgba(111,214,255,.2);color:#d8f5ff}
+  input[type=range]{width:108px;accent-color:#6fd6ff;height:3px;cursor:pointer}
+  .lbl{color:var(--dim);font-size:10.5px;white-space:nowrap}
+
+  /* ---------- left rail ---------- */
+  #trains{left:10px;top:62px;width:238px;max-height:calc(100% - 190px);overflow-y:auto}
+  #trains .h{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+    padding:7px 11px 4px;border-bottom:1px solid var(--line)}
+  .tr{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.055);cursor:pointer}
+  .tr:hover{background:rgba(255,255,255,.045)}
+  .tr.sel{background:rgba(111,214,255,.1);box-shadow:inset 2px 0 0 var(--accent)}
+  .tr .nm{font-weight:700;font-size:12px;display:flex;align-items:center;gap:6px}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .tr .bl{color:var(--dim);font-size:10.5px;margin-top:2px}
+  .tr .bl b{color:#cfe4f5;font-weight:600}
+  .stags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+  .tag{font-size:9.5px;padding:1px 5px;border-radius:3px;background:rgba(255,255,255,.07);
+    color:var(--dim);border:1px solid rgba(255,255,255,.07)}
+  .tag.ok{color:#8ef0bb;border-color:rgba(80,220,150,.3)}
+  .tag.wait{color:#ffd479;border-color:rgba(255,190,80,.3)}
+
+  /* ---------- right rail ---------- */
+  #info{right:10px;top:62px;width:262px;max-height:calc(100% - 190px);overflow-y:auto}
+  #info .h{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+    padding:7px 11px 4px;border-bottom:1px solid var(--line)}
+  .sec{padding:7px 11px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .row{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:1.5px 0}
+  .row .k{color:var(--dim);white-space:nowrap}
+  .row .v{color:#d8e6f2;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .asp{display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:10.5px;
+    padding:1px 6px;border-radius:3px}
+  .asp::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;
+    box-shadow:0 0 7px currentColor}
+  .asp.red{color:#ff7a7a}.asp.yellow{color:#ffcf5c}.asp.green{color:#63efa0}
+
+  /* ---------- controls bottom-left ---------- */
+  #ctrl{left:10px;bottom:10px;width:276px;padding:8px 10px}
+  .grp{margin-bottom:7px}
+  .grp:last-child{margin-bottom:0}
+  .grplbl{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    margin-bottom:3px}
+
+  /* ---------- schematic ---------- */
+  #schem{left:290px;bottom:10px;width:298px;height:288px;padding:0;overflow:hidden;
+    display:flex;flex-direction:column}
+  #schem canvas{width:100%;height:100%;display:block}
+  #schemhdr{display:flex;align-items:center;justify-content:space-between;
+    padding:6px 9px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--dim);flex:none}
+  #schemhdr .btns{display:flex;gap:4px}
+  #schemhdr .btn{padding:2px 7px;font-size:10px;border-radius:4px}
+
+  /* ---------- help ---------- */
+  #help{left:10px;bottom:10px;right:300px;width:330px;max-height:52vh;overflow-y:auto;
+    display:none;padding:10px 13px}
+  #help.show{display:block}
+  #help h3{margin:0 0 6px;font-size:12px;letter-spacing:.06em;color:var(--accent);
+    text-transform:uppercase}
+  #help p,#help li{font-size:11px;color:#c9d8e6;margin:3px 0}
+  #help ul{padding-left:16px;margin:4px 0}
+  #help b{color:#fff}
+
+  #hint{left:10px;bottom:10px;right:600px;padding:6px 11px;font-size:10.5px;color:var(--dim)}
+  #hint b{color:#c9d8e6}
+
+  #followmsg{position:fixed;top:60px;left:50%;transform:translateX(-50%);display:none;
+    padding:5px 14px;font-size:11.5px;border-radius:5px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--accent);pointer-events:none}
+
+  @media (max-width:1180px){
+    #info{display:none}
+    #schem{left:10px;bottom:150px}
+    #hint,#help{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="topbar" class="panel">
+  <div class="title">Miniature Railway <span>·</span> Block Signalling</div>
+  <div class="sep"></div>
+  <div class="seg" id="speed">
+    <button data-v="1">1×</button>
+    <button data-v="2">2×</button>
+    <button data-v="4">4×</button>
+    <button data-v="0" id="pausebtn">Pause</button>
+  </div>
+  <div class="lbl">Day</div>
+  <input type="range" id="daytime" min="0" max="23.9" step="0.1" value="11">
+  <div class="lbl" id="speedlbl">2× · Day 11.0h</div>
+  <div class="sep"></div>
+  <button class="btn on" id="btnschem">Schematic</button>
+  <button class="btn on" id="btnblocks">Blocks</button>
+  <button class="btn" id="btnhelp">How it works</button>
+  <button class="btn" id="btnhide">Hide UI</button>
+</div>
+
+<div id="trains" class="panel">
+  <div class="h">Trains</div>
+  <div id="trainlist"></div>
+</div>
+
+<div id="info" class="panel">
+  <div class="h">Live telemetry</div>
+  <div id="infoBody"></div>
+</div>
+
+<div id="ctrl" class="panel">
+  <div class="grp"><div class="grplbl">Camera</div>
+    <div class="seg" id="presets">
+      <button data-p="overview">Overview</button>
+      <button data-p="stationA">Station A</button>
+      <button data-p="stationB">Station B</button>
+      <button data-p="bridge">Bridge</button>
+      <button data-p="crossing">Level crossing</button>
+    </div>
+  </div>
+  <div class="grp"><div class="grplabel">Views</div>
+    <div class="row" style="gap:8px">
+      <button class="btn on" id="btnfollow">Follow train</button>
+      <button class="btn" id="btnlum">Night view</button>
+    </div>
+  </div>
+</div>
+
+<div id="schem" class="panel">
+  <div id="schemhdr"><span>Schematic — signals &amp; blocks</span>
+    <div class="btns"><button class="btn" id="btnz">Zoom +</button><button class="btn" id="btnm">−</button></div>
+  </div>
+  <canvas id="schemc"></canvas>
+</div>
+
+<div id="help" class="panel">
+  <h3>How the signalling works</h3>
+  <p><b>Blocks.</b> The track is divided into <b>blocks</b>. A block may hold at most one train at a time — every car the train has puts it in that block. When any part of a train is in a block, the block is <i>occupied</i> and no other train may enter.</p>
+  <p><b>Three aspects.</b> Every signal shows:</p>
+  <ul>
+    <li><b>RED</b> — the block ahead is occupied, or no route is set.</li>
+    <li><b>YELLOW</b> — the block ahead is clear, but the signal after it is red.</li>
+    <li><b>GREEN</b> — clear for at least two blocks ahead.</li>
+  </ul>
+  <p><b>Routes.</b> Before a signal in front of a switch can clear, the route through that switch is requested and <i>reserved</i>. The switch blade animates and <i>locks</i> while the route is held. The route releases behind the last train on it, and conflicting routes can never be reserved at the same time — that is why switches never foul each other.</p>
+  <p><b>Single track.</b> The single-track section is one <i>direction-locked</i> route. Only one train may hold it, in one direction. A train wanting the other way must wait in the passing loop until it is released. The system re-plans itself every cycle, so it cannot deadlock — trains never stop permanently.</p>
+  <p><b>Interlocking.</b> A route reservation covers every block, switch and signal it passes. No route may be reserved that overlaps a block already reserved by another route. Trains brake to a stand behind red signals, creep through yellow, and only proceed when the aspect and route allow.</p>
+  <p style="color:#8fa6bb">Click any 3D signal (or its box on the schematic) to <b>force it red</b>; click again to release. Trains will brake and wait.</p>
+</div>
+
+<div id="hint" class="panel">Drag to orbit · Scroll to zoom · <b>Click</b> a signal to hold it red · <b>Click</b> a train to follow</div>
+<div id="followmsg">Following train</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* =========================================================================
+   0. SANITY / WebGL
+   ========================================================================= */
+const app = document.getElementById('app');
+function glAvailable(){
+  try{ const c=document.createElement('canvas');
+    return !!(window.WebGLRenderingContext && (c.getContext('webgl2')||c.getContext('webgl')));
+  }catch(e){ return false; }
+}
+if(!glAvailable()){
+  document.body.innerHTML = '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0e13;color:#dfe8f2;font:16px system-ui;padding:40px;text-align:center"><div><h2 style="color:#ff8a8a">WebGL is unavailable</h2><p style="color:#93a5b8">This miniature railway needs WebGL to render. Please open it in a browser with hardware acceleration enabled.</p></div></div>';
+  throw new Error('no webgl');
+}
+
+/* =========================================================================
+   1. CONSTANTS & HELPERS
+   ========================================================================= */
+const TAU = Math.PI*2;
+const UP = new THREE.Vector3(0,1,0);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1420);
+scene.fog = new THREE.FogExp2(0x0b1420, 0.0022);
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 4000);
+camera.position.set(210, 250, 330);
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+app.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 30;
+controls.maxDistance = 1400;
+controls.maxPolarAngle = Math.PI*0.495;
+controls.target.set(190, 0, 175);
+controls.update();
+
+/* lighting rig */
+const sun = new THREE.DirectionalLight(0xfff0d0, 2.6);
+sun.position.set(420, 620, 220);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left = -520; sun.shadow.camera.right = 520;
+sun.shadow.camera.top = 520; sun.shadow.camera.bottom = -520;
+sun.shadow.camera.near = 20; sun.shadow.camera.far = 2000;
+sun.shadow.bias = -0.0006;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xa8c8ff, 0x5a4a30, 0.95));
+const amb = new THREE.AmbientLight(0x445577, 0.55);
+scene.add(amb);
+
+/* =========================================================================
+   2. PROCEDURAL TEXTURES (canvas)
+   ========================================================================= */
+function makeCanvas(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return [c, c.getContext('2d')]; }
+
+function noise1d(n, seed){
+  let s = seed*9271 + 1;
+  const out = new Float32Array(n);
+  for(let i=0;i<n;i++){ s = (s*1664525 + 1013904223) & 0xffffffff; out[i] = s/4294967295; }
+  return out;
+}
+
+function ballastTexture(){
+  const [cv,cx] = makeCanvas(256,256);
+  const g = cx.createLinearGradient(0,0,256,256);
+  g.addColorStop(0,'#5c564d'); g.addColorStop(1,'#706a60');
+  cx.fillStyle = g; cx.fillRect(0,0,256,256);
+  const n = noise1d(600, 7);
+  for(let i=0;i<600;i++){
+    const x = n[i]*256, y = n[(i*7+3)%600]*256, r = 2 + n[(i*13+5)%600]*5;
+    cx.beginPath(); cx.arc(x,y,r,0,TAU);
+    cx.fillStyle = `rgba(${110+ n[(i*3)|0]*70|0},${100+n[(i*5)|0]*60|0},${90+n[(i*11)|0]*60|0},${0.5+n[i]*0.5})`;
+    cx.fill();
+  }
+  const t = cv.getContext('2d'); const st = t.createPattern(cv,'repeat');
+  return st;
+}
+
+function gravelTexture(){
+  const [cv,cx] = makeCanvas(128,128);
+  cx.fillStyle = '#3c4a3c'; cx.fillRect(0,0,128,128);
+  const n = noise1d(80, 21);
+  for(let i=0;i<900;i++){
+    const x = n[i]*128, y = n[(i*7)%80]*128, r = 0.6+n[i]*1.9;
+    cx.beginPath(); cx.arc(x,y,r,0,TAU);
+    cx.fillStyle = `rgba(${60+n[i]*70|0},${75+n[(i*3)|0]*60|0},${58+n[i]*50|0},0.9)`;
+    cx.fill();
+  }
+  const t = cv.getContext('2d'); const st = t.createPattern(cv,'repeat');
+  return st;
+}
+
+function grassTexture(){
+  const [cv,cx] = makeCanvas(256,256);
+  const g = cx.createLinearGradient(0,0,0,256);
+  g.addColorStop(0,'#3d6b35'); g.addColorStop(1,'#2c4e28');
+  cx.fillStyle = g; cx.fillRect(0,0,256,256);
+  const n = noise1d(140, 33);
+  for(let i=0;i<2400;i++){
+    const x = n[i]*256, y = n[(i*7)%140]*256;
+    const h = 2 + n[(i*5)%140]*9;
+    cx.strokeStyle = `rgba(${70+n[i]*90|0},${120+n[i*3|0]*110|0},${45+n[(i*11)%140]*70|0},0.85)`;
+    cx.lineWidth = 0.9;
+    cx.beginPath(); cx.moveTo(x,y); cx.quadraticCurveTo(x+ (n[(i*13)%140]-0.5)*6, y-h, x+(n[(i*3)%140]-0.5)*10, y-h-2); cx.stroke();
+  }
+  const t = cv.getContext('2d'); const st = t.createPattern(cv,'repeat');
+  return st;
+}
+
+function roadTexture(){
+  const [cv,cx] = makeCanvas(256,64);
+  cx.fillStyle = '#4a4b48'; cx.fillRect(0,0,256,64);
+  cx.fillStyle = 'rgba(220,225,230,0.75)';
+  cx.fillRect(0,6,256,4); cx.fillRect(0,54,256,4);
+  cx.fillStyle = 'rgba(245,215,90,0.85)';
+  for(let x=10;x<256;x+=32) cx.fillRect(x,31,16,2);
+  const t = cx.createPattern(cv,'repeat');
+  return t;
+}
+
+function woodTexture(){
+  const [cv,cx] = makeCanvas(128,128);
+  cx.fillStyle = '#6a4a2f'; cx.fillRect(0,0,128,128);
+  const n = noise1d(200, 51);
+  for(let i=0;i<2600;i++){
+    const x=n[i]*128, y=n[(i*7)%200]*128, w=1+n[i]*5, h=2+n[i*3|0]*14;
+    cx.fillStyle = `rgba(${90+n[(i*11)|0]*60|0},${62+n[(i*5)|0]*40|0},${34+n[(i*13)|0]*34|0},0.7)`;
+    cx.fillRect(x,y,w,h);
+  }
+  for(let x=0;x<128;x+=32){ cx.fillStyle='rgba(30,18,10,0.55)'; cx.fillRect(x,0,2,128); }
+  const t = cx.createPattern(cv,'repeat'); return t;
+}
+
+function wallTexture(){
+  const [cv,cx] = makeCanvas(128,128);
+  cx.fillStyle = '#c9c1b0'; cx.fillRect(0,0,128,128);
+  for(let y=0;y<128;y+=16){
+    for(let x=(y/16%2)*16; x<128; x+=32){
+      cx.fillStyle = 'rgba(0,0,0,0.08)';
+      cx.fillRect(x+0.5, y, 31, 1);
+      cx.fillStyle = 'rgba(255,255,255,0.10)';
+      cx.fillRect(x+0.5, y+15, 31, 1);
+    }
+  }
+  const t = cx.createPattern(cv,'repeat'); return t;
+}
+
+function roofTexture(){
+  const [cv,cx] = makeCanvas(64,32);
+  cx.fillStyle = '#8d2f26'; cx.fillRect(0,0,64,32);
+  cx.fillStyle = 'rgba(255,255,255,0.10)';
+  cx.fillRect(0,0,64,10);
+  cx.fillStyle = 'rgba(0,0,0,0.18)';
+  cx.fillRect(0,30,64,2);
+  const t = cx.createPattern(cv,'repeat'); return t;
+}
+
+function metalTexture(){
+  const [cv,cx] = makeCanvas(64,64);
+  cx.fillStyle = '#8f9aa8'; cx.fillRect(0,0,64,64);
+  const n = noise1d(200, 91);
+  for(let i=0;i<500;i++){
+    cx.fillStyle = `rgba(${60+n[i]*60|0},${70+n[i*3|0]*60|0},${80+n[i*5|0]*50|0},0.6)`;
+    cx.fillRect(n[i]*64, n[(i*7)%200]*64, 2+n[i]*14, 1);
+  }
+  const t = cx.createPattern(cv,'repeat'); return t;
+}
+
+const TEX = {
+  ballast: ballastTexture(),
+  gravel: gravelTexture(),
+  grass: grassTexture(),
+  road: roadTexture(),
+  wood: woodTexture(),
+  wall: wallTexture(),
+  roof: roofTexture(),
+  metal: metalTexture(),
+};
+
+const texLoader = (t, opts={}) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+
+/* =========================================================================
+   3. SCENE GEOMETRY HELPERS
+   ========================================================================= */
+const world = new THREE.Group();
+scene.add(world);
+
+function mesh(geo, mat, x=0,y=0,z=0, parent=world){
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x,y,z);
+  if (parent) parent.add(m);
+  return m;
+}
+const boxGeo = new THREE.BoxGeometry(1,1,1);
+function box(w,h,d, mat, x,y,z, parent){ 
+  const m = new THREE.Mesh(boxGeo, mat); 
+  m.scale.set(w,h,d); m.position.set(x,y,z);
+  if(parent) parent.add(m); else m.position.set(x,y,z);
+  if (parent) world.add(m);
+  return m;
+}
+function sphere(r, seg, mat, x=0,y=0,z=0){
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(4,seg/2)), mat);
+  m.position.set(x,y,z); world.add(m); return m;
+}
+function cylinder(rTop, rBot, h, seg, mat, x=0,y=0,z=0, rx=0,ry=0,rz=0){
+  const g = new THREE.CylinderGeometry(rTop,rBot,h,seg);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(x,y,z); m.rotation.set(rx,ry,rz);
+  world.add(m); return m;
+}
+const C = (r,h,mat,seg=10, rx=0,ry=0)=> new THREE.CylinderGeometry(r,r,h,seg,1,false,0,TAU).translate(0,h/2,0) ,null;
+function cyl(r,h,mat,seg=12,rx=0,ry=0,rz=0){
+  const g = new THREE.CylinderGeometry(r,r,h,seg,1,false,0,TAU);
+  const m = new THREE.Mesh(g, mat);
+  m.rotation.set(rx,ry,rz); world.add(m); return m;
+}
+
+/* shared materials */
+const MAT = {
+  grass: new THREE.MeshStandardMaterial({map:texLoader(TEX.grass), roughness:1, metalness:0}),
+  ballast: new THREE.MeshStandardMaterial({map:texLoader(TEX.ballast), roughness:1}),
+  gravel: new THREE.MeshStandardMaterial({map:texLoader(TEX.gravel), roughness:1}),
+  road: new THREE.MeshStandardMaterial({map:texLoader(TEX.road), roughness:1, color:0x9a9a96}),
+  wood: new THREE.MeshStandardMaterial({map:texLoader(TEX.wood), roughness:0.85}),
+  woodDark: new THREE.MeshStandardMaterial({color:0x3d2a1c, roughness:0.9}),
+  wall: new THREE.MeshStandardMaterial({map:texLoader(TEX.wall), roughness:0.92, color:0xd8d0c0}),
+  wallRed: new THREE.MeshStandardMaterial({color:0x9a4538, roughness:0.9}),
+  roof: new THREE.MeshStandardMaterial({map:texLoader(TEX.roof), roughness:0.8, side:THREE.DoubleSide}),
+  roofRed: new THREE.MeshStandardMaterial({color:0x8d2f26, roughness:0.8, side:THREE.DoubleSide}),
+  rail: new THREE.MeshStandardMaterial({color:0xb9c6d4, roughness:0.32, metalness:0.88}),
+  rail2: new THREE.MeshStandardMaterial({color:0x9aa9b8, roughness:0.4, metalness:0.7}),
+  sleeper: new THREE.MeshStandardMaterial({color:0x4a3726, roughness:0.95}),
+  iron: new THREE.MeshStandardMaterial({color:0x3a4149, roughness:0.6, metalness:0.6}),
+  darkIron: new THREE.MeshStandardMaterial({color:0x242a31, roughness:0.5, metalness:0.6}),
+  brass: new THREE.MeshStandardMaterial({color:0xd9a832, roughness:0.35, metalness:0.85}),
+  glass: new THREE.MeshStandardMaterial({color:0x88b8d8, roughness:0.12, metalness:0.55, transparent:true, opacity:0.75}),
+  glassDark: new THREE.MeshStandardMaterial({color:0x1c3a4a, roughness:0.1, metalness:0.6}),
+  white: new THREE.MeshStandardMaterial({color:0xf2f0e8, roughness:0.6}),
+  red: new THREE.MeshStandardMaterial({color:0xb23a2e, roughness:0.6}),
+  black: new THREE.MeshStandardMaterial({color:0x16191d, roughness:0.6}),
+  steel: new THREE.MeshStandardMaterial({color:0x8c9aa8, roughness:0.35, metalness:0.85}),
+  yellow: new THREE.MeshStandardMaterial({color:0xd8a020, roughness:0.5, metalness:0.3}),
+  green: new THREE.MeshStandardMaterial({color:0x2d7a3a, roughness:0.5}),
+  blue: new THREE.MeshStandardMaterial({color:0x2a4d8a, roughness:0.5}),
+  orange: new THREE.MeshStandardMaterial({color:0xc2581a, roughness:0.55}),
+  gravel2: new THREE.MeshStandardMaterial({color:0x4b433a, roughness:1}),
+  signalRed: new THREE.MeshStandardMaterial({color:0xff2b2b, roughness:0.25, emissive:0x990000, emissiveIntensity:1.6}),
+  signalYellow: new THREE.MeshStandardMaterial({color:0xffc200, roughness:0.25, emissive:0x885500, emissiveIntensity:1.5}),
+  signalGreen: new THREE.MeshStandardMaterial({color:0x2aff6a, roughness:0.25, emissive:0x006622, emissiveIntensity:1.6}),
+  signalOff: new THREE.MeshStandardMaterial({color:0x262b31, roughness:0.6}),
+  lampWhite: new THREE.MeshStandardMaterial({color:0xfff4cf, emissive:0xffe8a0, emissiveIntensity:2.6, toneMapped:false}),
+  lampWarm: new THREE.MeshStandardMaterial({color:0xffc870, emissive:0xff9a30, emissiveIntensity:2.0, toneMapped:false}),
+  lampBlue: new THREE.MeshStandardMaterial({color:0x88ccff, emissive:0x3070b0, emissiveIntensity:1.6}),
+  glowRed: new THREE.MeshBasicMaterial({color:0xff4444, toneMapped:false}),
+  glowYellow: new THREE.MeshBasicMaterial({color:0xffcc33, toneMapped:false}),
+  glowGreen: new THREE.MeshBasicMaterial({color:0x44ff77, toneMapped:false}),
+  glowWhite: new THREE.MeshBasicMaterial({color:0xfff6d8, toneMapped:false}),
+  frame: new THREE.MeshStandardMaterial({color:0x59432c, roughness:0.7, metalness:0.2}),
+  canopy: new THREE.MeshStandardMaterial({color:0x2b4a5c, roughness:0.5, metalness:0.5, transparent:true, opacity:0.85}),
+  leaves: new THREE.MeshStandardMaterial({color:0x2c5c2a, roughness:0.9}),
+  leaves2: new THREE.MeshStandardMaterial({color:0x3a6f2c, roughness:0.9}),
+  trunk: new THREE.MeshStandardMaterial({color:0x4a3524, roughness:0.95}),
+  water: new THREE.MeshStandardMaterial({color:0x1f4d6b, roughness:0.08, metalness:0.55}),
+  asphalt: new THREE.MeshStandardMaterial({color:0x3b3b3d, roughness:0.95}),
+  cobble: new THREE.MeshStandardMaterial({color:0x8a8578, roughness:1}),
+  buffer: new THREE.MeshStandardMaterial({color:0x6a6252, roughness:1}),
+  tyre: new THREE.MeshStandardMaterial({color:0x1a1a1c, roughness:0.95}),
+  steelBlue: new THREE.MeshStandardMaterial({color:0x31557a, roughness:0.4, metalness:0.7}),
+  rust: new THREE.MeshStandardMaterial({color:0x8c4a26, roughness:0.85}),
+  concrete: new THREE.MeshStandardMaterial({color:0x9d968a, roughness:0.95}),
+};
+
+/* =========================================================================
+   4. THE WORLD — ground, hills, river, tunnel, bridge, village
+   ========================================================================= */
+const WORLD = { t: 0 };
+const glowLights = [];      // {mesh, base, mode}
+const lampSpots = [];
+const waterMesh = null;
+let nightAmount = 0;
+
+/* --- ground slab with hills (custom geometry) --- */
+(function buildTerrain(){
+  const seg = 58;
+  const w = 760, d = 560;
+  const g = new THREE.BufferGeometry();
+  const pos = [], uv = [], idx = [];
+  const hills = [
+    {x:140,z:205,r:235,h:26,p:1.15},
+    {x:330,z:120,r:180,h:34,p:1.3},
+    {x:80,z:80,r:150,h:20,p:1.2},
+    {x:400,z:330,r:200,h:30,p:1.25},
+    {x:300,z:380,r:190,h:24,p:1.3},
+    {x:-60,z:260,r:190,h:26,p:1.2},
+  ];
+  for(let i=0;i<=seg;i++){
+    const x = -w/2 + (i/seg)*w;
+    for(let j=0;j<=seg;j++){
+      const z = -d/2 + (j/seg)*d;
+      let h = 3;
+      for(const hl of hills){
+        const dx = x-hl.x, dz = z-hl.z;
+        const dd = Math.sqrt(dx*dx+dz*dz);
+        const t = Math.max(0, 1 - dd/hl.r);
+        h += Math.pow(t, hl.p)*hl.h;
+      }
+      const n1 = Math.sin(x*0.021)*2.2 + Math.cos(z*0.017)*2.2;
+      const n2 = Math.sin((x+z)*0.031)*1.1;
+      const y = -6 + h + n1 + n2;
+      pos.push(x, y, z); uv.push(i/seg*16, j/seg*16);
+    }
+  }
+  for(let i=0;i<seg;i++) for(let j=0;j<seg;j++){
+    const a = i*(seg+1)+j, b = a+1, c = a+seg+1, d2 = c+1;
+    idx.push(a,c,b, b,c,d2);
+  }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, MAT.grass);
+  m.receiveShadow = true;
+  world.add(m);
+})();
+
+/* --- ground plane extending out to hide edges --- */
+(function(){
+  const g = new THREE.PlaneGeometry(3000,2400);
+  g.rotateX(-Math.PI/2);
+  const m = new THREE.Mesh(g, MAT.grass);
+  m.position.set(190, -7.4, 120); m.receiveShadow = true;
+  world.add(m);
+})();
+
+/* --- pond / river --- */
+function riverShape(){
+  const pts = [];
+  const rnd = noise1d(40, 42);
+  for(let i=0;i<=48;i++){
+    const z = -240 + (i/48)*560;
+    const x = 150 + Math.sin(z*0.012+1.4)*30 + (rnd[i]-0.5)*22;
+    pts.push(new THREE.Vector2(x, z));
+  }
+  return pts;
+}
+const riverPts = riverShape();
+{
+  const shape = new THREE.Shape();
+  const left = [], right = [];
+  riverPts.forEach((p,i)=>{
+    const w = 26 + Math.sin(i*0.31)*10 + (noise1d(12,i*3.7)[0]-0.5)*12;
+    left.push(new THREE.Vector2(p.x - w, p.y));
+    right.push(new THREE.Vector2(p.x + w, p.y));
+  });
+  shape.moveTo(left[0].x, left[0].y);
+  for(let i=1;i<left.length;i++) shape.lineTo(left[i].x, left[i].y);
+  for(let i=right.length-1;i>=0;i--) shape.lineTo(right[i].x, right[i].y);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {depth:2, bevelEnabled:false});
+  geo.rotateX(-Math.PI/2);
+  const m = new THREE.Mesh(geo, MAT.water);
+  m.position.set(0, -3.1, 0);
+  world.add(m);
+  // river banks
+  const bankGeo = new THREE.BufferGeometry();
+  const bp = [], bi = [];
+  for(let i=0;i<riverPts.length;i++){
+    const p = riverPts[i], q = riverPts[Math.min(riverPts.length-1,i+1)];
+    const dir = new THREE.Vector3(q.x-p.x, 0, q.y-p.y).normalize();
+    const nr = new THREE.Vector3(-dir.z, 0, dir.x);
+    const w = 26 + Math.sin(i*0.31)*10 + (noise1d(12,i*3.7)[0]-0.5)*12;
+    bp.push(p.x + nr.x*(w+1.5), -2.9, p.y + nr.z*(w+1.5));
+    bp.push(p.x + nr.x*(w-14), -3.3, p.y + nr.z*(w-14));
+  }
+  for(let i=0;i<bp.length/2-1;i++){ const a=i*2; bi.push(a,a+1,a+2, a+1,a+3,a+2); }
+  bankGeo.setAttribute('position', new THREE.Float32BufferAttribute(bp,3));
+  bankGeo.setIndex(bi); bankGeo.computeVertexNormals();
+  const bm = new THREE.Mesh(bankGeo, MAT.ballast);
+  world.add(bm);
+}
+
+/* --- bridge over the river at x=180 --- */
+const BRIDGE = { x:180, z0:-178, z1:-112, len:70 };
+(function(){
+  const grp = new THREE.Group();
+  grp.position.set(BRIDGE.x, -1.2, -145);
+  world.add(grp);
+  const w = 8;
+  // truss towers (every 10)
+  for(let i=-3;i<=3;i++){
+    const h = 9;
+    const z = i*11;
+    cylinder(0.45,0.55,h,6,MAT.iron, 0, 0+h/2, z, 0, 0, 0);
+    cylinder(0.22,0.22,h,5,MAT.iron, -w, 0+h/2, z, 0,0,0);
+    cylinder(0.22,0.22,h,5,MAT.iron,  w, 0+h/2, z, 0,0,0);
+  }
+  // cross bracing
+  for(let i=-3;i<3;i++){
+    const z = i*11;
+    for(const s of [-w, w]){
+      cylinder(0.12,0.12,Math.abs(z-(i+1)*11)*1.001,4,MAT.iron, s, 6.2, (z+(i+1)*11)/2, 0,0, -Math.PI/2*(z<(i+1)*11?1:-1));
+    }
+    cylinder(0.1,0.1,12,4,MAT.iron, 0, 8.0, z+5.5, Math.PI/2,0,0);
+  }
+  // road
+  box(10.5, 1.2, 72, MAT.asphalt, 0, -0.3, 0).receiveShadow = true;
+  for(let i=-3;i<=3;i++) box(10.8, 0.25, 11, MAT.gravel, 0, 0.35, i*11).receiveShadow=true;
+  // rail (underneath)
+  for(const sx of [-1.7,1.7]) box(0.16,0.14,72, MAT.rail, sx, -0.15, 0);
+  // road surface
+  const m2 = new THREE.Mesh(new THREE.CylinderGeometry(5.25,5.25,70,24), MAT.gravel);
+  m2.position.set(0,-0.55,0); m2.rotation.x = -Math.PI/2; grp.add(m2);
+  grp.traverse(o=>{ if(o.isMesh){o.castShadow=true; o.receiveShadow=true;}});
+  // pillars into the river
+  for(const z of [-2,-1]) cylinder(2.4, 3.0, 26, 8, MAT.concrete, 0, -18, z);
+  window.__bridge = grp;
+})();
+
+/* --- tunnel through the west hill --- */
+const TUNNEL = { x:95, z:205, len:46, halfW:3.4 };
+(function(){
+  const grp = new THREE.Group();
+  grp.position.set(TUNNEL.x, 0, TUNNEL.z - 0);
+  world.add(grp);
+  const w = TUNNEL.halfW*2;
+  const g = new THREE.SphereGeometry(w+0.8, 20, 12, 0, TAU, 0, Math.PI/2);
+  g.scale(1, 1, 1);
+  const h = new THREE.Shape();
+  h.moveTo(-w, -w); h.lineTo(w,-w); h.lineTo(w,0); h.lineTo(-w,0); h.closePath();
+  const tgeo = new THREE.ExtrudeGeometry(h, {depth: TUNNEL.len+2, bevelEnabled:false, steps:1, curveSegments:1});
+  tgeo.rotateX(Math.PI/2);
+  const mat = new THREE.MeshStandardMaterial({color:0x3a3d3c, roughness:0.85});
+  const m = new THREE.Mesh(tgeo, mat);
+  m.position.set(0, -0.4, 0);
+  grp.add(m);
+  const hole = new THREE.Mesh(
+    new THREE.CylinderGeometry(TUNNEL.halfW, TUNNEL.halfW, TUNNEL.len+3, 24, 1, true, 0, Math.PI),
+    new THREE.MeshBasicMaterial({color:0x0a0b0c})
+  );
+  hole.position.set(0, 0, -TUNNEL.len/2);
+  grp.add(hole);
+  const dark = new THREE.Mesh(new THREE.CircleGeometry(TUNNEL.halfW, 24),
+    new THREE.MeshBasicMaterial({color:0x070809}));
+  dark.position.set(0, 0, -TUNNEL.len/2 - 0.01);
+  grp.add(dark);
+  grp.traverse(o=>{ if(o.isMesh) o.receiveShadow = true; });
+  window.__tunnel = grp;
+  // tunnel mouth lights
+  const tlp = new THREE.PointLight(0xffc98a, 4.5, 42, 1.9);
+  tlp.position.set(0, 1.4, 1.4); grp.add(tlp); glowLights.push({mesh:tlp, mode:'tunnel'});
+})();
+
+/* =========================================================================
+   5. TRACK NETWORK DEFINITION
+   =========================================================================
+   Each edge is a straight or circular arc described parametrically.
+   Curves are built as polylines at build time using exact arc geometry so
+   there are no kinks at joins: we build with samples and use Catmull-Rom-ish
+   chained arcs. For speed & precision every "section" is a separate polyline
+   with an exact sampled arc; joins are tangent-matched.
+   ========================================================================= */
+const TRACK = {
+  edges: [],
+  signals: [],
+  switches: [],
+  platforms: [],
+  blocks: [],
+  pos: new Map(),
+  networks: new Map(), // id -> {polyline:[V3], segs:[{a,len}], len}
+};
+
+let edgeSeq = 0;
+const EDGES = {};   // name -> edge id
+
+function polyFromPts(pts, closed=false){
+  // pts: array of {x,z} or Vector2
+  const out = [];
+  for(const p of pts) out.push(new THREE.Vector3(p.x!==undefined?p.x:p.x, 0, p.z!==undefined?p.z:p.z));
+  return out;
+}
+
+function buildEdge(name, samples, closed=false){
+  const pts = [];
+  for(const s of samples) pts.push(new THREE.Vector3(s[0],0,s[1]));
+  // drop duplicates
+  const clean = [];
+  for(const p of pts){
+    if(!clean.length || p.distanceTo(clean[clean.length-1]) > 0.02) clean.push(p);
+  }
+  if(clean.length < 2){ console.warn('short edge',name); return null; }
+  const segs = [];
+  let len = 0;
+  for(let i=0;i<clean.length-1;i++){
+    const a = clean[i], b = clean[i+1];
+    const d = a.distanceTo(b);
+    segs.push({a, b, d, len, ang: Math.atan2(a.x-b.x, a.z-b.z)});
+    len += d;
+  }
+  const e = { id:'e'+(edgeSeq++), name, pts:clean, segs, len, closed, dir: 1 };
+  TRACK.edges.push(e);
+  EDGES[name] = e.id;
+  return e;
+}
+
+function arcSamples(cx,cz,r,a0,a1,n, lift=0){
+  const out = [];
+  for(let i=0;i<=n;i++){
+    const t = a0 + (a1-a0)*(i/n);
+    out.push([cx + Math.cos(t)*r, cz + Math.sin(t)*r, lift]);
+  }
+  return out;
+}
+function lineSamples(p0,p1,n){
+  const out = [];
+  for(let i=0;i<=n;i++){
+    const t=i/n;
+    out.push([p0[0]+(p1[0]-p0[0])*t, p0[1]+(p1[1]-p0[1])*t]);
+  }
+  return out;
+}
+
+/* ---------------- layout coordinates ----------------
+   All in (x, z) with z "south" being positive (station A at z=+250, station B at z=-250).
+   Main line runs north-south. East side x = +38 (return), west side x = -38.
+--------------------------------------------------------------------- */
+const L = {
+  /* Station A (south) */
+  A_in_S:   [200, 250],
+  A_in_E:   [238, 250],
+  A_out_S:  [200, 200],
+  A_out_E:  [238, 200],
+  A_surv1:  [168, 250],  // through connection
+  /* level crossing area */
+  LC_S:     [200, 168],
+  LC_E:     [238, 168],
+  /* river */
+  RIV_S:    [200, 128],
+  RIV_E:    [238, 128],
+  /* bridge landing */
+  BRN_S:    [200, 100],
+  BRN_E:    [238, 100],
+  /* passing loop centre */
+  PLN_S:    [200, 70],
+  PLN_E:    [238, 70],
+  PLN_T:    [200, 48],
+  /* station B */
+  B_S:      [200, 20],
+  B_E:      [238, 20],
+  B_N:      [200, -20],
+  B_NE:     [238, -20],
+  B_N2:     [200, -40],
+  /* yard / exit */
+  YR_1:     [252, -58],
+  YR_2:     [252, -86],
+  YR_3:     [200, -100],
+  YR_4:     [152, -100],
+  YR_5:     [152, -136],
+  YR_6:     [200, -156],
+  YR_7:     [252, -156],
+  YR_8:     [252, -196],
+  YR_9:     [200, -216],
+  YR_10:    [152, -216],
+  YR_11:    [152, -252],
+  YR_12:    [200, -252],
+  YR_13:    [252, -252],
+  YR_14:    [252, -300],
+  YR_15:    [200, -316],
+  YR_16:    [152, -316],
+  YR_17:    [152, -352],
+  YR_18:    [200, -366],
+  YR_19:    [240, -366],
+  YR_20:    [240, -420],
+  YR_21:    [150, -420],
+  YR_22:    [150, -470],
+  YR_23:    [205, -492],
+  YR_24:    [268, -492],
+  YR_25:    [268, -430],
+  YR_26:    [322, -430],
+  YR_27:    [322, -360],
+  YR_28:    [268, -360],
+  YR_29:    [268, -300],
+  YR_30:    [322, -300],
+  YR_31:    [322, -236],
+  YR_32:    [268, -236],
+  YR_33:    [268, -176],
+  YR_34:    [200, -176],
+};
+
+/* ---- Build the "through" main double line A<->B ---- */
+function buildMainLine(){
+  const S = [];
+  // south track (x=200)
+  S.push(...lineSamples(L.A_out_S, L.A_in_S, 6));
+  S.push(...lineSamples(L.A_in_S, L.A_out_S, 6)); // placeholder replaced below
+  S.length = 0;
+  S.push(...lineSamples(L.A_out_S, L.A_in_S, 10));
+  const e1 = buildEdge('A.out_SouthIn', S);
+  // north on south track
+  const S2 = [];
+  S2.push(...lineSamples(L.B_N2, L.B_S, 14));
+  S2.push(...lineSamples(L.B_S, L.BR_N2 || L.B_S, 2));
+  S2.length = 0;
+  S2.push(...lineSamples(L.A_in_S, L.B_S, 16));
+  const e2 = buildEdge('SouthIn', S2);
+  // east track
+  const E1 = buildEdge('SouthEastOut', lineSamples(L.A_in_E, L.A_out_E, 10));
+  const E2 = buildEdge('EastNorth', lineSamples(L.B_E, L.A_in_E, 16));
+  return {S1:e1,S2:e2,E1:E1,E2:E2};
+}
+
+/* ------------------------------------------------------------------
+   Let me define the network in a much more controlled way below,
+   using explicit named points and a proper junction list.
+------------------------------------------------------------------ */
+
+/* ============ FINAL NETWORK ============ */
+const P = {
+  // Station A (south) — platform running east-west at z=248, track along x at z=248
+  A_S0:[196,252], A_S1:[246,252], A_S2:[296,252],
+  A_N0:[196,200], A_N1:[246,200],
+  // crossing
+  CX_S:[196,170], CX_E:[246,170],
+  // river
+  RV_S:[196,132], RV_E:[246,132],
+  // bridge south
+  BS_S:[196,104], BS_E:[246,104],
+  // passing loop
+  PL_S:[196,74], PL_E:[246,74], PL_N:[196,50], PL_E2:[246,50],
+  // station B
+  B_S:[196,24], B_E:[246,24], B_N:[196,0], B_NE:[246,0],
+  // yard
+  Y1:[206,-26], Y2:[268,-26], Y3:[268,-66], Y4:[206,-66],
+  Y5:[136,-66], Y6:[136,-104], Y7:[206,-104],
+  Y8:[206,-148], Y9:[268,-148], Y10:[268,-200],
+  Y11:[136,-200], Y12:[136,-238], Y13:[206,-238],
+  Y14:[206,-280], Y15:[300,-280], Y16:[300,-330],
+  Y17:[136,-330], Y18:[136,-386], Y19:[206,-386],
+  Y20:[300,-386], Y21:[300,-440], Y22:[206,-440],
+  Y23:[146,-440], Y24:[146,-490], Y25:[246,-490],
+  Y26:[246,-420],
+  Y27:[340,-420], Y28:[340,-340], Y29:[246,-340],
+  Y30:[246,-286],
+  Y31:[330,-286], Y32:[330,-220], Y33:[246,-220],
+  Y34:[246,-160],
+  Y35:[340,-160], Y36:[340,-80], Y37:[246,-80],
+  Y38:[150,-80],
+  // village / road features
+  V0:[150,60], V1:[120,60],
+};
+
+/* helper: two-point line edge */
+function line(name, p0, p1, n=6){ return buildEdge(name, lineSamples(p0,p1,n)); }
+function circ(name, pts, closed){ return buildEdge(name, pts, closed); }
+
+/* ---- MAIN NETWORK (single continuous double line A..B) ---- */
+const M = {};
+M.southN = line('main.southIn',  P.A_S0, P.A_N0, 20);
+M.southN2= line('main.southIn2', P.A_N0, P.CX_S, 20);
+M.southN3= line('main.southIn3', P.CX_S, P.RV_S, 20);
+M.southN4= line('main.southIn4', P.RV_S, P.BS_S, 20);
+M.southN5= line('main.southIn5', P.BS_S, P.PL_S, 16);
+M.southN6= line('main.southIn6', P.PL_S, P.PL_N, 16);
+M.southN7= line('main.southIn7', P.PL_N, P.B_S, 16);
+M.southE = line('main.eastOut',  P.A_N1, P.A_S1, 20);
+M.southE2= line('main.eastOut2', P.A_S1, P.A_S2, 20);
+M.eastN  = line('main.eastIn',   P.CX_E, P.A_S1, 20);
+M.eastN2 = line('main.eastIn2',  P.CX_E, P.RV_E, 20);
+M.eastN3 = line('main.eastIn3',  P.RV_E, P.BS_E, 20);
+M.eastN4 = line('main.eastIn4',  P.BS_E, P.PL_E, 16);
+M.eastN5 = line('main.eastIn5',  P.PL_E, P.PL_E2, 16);
+M.eastN6 = line('main.eastIn6',  P.PL_E2, P.B_E, 16);
+
+/* ---- station A throat + yard access ---- */
+/* Platform A connects the two northbound legs with a cross-over at the north end */
+M.crossoverA_S = line('crossoverA.south', P.A_S0, P.A_S1, 3);
+/* crossing to the east leg */
+const A_surv = line('crossoverA', P.A_N0, P.A_N1, 3);
+
+/* ---- Station B (north) platform, double track running through ---- */
+M.B_southE = line('stB.southE', P.B_S, P.B_E, 2);
+
+/* ---- YARD: a loop accessed from station B east leg ---- */
+M.yardEnter = line('yard.enter', P.B_E, P.Y1, 12);
+M.yardUpE   = line('yard.upE',  P.Y1, P.Y2, 12);
+M.yardUpE2  = line('yard.upE2', P.Y2, P.Y3, 12);
+M.yardTopW  = line('yard.topW', P.Y3, P.Y4, 12);
+M.yardTopW2 = line('yard.topW2', P.Y4, P.Y5, 12);
+M.yardUpW   = line('yard.upW',  P.Y5, P.Y6, 12);
+M.yardUpW2  = line('yard.upW2', P.Y6, P.Y7, 12);
+M.yardTopE  = line('yard.topE', P.Y7, P.Y8, 12);
+M.yardUpE3  = line('yard.upE3', P.Y8, P.Y9, 12);
+M.yardLoopE = circ('yard.loop', [P.Y9, P.Y10, P.Y11, P.Y12, P.Y13, P.Y14], false);
+M.yardLoop2 = line('yard.loop2', P.Y14, P.Y15, 12);
+M.yardLoop3 = line('yard.loop3', P.Y15, P.Y16, 12);
+M.yardLoop4 = line('yard.loop4', P.Y16, P.Y17, 12);
+M.yardLoop5 = line('yard.loop5', P.Y17, P.Y18, 12);
+M.yardLoop6 = line('yard.loop6', P.Y18, P.Y19, 12);
+M.yardUpE4  = line('yard.upE4', P.Y19, P.Y20, 12);
+M.yardLoop7 = circ('yard.loop7', [P.Y20, P.Y21, P.Y22, P.Y23, P.Y24, P.Y25, P.Y26], false);
+M.yardMidW  = line('yard.midW', P.Y25, P.Y24, 1);
+M.yardMidE  = line('yard.midE', P.Y24, P.Y25, 1);
+/* yard exit south */
+M.yardExit = line('yard.exit', P.Y23, P.Y24, 2);
+/* yard exit cross to main line south track */
+M.yardLinkS1 = line('yard.link1', P.Y23, P.Y24, 2);
+/* a cross-connection from the yard's south-west to the main line */
+M.yardToMainA = line('yard.toA', P.Y22, P.Y23, 2);
+
+console.log('track edges built', TRACK.edges.length, Object.keys(EDGES).length);
+</script>
+</body>
+</html>
