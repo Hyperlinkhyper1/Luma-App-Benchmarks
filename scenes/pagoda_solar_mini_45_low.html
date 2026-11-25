@@ -28,7 +28,7 @@
   }
   #ui button:hover{background:rgba(232,184,109,0.18);border-color:#e8b86d;}
 </style>
-<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
@@ -151,90 +151,228 @@ scene.add(sun.target);
    VOXEL BUCKET
    ============================================================ */
 const BoxGeo = new THREE.BoxGeometry(1, 1, 1);
-const VERTS = 24;
-const colA = new Float32Array(VERTS*3);
-const colB = new Float32Array(VERTS*3);
-const tmpV = new Float32Array(3);
-const tmpC = new Float32Array(3);
 
-function setQuad(fourIdx, a, b, cc, d, r,g, bl) {
-  const f = (f4) => fourIdx*4 + f4;
-  for (let i=0;i<4;i++){
-    const p = (f(i)+0)*3;
-    colA[p] = r; colA[p+1] = g; colA[p+2] = bl;
-    p = (f(i)+1)*3;
-    colB[p] = r; colB[p+1] = g; colB[p+2] = bl;
-    p = (f(i)+2)*3;
-    tmpV[0]=a[0]; tmpV[1]=a[1]; tmpV[2]=a[2];
-    const q = (i===3)?0:i+1;
-    // per-vertex wobble handled below in addVoxel
-  }
+const occupied = new Set();
+function getV(x, y, z) { return occupied.has(`${x},${y},${z}`) ? 1 : 0; }
+
+const INSTANCE_CAP = 30000;
+const buckets = [];
+for (let i = 0; i < keys.length; i++) {
+  const m = MATS[keys[i]];
+  const mat = new THREE.MeshStandardMaterial({
+    color: m.c, roughness: m.m, metalness: m.metal || 0
+  });
+  const mesh = new THREE.InstancedMesh(BoxGeo, mat, INSTANCE_CAP);
+  mesh.count = 0;
+  mesh.frustumCulled = false;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  buckets.push({ mesh, key: keys[i], count: 0, cap: INSTANCE_CAP });
 }
 
-function setColor(fourIdx, fourIdx2, c1, c2) {
-  const f = (i, b) => (i*4 + (b?4:0))*3;
-  for (let k=0;k<4;k++){
-    colA[f(k,0)] = c1[0]; colA[f(k,0)+1] = c1[1]; colA[f(k,0)+2] = c1[2];
-    colA[f(k,1)] = c2[0]; colA[f(k,1)+1] = c2[1]; colA[f(k,1)+2] = c2[2];
-    colB[f(k,0)] = c1[0]; colB[f(k,0)+1] = c1[1]; colB[f(k,0)+2] = c1[2];
-    colB[f(k,1)] = c2[0]; colB[f(k,1)+1] = c2[1]; colB[f(k,1)+2] = c2[2];
-    colB[f(k,4)] = c2[0]; colB[f(k,4)+1] = c2[1]; colB[f(k,4)+2] = c2[2];
-  }
+const dummy = new THREE.Object3D();
+
+function addVoxel(x, y, z, matKey, seed) {
+  if (getV(x, y, z)) return;
+  const mi = keys.indexOf(matKey);
+  if (mi < 0) return;
+  const b = buckets[mi];
+  if (b.count >= b.cap) return;
+  occupied.add(`${x},${y},${z}`);
+  dummy.position.set(x + 0.5, y + 0.5, z + 0.5);
+  dummy.updateMatrix();
+  b.mesh.setMatrixAt(b.count, dummy.matrix);
+  b.count++;
 }
 
-const FACE_DATA = [
-  {a:[1,0,0], b:[1,1,0], c:[1,1,1], d:[1,0,1]},   // +X
-  {a:[0,0,1], b:[0,1,1], c:[0,1,0], d:[0,0,0]},    // -Z
-  {a:[0,1,0], b:[0,1,1], c:[1,1,1], d:[1,1,0]},    // +Y
-  {a:[0,0,1], b:[1,0,1], c:[1,0,0], d:[0,0,0]},    // -Y
-  {a:[0,1,0], b:[0,0,0], c:[1,0,0], d:[1,1,0]},    // +Z
-  {a:[1,1,0], b:[0,1,0], c:[0,0,0], d:[1,0,0]}     // -X
+function finalizeBuckets() {
+  let total = 0;
+  for (const b of buckets) {
+    if (b.count === 0) continue;
+    b.mesh.count = b.count;
+    b.mesh.instanceMatrix.needsUpdate = true;
+    total += b.count;
+  }
+  return total;
+}
+
+/* ============================================================
+   SCENE CONTENT
+   ============================================================ */
+function leafBall(cx, cy, cz, r, key) {
+  for (let dx = -r; dx <= r; dx++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dz = -r; dz <= r; dz++)
+        if (dx * dx + dy * dy + dz * dz <= r * r * 1.2)
+          addVoxel(cx + dx, cy + dy, cz + dz, key, 0);
+}
+
+function trunk(x, y, z, h, key) {
+  for (let i = 1; i <= h; i++) addVoxel(x, y + i, z, key, 0);
+}
+
+function tree(x, z, type) {
+  const y = 0;
+  if (type === 'sakura') { trunk(x, y, z, 3, 'teakD'); leafBall(x, 5, z, 2, 'sakura'); leafBall(x, 6, z, 1, 'sakuraL'); }
+  else if (type === 'maple') { trunk(x, y, z, 4, 'bamboo'); leafBall(x, 6, z, 2, 'maple'); leafBall(x, 7, z, 1, 'mapleD'); }
+  else if (type === 'willow') { trunk(x, y, z, 4, 'teak'); leafBall(x, 6, z, 2, 'willow'); leafBall(x, 7, z, 1, 'leafD'); for (let i = 1; i <= 3; i++) addVoxel(x, 6 - i, z, 'leafD', 0); }
+  else { trunk(x, y, z, 6, 'bamboo'); leafBall(x, 8, z, 1, 'bambooL'); }
+}
+
+function lantern(x, z) {
+  addVoxel(x, 1, z, 'teak', 0);
+  addVoxel(x, 2, z, 'teakD', 0);
+  addVoxel(x, 3, z, 'lantern', 0);
+  addVoxel(x - 1, 3, z, 'glass', 0);
+  addVoxel(x + 1, 3, z, 'glass', 0);
+  addVoxel(x, 3, z - 1, 'glass', 0);
+  addVoxel(x, 3, z + 1, 'glass', 0);
+}
+
+function pagoda(cx, cy, cz) {
+  for (let s = 0; s < 5; s++) {
+    const size = 9 - s * 2;
+    const h = size / 2 | 0;
+    const y = s * 3;
+    for (let dy = 0; dy < 3; dy++)
+      for (let dx = -h; dx <= h; dx++)
+        for (let dz = -h; dz <= h; dz++)
+          addVoxel(cx + dx, cy + y + dy, cz + dz, (dx === -h || dx === h || dz === -h || dz === h) ? 'vermillion' : 'vermillionD', 0);
+    const r2 = size + 2;
+    const h2 = r2 / 2 | 0;
+    for (let dx = -h2; dx <= h2; dx++)
+      for (let dz = -h2; dz <= h2; dz++)
+        addVoxel(cx + dx, cy + y + 3, cz + dz, (Math.abs(dx) === h2 || Math.abs(dz) === h2) ? 'gold' : 'goldD', 0);
+  }
+  for (let y = 15; y < 19; y++) addVoxel(cx, cy + y, cz, 'gold', 0);
+  addVoxel(cx, cy + 19, cz, 'jade', 0);
+}
+
+const POND = 14, PONDZ = -26;
+for (let x = -POND; x <= POND; x++)
+  for (let z = -POND; z <= POND; z++)
+    if (x * x + (z - PONDZ) * (z - PONDZ) <= POND * POND) {
+      addVoxel(x, 0, z, 'water', 0);
+      addVoxel(x, -1, z, 'waterD', 0);
+    }
+
+for (let x = -CX; x <= CX; x++)
+  for (let z = -CZ; z <= CZ; z++) {
+    if (getV(x, 0, z)) continue;
+    const edge = (Math.abs(x) === CX || Math.abs(z) === CZ);
+    addVoxel(x, 0, z, edge ? 'stone' : 'moss', 0);
+    addVoxel(x, -1, z, 'stone', 0);
+  }
+
+pagoda(0, 0, -6);
+
+for (let a = 0; a < Math.PI * 2; a += 0.7)
+  lantern(Math.round(10 * Math.cos(a)), Math.round(-6 + 10 * Math.sin(a)));
+for (let x = -20; x <= 20; x += 4) lantern(x, -40);
+
+const TREES = [
+  [-58, -44, 'sakura'], [56, -38, 'sakura'], [-48, 44, 'sakura'], [50, 48, 'sakura'],
+  [-62, -10, 'maple'], [66, -16, 'maple'], [-58, 30, 'maple'], [62, 36, 'maple'],
+  [-70, -28, 'willow'], [68, 20, 'willow'], [-64, 0, 'willow']
 ];
+for (const t of TREES) tree(t[0], t[1], t[2]);
 
-function addVoxel(meshIdx, x, y, z, matKey, seed) {
-  const bt = meshIdx % 1000, mi = (meshIdx / 1000) | 0;
-  const mesh = buckets[mi];
-  if (bt >= mesh.count) return;
-  mesh.count++;
-  const off = bt * 16;
-  const m4 = mesh.mat4; const v = tmpV;
-  const px = x+0.5, py = y+0.5, pz = z+0.5;
-  const mats = [ 1,1,1,  1,1,1,  1,1,1,  1,1,1 ];
-  m4[0]=1; m4[1]=0; m4[2]=0; m4[3]=0;
-  m4[4]=0; m4[5]=1; m4[6]=0; m4[7]=0;
-  m4[8]=0; m4[9]=0; m4[10]=1; m4[11]=0;
-  m4[12]=px; m4[13]=py; m4[14]=pz; m4[15]=1;
-  mesh.mesh.setMatrixAt(off, m4);
-
-  // per-voxel base colour variation
-  const base = matList[mi & 0xFFFF];
-  let R = base.c.r, G = base.c.g, B = base.c.b;
-  if (base.c.r >= 0 && true) {
-    const jv = ((seed * 2654435761) ^ (x*374761393 + y*668265263 + z*2147483647)) >>> 0;
-    const jf = ((jv % 1000) / 1000 - 0.5) * 0.16;
-    R *= 1 + jf; G *= 1 + jf; B *= 1 + jf;
+function grove(gx, gz) {
+  for (let i = 0; i < 9; i++) {
+    const dx = ((i * 37) % 7) - 3;
+    const dz = ((i * 91) % 7) - 3;
+    tree(gx + dx, gz + dz, 'bamboo');
   }
-  const sq = seed*0.61803398875;
-  for (let fi=0; fi<6; fi++) {
-    const fd = FACE_DATA[fi];
-    const ox = fd.d[0], oy = fd.d[1], oz = fd.d[2];
-    // AO: count occupied neighbours on the face's two tangential sides
-    let ao = 0;
-    const t1x = fd.b[0]-fd.a[0], t1y = fd.b[1]-fd.a[1], t1z = fd.b[2]-fd.a[2];
-    const t2x = fd.c[0]-fd.a[0], t2y = fd.c[1]-fd.a[1], t2z = fd.c[2]-fd.a[2];
-    if (t1x+t2x === 0) { /* axis aligned faces: use both tangents */ }
-    const occ1 = getV(x+ox+t1x, y+oy+t1y, z+oz+t1z);
-    const occ2 = getV(x+ox+t2x, y+oy+t2z ? z+oz+t2z : z+oz+t2z, z+oz+t2z);
-    ao = occ1 + occ2;
-    const aoFactor = 1 - ao * 0.42;
-    const ry = fi===2 ? 1.10 : (fi===3 ? 0.88 : 1.0);
-    const i = (bt * 24) + fi * 8;
-    const c1 = [ R*aoFactor*ry, G*aoFactor*ry, B*aoFactor*ry ];
-    const c2 = [ R*aoFactor*0.86*ry, G*aoFactor*0.86*ry, B*aoFactor*0.86*ry ];
-    setColor((bt*6+fi)*4, -1, c1, c2);
-  }
-  if (mesh.count === mesh.cap) mesh.finalize();
 }
+grove(-40, -30); grove(42, -32); grove(-42, 34); grove(38, 38);
+
+const totalVoxels = finalizeBuckets();
+
+/* ============================================================
+   TIME OF DAY
+   ============================================================ */
+let timeVal = 6;
+function applyTime() {
+  const a = (timeVal / 90) * Math.PI;
+  const strength = Math.max(0.15, Math.sin(a));
+  sun.position.set(170 * Math.cos(a), Math.max(8, 150 * Math.sin(a)), -170 * Math.sin(a));
+  sun.intensity = 2.2 * strength;
+  hemi.intensity = 0.9 * (0.35 + 0.65 * strength);
+  scene.fog.color.copy(new THREE.Color(0x141c20)).lerp(new THREE.Color(0x9fc4cc), strength);
+  renderer.setClearColor(scene.fog.color);
+}
+applyTime();
+
+/* ============================================================
+   INTERACTION
+   ============================================================ */
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const highlight = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), new THREE.MeshBasicMaterial({ color: 0xffea00 }));
+highlight.visible = false;
+scene.add(highlight);
+
+window.addEventListener('pointerdown', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(buckets.map((b) => b.mesh));
+  if (hits.length) {
+    const p = hits[0].point;
+    highlight.position.set(Math.floor(p.x) + 0.5, Math.floor(p.y) + 0.5, Math.floor(p.z) + 0.5);
+    highlight.visible = true;
+  } else {
+    highlight.visible = false;
+  }
+});
+
+/* ============================================================
+   UI
+   ============================================================ */
+const uiTime = document.getElementById('time');
+const btnPause = document.getElementById('pause');
+const stat = document.getElementById('stat');
+let paused = false;
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'RESUME' : 'PAUSE';
+});
+uiTime.addEventListener('input', () => { timeVal = parseFloat(uiTime.value, 10); applyTime(); });
+
+/* ============================================================
+   RESIZE
+   ============================================================ */
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ============================================================
+   RENDER LOOP
+   ============================================================ */
+const clock = new THREE.Clock();
+let frames = 0, last = performance.now();
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!paused) {
+    timeVal = (timeVal + 0.08) % 90;
+    uiTime.value = timeVal.toFixed(1);
+    applyTime();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  frames++;
+  const now = performance.now();
+  if (now - last >= 1000) {
+    stat.textContent = `${totalVoxels} voxels | ${frames} FPS`;
+    frames = 0;
+    last = now;
+  }
+}
+animate();
 </script>
 </body>
 </html>
