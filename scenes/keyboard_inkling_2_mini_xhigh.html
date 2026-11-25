@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA·60 — 3D Mechanical Keyboard</title>
+<style>
+  :root { --accent: #ff5a3c; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: radial-gradient(120% 100% at 50% 20%, #141824 0%, #090a0f 55%, #05060a 100%);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e6e8ee;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  .vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 2;
+    background: radial-gradient(130% 95% at 50% 38%, transparent 52%, rgba(0,0,0,0.55) 100%);
+  }
+  #hud {
+    position: fixed; inset: 0; z-index: 3; pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 18px 20px 16px;
+  }
+  .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+  #title h1 {
+    margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.26em; line-height: 1;
+    background: linear-gradient(180deg, #ffffff, #b9c0cf);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  #title p { margin: 7px 0 0; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: #8f97a6; }
+  #controls { display: flex; gap: 8px; pointer-events: auto; }
+  .pill {
+    pointer-events: auto; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(16,18,26,0.62);
+    color: #dfe3ec;
+    font: 600 11.5px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 10px 14px; border-radius: 999px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease, color .18s ease;
+    white-space: nowrap;
+  }
+  button.pill:hover { border-color: rgba(255,255,255,0.32); background: rgba(30,34,46,0.78); transform: translateY(-1px); }
+  button.pill:active { transform: translateY(0px) scale(0.97); }
+  button.pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.pill.on { border-color: rgba(255,90,60,0.65); color: #ffd9cf; box-shadow: 0 0 16px rgba(255,90,60,0.28); }
+  .static { cursor: default; pointer-events: none; }
+  .bottom-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  #readouts { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  #lastKey {
+    min-width: 118px; text-align: left;
+    border-color: rgba(255,90,60,0.35);
+  }
+  #lastKey.flash { animation: flash .38s ease-out; }
+  @keyframes flash { 0% { background: rgba(255,90,60,0.42); border-color: rgba(255,90,60,0.8); } 100% { background: rgba(16,18,26,0.62); } }
+  #hint { display: block; color: #7d8593; background: rgba(16,18,26,0.45); }
+  #audioHint {
+    position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+    border-color: rgba(255,214,120,0.4); color: #ffe0ae;
+    animation: pulse 1.5s ease-in-out infinite;
+    transition: opacity .5s ease, visibility .5s;
+  }
+  #audioHint.hidden { opacity: 0; visibility: hidden; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,214,120,0.25); } 50% { box-shadow: 0 0 0 9px rgba(255,214,120,0); } }
+  #fallback {
+    position: fixed; inset: 0; display: none; place-items: center; z-index: 10;
+    background: #07080c; color: #c9cedb; font-size: 15px; text-align: center; padding: 24px;
+  }
+  @media (max-width: 760px) {
+    #hud { padding: 14px 14px 12px; }
+    #title h1 { font-size: 15px; letter-spacing: 0.2em; }
+    #title p { font-size: 8px; }
+    .pill { padding: 8px 11px; font-size: 10px; }
+    #hint { display: none; }
+    #audioHint { bottom: 96px; font-size: 10px; }
+    #lastKey { min-width: 96px; }
+  }
+</style>
+<script type="importmap">
+  { "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div class="vignette"></div>
+
+<div id="hud">
+  <div class="top-row">
+    <div id="title"><h1>NOVA·60</h1><p>65% Mechanical &nbsp;·&nbsp; WebGL Showcase</p></div>
+    <div id="controls">
+      <button id="btnReplay" class="pill">⟳ Replay</button>
+      <button id="btnRgb" class="pill on">◉ RGB</button>
+      <button id="btnMute" class="pill">🔊 Sound</button>
+    </div>
+  </div>
+  <div class="bottom-row">
+    <div id="readouts">
+      <span id="lastKey" class="pill static">READY</span>
+      <span id="knobVal" class="pill static">VOL 40</span>
+    </div>
+    <span id="hint" class="pill static">Drag to orbit · Scroll to zoom · Click a key</span>
+  </div>
+  <div id="audioHint" class="pill static">🔊 Click anywhere to enable sound</div>
+</div>
+
+<div id="fallback"><div>WebGL is unavailable in this browser,<br>so the 3D showcase can’t start.</div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ============================ AUDIO ============================ */
+let actx = null, master = null, noiseBuf = null, muted = false;
+const audioHintEl = document.getElementById('audioHint');
+
+function ensureAudio() {
+  if (!actx) {
+    try {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      master = actx.createGain(); master.gain.value = 0.85; master.connect(actx.destination);
+      const len = Math.floor(actx.sampleRate * 0.4);
+      noiseBuf = actx.createBuffer(1, len, actx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { actx = null; }
+  }
+  if (actx && actx.state === 'suspended') actx.resume();
+  audioHintEl.classList.add('hidden');
+}
+
+function noiseBurst(freq, q, dur, peak, delay = 0) {
+  if (!actx || muted || actx.state !== 'running') return;
+  const t = actx.currentTime + delay;
+  const src = actx.createBufferSource(); src.buffer = noiseBuf;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(peak, 0.001), t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp); bp.connect(g); g.connect(master);
+  src.start(t); src.stop(t + dur + 0.05);
+}
+function thump(freq, endFreq, dur, peak, delay = 0) {
+  if (!actx || muted || actx.state !== 'running') return;
+  const t = actx.currentTime + delay;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(endFreq, 20), t + dur);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(peak, 0.001), t + 0.007);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function playSound(group) {
+  if (!actx || muted || actx.state !== 'running') return;
+  const r = () => 1 + (Math.random() - 0.5) * 0.12;
+  switch (group) {
+    case 'space':
+      noiseBurst(430 * r(), 0.85, 0.06, 0.30); thump(86 * r(), 52, 0.19, 0.55); break;
+    case 'enter':
+      noiseBurst(1350 * r(), 1.2, 0.032, 0.26); thump(126 * r(), 80, 0.13, 0.50); noiseBurst(240, 0.7, 0.05, 0.18, 0.012); break;
+    case 'backspace':
+      noiseBurst(830 * r(), 0.8, 0.05, 0.26); thump(96 * r(), 68, 0.11, 0.42); break;
+    case 'modifier':
+      noiseBurst(1030 * r(), 1.0, 0.038, 0.28); thump(139 * r(), 101, 0.09, 0.40); break;
+    case 'escape':
+      noiseBurst(2600 * r(), 1.4, 0.022, 0.16); thump(252 * r(), 190, 0.055, 0.22); break;
+    case 'function':
+      noiseBurst(2850 * r(), 1.6, 0.02, 0.15); thump(268 * r(), 205, 0.05, 0.20); break;
+    case 'number':
+    case 'typing':
+      noiseBurst(2050 * r(), 1.1, 0.028, 0.20); thump(168 * r(), 118, 0.065, 0.34); break;
+    default:
+      noiseBurst(1900 * r(), 1.2, 0.03, 0.20); thump(160 * r(), 110, 0.07, 0.30);
+  }
+}
+function playTick() { noiseBurst(3400, 1.8, 0.014, 0.12); }
+
+/* ============================ RENDERER / SCENE ============================ */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.domElement.setAttribute('aria-label', 'Interactive 3D mechanical keyboard');
+} catch (e) {
+  document.getElementById('fallback').style.display = 'grid';
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(8.5, 10.0, 15.5);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.minDistance = 9;
+controls.maxDistance = 60;
+controls.minPolarAngle = 0.18;
+controls.maxPolarAngle = 1.38;
+controls.target.set(0, 0.85, 0);
+controls.autoRotate = !prefersReduced;
+controls.autoRotateSpeed = 0.55;
+
+/* Lights */
+const hemi = new THREE.HemisphereLight(0x9db4d8, 0x0b0c10, 0.55); scene.add(hemi);
+const amb = new THREE.AmbientLight(0xffffff, 0.12); scene.add(amb);
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.55);
+keyLight.position.set(7, 13, 7);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.left = -13; keyLight.shadow.camera.right = 13;
+keyLight.shadow.camera.top = 13; keyLight.shadow.camera.bottom = -13;
+keyLight.shadow.camera.near = 2; keyLight.shadow.camera.far = 34;
+keyLight.shadow.bias = -0.0004; keyLight.shadow.normalBias = 0.02;
+scene.add(keyLight);
+const rim = new THREE.DirectionalLight(0x7fd4ff, 0.45); rim.position.set(-9, 5, -9); scene.add(rim);
+
+/* Floor */
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(90, 90),
+  new THREE.MeshStandardMaterial({ color: 0x0a0b0f, roughness: 1, metalness: 0 })
+);
+floor.rotation.x = -Math.PI / 2; floor.position.y = -1.55; floor.receiveShadow = true;
+scene.add(floor);
+
+/* RGB underglow */
+const rgbStripMat = new THREE.MeshStandardMaterial({ color: 0x15151a, emissive: 0xff5a3c, emissiveIntensity: 1.5, roughness: 0.4, metalness: 0.1 });
+const rgbLight = new THREE.PointLight(0xff5a3c, 5, 11, 2); rgbLight.position.set(0, -0.45, 0);
+scene.add(rgbLight);
+
+/* ============================ LAYOUT ============================ */
+const ROWS = [
+  [
+    { label: 'Esc', group: 'escape', code: 'Escape', accent: true },
+    ...['1','2','3','4','5','6','7','8','9','0'].map(d => ({ label: d, group: 'number', code: 'Digit' + d })),
+    { label: '-', group: 'number', code: 'Minus' },
+    { label: '=', group: 'number', code: 'Equal' },
+    { label: 'Backspace', w: 2, group: 'backspace', code: 'Backspace', align: 'left' },
+  ],
+  [
+    { label: 'Tab', w: 1.5, group: 'modifier', code: 'Tab', align: 'left' },
+    ...'QWERTYUIOP'.split('').map(l => ({ label: l, group: 'typing', code: 'Key' + l })),
+    { label: '[', group: 'typing', code: 'BracketLeft' },
+    { label: ']', group: 'typing', code: 'BracketRight' },
+    { label: '\\', w: 1.5, group: 'typing', code: 'Backslash', align: 'left' },
+  ],
+  [
+    { label: 'Caps', w: 1.75, group: 'modifier', code: 'CapsLock', align: 'left' },
+    ...'ASDFGHJKL'.split('').map(l => ({ label: l, group: 'typing', code: 'Key' + l })),
+    { label: ';', group: 'typing', code: 'Semicolon' },
+    { label: "'", group: 'typing', code: 'Quote' },
+    { label: 'Enter', w: 2.25, group: 'enter', code: 'Enter', accent: true },
+  ],
+  [
+    { label: 'Shift', w: 2.25, group: 'modifier', code: 'ShiftLeft', align: 'left' },
+    ...'ZXCVBNM'.split('').map(l => ({ label: l, group: 'typing', code: 'Key' + l })),
+    { label: ',', group: 'typing', code: 'Comma' },
+    { label: '.', group: 'typing', code: 'Period' },
+    { label: '/', group: 'typing', code: 'Slash' },
+    { label: 'Shift', w: 2.75, group: 'modifier', code: 'ShiftRight', align: 'left' },
+  ],
+  [
+    { label: 'Ctrl', w: 1.25, group: 'modifier', code: 'ControlLeft', align: 'left' },
+    { label: 'Super', w: 1.25, group: 'modifier', code: 'MetaLeft', align: 'left' },
+    { label: 'Alt', w: 1.25, group: 'modifier', code: 'AltLeft', align: 'left' },
+    { label: 'Space', w: 7.5, group: 'space', code: 'Space' },
+    { label: 'Alt', w: 1.25, group: 'modifier', code: 'AltRight', align: 'left' },
+    { label: 'Fn', w: 1.25, group: 'function' },
+    { label: 'Ctrl', w: 1.25, group: 'modifier', code: 'ControlRight', align: 'left' },
+  ],
+];
+
+const CASE = {
+  width: 17.95, depth: 5.9, height: 1.5,
+  left: -7.95, right: 10.0, centerX: 1.025,
+  railT: 0.32, floorH: 0.55, railH: 0.8, railY: 0.95,
+};
+const GROUP_X = -CASE.centerX;
+
+const kb = new THREE.Group();
+kb.position.x = GROUP_X;
+scene.add(kb);
+
+const keys = [];
+const y = {}; // scratch
+
+/* ============================ TEXTURE HELPERS ============================ */
+function rr(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+const anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+function makeLegendTexture(label, wUnits, opts) {
+  const cw = Math.round(128 * wUnits);
+  const planeW = wUnits - 0.24, planeH = 0.62;
+  const ch = Math.round(cw * (planeH / planeW));
+  const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  const mg = Math.round(ch * 0.07);
+  const r = Math.round(ch * 0.22);
+  rr(ctx, mg, mg, cw - 2 * mg, ch - 2 * mg, r);
+  const g = ctx.createLinearGradient(0, mg, 0, ch - mg);
+  g.addColorStop(0, 'rgba(255,255,255,0.12)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.02)');
+  g.addColorStop(1, 'rgba(0,0,0,0.16)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = opts.color;
+  const text = label.toUpperCase();
+  const len = text.length;
+  const fs = opts.fontSize || (len <= 1 ? ch * 0.5 : len <= 3 ? ch * 0.36 : len <= 6 ? ch * 0.24 : ch * 0.19);
+  ctx.font = `600 ${Math.max(9, Math.round(fs))}px ui-monospace, Menlo, Consolas, monospace`;
+  ctx.textBaseline = 'middle';
+  if (opts.align === 'left') {
+    ctx.textAlign = 'left';
+    ctx.fillText(text, mg + ch * 0.42, ch / 2 + 2);
+  } else {
+    ctx.textAlign = 'center';
+    ctx.fillText(text, cw / 2, ch / 2 + 2);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = Math.min(8, anisotropy);
+  return tex;
+}
+
+function makePCBTexture() {
+  const cw = 1600, ch = 560;
+  const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, cw, ch);
+  g.addColorStop(0, '#0f2c23'); g.addColorStop(0.55, '#0a2019'); g.addColorStop(1, '#0c2620');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, cw, ch);
+  let seed = 987654;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  ctx.globalAlpha = 0.05;
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = '#1d4034'; ctx.fillRect(rnd()*cw, rnd()*ch, 200+rnd()*300, 90+rnd()*120); }
+  ctx.globalAlpha = 0.55;
+  for (let i = 0; i < 80; i++) {
+    let x = rnd() * cw, y0 = rnd() * ch;
+    ctx.beginPath(); ctx.moveTo(x, y0);
+    const segs = 2 + Math.floor(rnd() * 3);
+    for (let s = 0; s < segs; s++) {
+      if (rnd() > 0.5) x += (rnd() - 0.5) * 380; else y0 += (rnd() - 0.5) * 180;
+      ctx.lineTo(x, y0);
+    }
+    ctx.strokeStyle = rnd() > 0.35 ? '#2b6b4e' : '#215a41';
+    ctx.lineWidth = 2.5; ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  for (let i = 0; i < 22; i++) {
+    ctx.fillStyle = '#c9a24b';
+    ctx.fillRect(rnd() * cw, rnd() * ch, 26, 12);
+  }
+  for (let i = 0; i < 10; i++) {
+    ctx.fillStyle = '#d9b356';
+    ctx.fillRect(90 + i * 42, 14, 22, 16);
+  }
+  ctx.fillStyle = 'rgba(230,240,235,0.5)';
+  ctx.font = '600 30px ui-monospace, Menlo, monospace';
+  ctx.fillText('NOVA·60  REV 1.3', 48, ch - 46);
+  ctx.font = '500 20px ui-monospace, Menlo, monospace';
+  ctx.fillStyle = 'rgba(230,240,235,0.32)';
+  ctx.fillText('58-KEY · 65% · PCB', 48, ch - 18);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = Math.min(8, anisotropy);
+  return tex;
+}
+
+function makePlateTexture() {
+  const cw = 1024, ch = 384;
+  const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, ch);
+  g.addColorStop(0, '#d7dbe2'); g.addColorStop(0.5, '#b9bec8'); g.addColorStop(1, '#9da3b0');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, cw, ch);
+  let seed = 4242;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  ctx.globalAlpha = 0.05;
+  for (let yy = 0; yy < ch; yy += 3) { ctx.fillStyle = rnd() > 0.5 ? '#ffffff' : '#000000'; ctx.fillRect(0, yy, cw, 1); }
+  ctx.globalAlpha = 1;
+  const plateW = 15.35, plateD = 5.5;
+  const px = cw / plateW, py = ch / plateD;
+  for (const k of keys) {
+    const x = (k.cx + plateW / 2) * px;
+    const yy = (k.cz + plateD / 2) * py;
+    ctx.beginPath(); ctx.arc(x, yy, 0.40 * px, 0, Math.PI * 2);
+    ctx.fillStyle = '#101216'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, yy, 0.46 * px, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.34)'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = Math.min(8, anisotropy);
+  return tex;
+}
+
+function makeLogoTexture() {
+  const cw = 600, ch = 96;
+  const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = '#9da4b2';
+  ctx.font = '700 44px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  try { ctx.letterSpacing = '16px'; } catch (e) {}
+  ctx.fillText('NOVA·60', cw / 2, ch / 2 + 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* ============================ KEYS ============================ */
+function keyColors(k) {
+  if (k.accent) return { color: 0xff5a3c, legend: '#231108', stem: 0xff5a3c };
+  if (k.group === 'modifier') return { color: 0x1c1f26, legend: '#b6bdc9', stem: 0x596171 };
+  if (k.group === 'function') return { color: 0x1c1f26, legend: '#b6bdc9', stem: 0x596171 };
+  if (k.group === 'space') return { color: 0x191c23, legend: '#cfd4dc', stem: 0x596171 };
+  return { color: 0x262a33, legend: '#e9ebf0', stem: 0xd6d9de };
+}
+
+function buildKeys() {
+  ROWS.forEach((row, r) => {
+    let x = -7.5;
+    row.forEach(k => {
+      const w = k.w || 1;
+      k.w = w;
+      k.cx = x + w / 2;
+      k.cz = (r - 2) * 1.0;
+      const colors = keyColors(k);
+
+      // switch (housing + stem)
+      const sw = new THREE.Group();
+      sw.position.set(k.cx, 0, k.cz);
+      const housing = new THREE.Mesh(
+        new RoundedBoxGeometry(0.74, 0.34, 0.74, 2, 0.06),
+        new THREE.MeshStandardMaterial({ color: 0x23262d, roughness: 0.55, metalness: 0.15 })
+      );
+      housing.position.y = 1.44; housing.castShadow = true;
+      const stem = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.2, 0.38),
+        new THREE.MeshStandardMaterial({ color: colors.stem, roughness: 0.45, metalness: 0.1 })
+      );
+      stem.position.y = 1.7; stem.castShadow = true;
+      sw.add(housing, stem);
+      sw.userData.key = k;
+      kb.add(sw);
+
+      // keycap
+      const capMat = new THREE.MeshStandardMaterial({ color: colors.color, roughness: 0.5, metalness: 0.05 });
+      const cap = new THREE.Mesh(new RoundedBoxGeometry(w - 0.12, 0.5, 0.88, 3, 0.1), capMat);
+      cap.position.set(k.cx, 1.8, k.cz);
+      cap.castShadow = true; cap.receiveShadow = true;
+      cap.userData.key = k;
+      const legend = makeLegendTexture(k.label, w, { color: colors.legend, align: k.align || 'center' });
+      const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(w - 0.24, 0.62),
+        new THREE.MeshStandardMaterial({ map: legend, transparent: true, roughness: 0.5, metalness: 0, depthWrite: false })
+      );
+      plane.rotation.x = -Math.PI / 2;
+      plane.position.y = 0.26;
+      cap.add(plane);
+      kb.add(cap);
+
+      Object.assign(k, {
+        cap, capMat, sw, pressAmt: 0, pressed: false, pointer: false, hold: 0,
+        finalY: 1.8, baseY: 1.8,
+      });
+      keys.push(k);
+      x += w;
+    });
+  });
+}
+buildKeys();
+
+/* ============================ LAYERS ============================ */
+const caseMats = [];
+function caseMat(opts) {
+  const m = new THREE.MeshStandardMaterial({ ...opts, transparent: true, opacity: 0 });
+  caseMats.push(m);
+  return m;
+}
+const slabMat = caseMat({ color: 0x16181e, metalness: 0.5, roughness: 0.45 });
+const railMat = caseMat({ color: 0x22262e, metalness: 0.72, roughness: 0.34 });
+
+const caseGroup = new THREE.Group();
+kb.add(caseGroup);
+const slab = new THREE.Mesh(new RoundedBoxGeometry(CASE.width, 0.55, CASE.depth, 4, 0.2), slabMat);
+slab.position.set(CASE.centerX, 0.275, 0);
+slab.castShadow = true; slab.receiveShadow = true;
+caseGroup.add(slab);
+
+const railHalfW = CASE.width / 2 - CASE.railT / 2;
+const railHalfD = CASE.depth / 2 - CASE.railT / 2;
+const leftRail = new THREE.Mesh(new THREE.BoxGeometry(CASE.railT, CASE.railH, CASE.depth), railMat);
+leftRail.position.set(CASE.centerX - railHalfW + ? , 0, 0);
+caseGroup.add(leftRail);
+// simpler: build rails with explicit positions
+caseGroup.children.pop();
+
+const railX = CASE.centerX;
+const railL = new THREE.Mesh(new THREE.BoxGeometry(CASE.railT, CASE.railH, CASE.depth), railMat);
+railL.position.set(railX - (CASE.width / 2 - CASE.railT / 2), CASE.railY, 0);
+railL.castShadow = true;
+const railR = railL.clone();
+railR.position.x = railX + (CASE.width / 2 - CASE.railT / 2);
+const railF = new THREE.Mesh(new THREE.BoxGeometry(CASE.width - 2 * CASE.railT, CASE.railH, CASE.railT), railMat);
+railF.position.set(railX, CASE.railY, CASE.depth / 2 - CASE.railT / 2);
+railF.castShadow = true;
+const railB = railF.clone();
+railB.position.z = -(CASE.depth / 2 - CASE.railT / 2);
+caseGroup.add(railL, railR, railF, railB);
+
+const logoMat = new THREE.MeshStandardMaterial({ map: makeLogoTexture(), transparent: true, opacity: 0, roughness: 0.6, metalness: 0, depthWrite: false, color: 0xffffff });
+caseMats.push(logoMat);
+const logo = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.56), logoMat);
+logo.position.set(CASE.centerX, CASE.railY, CASE.depth / 2 + 0.012);
+caseGroup.add(logo);
+
+/* RGB underglow strip (around case bottom) */
+const rgbStrip = new THREE.Mesh(new RoundedBoxGeometry(CASE.width + 0.12, 0.16, CASE.depth + 0.12, 2, 0.08), rgbStripMat);
+rgbStrip.position.set(CASE.centerX, 0.05, 0);
+kb.add(rgbStrip);
+
+/* PCB */
+const pcbGroup = new THREE.Group();
+pcbGroup.position.set(CASE.centerX, 0.66, 0);
+kb.add(pcbGroup);
+const pcb = new THREE.Mesh(
+  new THREE.BoxGeometry(17.1, 0.14, 5.15),
+  new THREE.MeshStandardMaterial({ map: makePCBTexture(), roughness: 0.6, metalness: 0.25 })
+);
+pcb.castShadow = true; pcb.receiveShadow = true;
+pcbGroup.add(pcb);
+const usb = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.3, 0.22), new THREE.MeshStandardMaterial({ color: 0x9fa6b2, metalness: 0.9, roughness: 0.35 }));
+usb.position.set(0, 0.12, -2.62); usb.castShadow = true;
+pcbGroup.add(usb);
+const mcu = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.09, 0.85), new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.4, metalness: 0.5 }));
+mcu.position.set(-2.6, 0.115, 0.7); mcu.castShadow = true;
+pcbGroup.add(mcu);
+const capA = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.13, 0.14), new THREE.MeshStandardMaterial({ color: 0xd8cfc0, roughness: 0.7 }));
+capA.position.set(2.6, 0.11, 0.9); capA.castShadow = true;
+const capB = capA.clone(); capB.position.set(3.3, 0.11, 0.9);
+pcbGroup.add(capA, capB);
+const postMat = new THREE.MeshStandardMaterial({ color: 0x888f9c, metalness: 0.85, roughness: 0.35 });
+[[-8.0, -2.35], [8.0, -2.35], [-8.0, 2.35], [8.0, 2.35]].forEach(([sx, sz]) => {
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.2, 16), postMat);
+  post.position.set(sx, 0.06, sz);
+  pcbGroup.add(post);
+});
+
+/* Foam */
+const foam = new THREE.Mesh(
+  new THREE.BoxGeometry(16.95, 0.26, 4.95),
+  new THREE.MeshStandardMaterial({ color: 0x24262c, roughness: 0.96, metalness: 0 })
+);
+foam.position.set(CASE.centerX, 0.92, 0);
+foam.receiveShadow = true; foam.castShadow = true;
+kb.add(foam);
+
+/* Plate */
+const plateGroup = new THREE.Group();
+kb.add(plateGroup);
+const plateMain = new THREE.Mesh(
+  new RoundedBoxGeometry(15.35, 0.13, 5.5, 2, 0.05),
+  new THREE.MeshStandardMaterial({ color: 0xb9bec8, roughness: 0.35, metalness: 0.85 })
+);
+plateMain.position.set(0, 1.15, 0);
+plateMain.castShadow = true; plateMain.receiveShadow = true;
+plateGroup.add(plateMain);
+const plateTop = new THREE.Mesh(
+  new THREE.PlaneGeometry(15.35, 5.5),
+  new THREE.MeshStandardMaterial({ map: makePlateTexture(), roughness: 0.32, metalness: 0.85 })
+);
+plateTop.rotation.x = -Math.PI / 2;
+plateTop.position.set(0, 1.2165, 0);
+plateTop.receiveShadow = true;
+plateGroup.add(plateTop);
+const stripPlate = new THREE.Mesh(
+  new RoundedBoxGeometry(1.9, 0.13, 5.5, 2, 0.05),
+  new THREE.MeshStandardMaterial({ color: 0xb9bec8, roughness: 0.35, metalness: 0.85 })
+);
+stripPlate.position.set(8.7, 1.15, 0);
+stripPlate.castShadow = true;
+plateGroup.add(stripPlate);
+
+/* ============================ KNOB ============================ */
+const knobGroup = new THREE.Group();
+knobGroup.position.set(8.7, 0, 0);
+knobGroup.userData.knob = true;
+kb.add(knobGroup);
+let knobValue = 40;
+const angleFor = v => THREE.MathUtils.degToRad(135 - (v / 100) * 270);
+
+const baseRing = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.78, 0.84, 0.16, 48),
+  new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.4, metalness: 0.6 })
+);
+baseRing.position.y = 1.27; baseRing.castShadow = true;
+knobGroup.add(baseRing);
+
+const dial = new THREE.Group();
+knobGroup.add(dial);
+const dialBody = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.60, 0.66, 0.5, 48),
+  new THREE.MeshStandardMaterial({ color: 0x2a2e37, roughness: 0.32, metalness: 0.72 })
+);
+dialBody.position.y = 1.62; dialBody.castShadow = true;
+dial.add(dialBody);
+const knurlMat = new THREE.MeshStandardMaterial({ color: 0x1a1d24, roughness: 0.5, metalness: 0.5 });
+for (let i = 0; i < 26; i++) {
+  const a = (i / 26) * Math.PI * 2;
+  const knurl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.34, 0.1), knurlMat);
+  knurl.position.set(Math.cos(a) * 0.635, 1.62, Math.sin(a) * 0.635);
+  knurl.rotation.y = -a;
+  dial.add(knurl);
+}
+const dialTop = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.5, 0.56, 0.1, 48),
+  new THREE.MeshStandardMaterial({ color: 0xff5a3c, roughness: 0.45, metalness: 0.25, emissive: 0xff5a3c, emissiveIntensity: 0.18 })
+);
+dialTop.position.y = 1.92; dialTop.castShadow = true;
+dial.add(dialTop);
+const indicator = new THREE.Mesh(
+  new THREE.BoxGeometry(0.07, 0.035, 0.34),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+indicator.position.set(0, 1.99, 0.3);
+dial.add(indicator);
+dial.rotation.y = angleFor(knobValue);
+
+const hitCylinder = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.86, 0.86, 0.95, 24),
+  new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true, opacity: 0 })
+);
+hitCylinder.position.y = 1.62;
+knobGroup.add(hitCylinder);
+
+/* ============================ ASSEMBLY ============================ */
+const easeOutCubic = p => 1 - Math.pow(1 - p, 3);
+const easeOutBack = p => { const s = 1.2; return 1 + (s + 1) * Math.pow(p - 1, 3) + s * Math.pow(p - 1, 2); };
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+const caseOpacityList = caseMats;
+function setCaseOpacity(v) { for (const m of caseOpacityList) m.opacity = v; }
+
+let state = 'idle';
+let assembly = null;
+
+function resetLayout(instant) {
+  // keys
+  for (const k of keys) {
+    k.cap.position.set(k.cx, 1.8, k.cz);
+    k.cap.rotation.set(0, 0, 0);
+    k.sw.position.set(k.cx, 0, k.cz);
+    k.sw.rotation.set(0, 0, 0);
+    k.pressAmt = 0; k.pressed = false; k.pointer = false; k.hold = 0;
+    k.capMat.emissive.setHex(0x000000); k.capMat.emissiveIntensity = 0;
+  }
+  pcbGroup.position.set(CASE.centerX, 0.66, 0); pcbGroup.rotation.set(0, 0, 0);
+  foam.position.set(CASE.centerX, 0.92, 0); foam.rotation.set(0, 0, 0);
+  plateGroup.position.set(0, 0, 0); plateGroup.rotation.set(0, 0, 0);
+  knobGroup.position.set(8.7, 0, 0);
+  setCaseOpacity(1);
+}
+
+function startAssembly() {
+  const items = [];
+  const ordered = [...keys].sort((a, b) => a.cx - b.cx || a.cz - b.cz);
+  if (prefersReduced) {
+    resetLayout(true);
+    state = 'idle'; assembly = null;
+    setReadout('READY');
+    return;
+  }
+  // reset to exploded positions
+  for (const k of keys) {
+    k.cap.position.set(k.cx, 1.8 + 3.9, k.cz);
+    k.cap.rotation.set(0, (Math.random() - 0.5) * 1.2, 0);
+    k.sw.position.set(k.cx, 3.8, k.cz);
+    k.sw.rotation.set((Math.random() - 0.5) * 0.6, 0, (Math.random() - 0.5) * 0.6);
+    k.pressAmt = 0; k.pressed = false; k.pointer = false; k.hold = 0;
+    k.capMat.emissive.setHex(0x000000); k.capMat.emissiveIntensity = 0;
+  }
+  pcbGroup.position.set(CASE.centerX, 0.66 + 6.4, 0);
+  pcbGroup.rotation.set(0.04, 0, 0.06);
+  foam.position.set(CASE.centerX, 0.92 + 5.4, 0);
+  foam.rotation.set(0.05, 0, -0.05);
+  plateGroup.position.set(0, 5.4, 0);
+  plateGroup.rotation.set(0.05, 0, 0.06);
+  knobGroup.position.set(8.7, 4.2, 0);
+  setCaseOpacity(0);
+
+  const tilt = () => (Math.random() - 0.5) * 0.7;
+  const rndTilt = () => (Math.random() - 0.5) * 0.35;
+
+  items.push({ obj: pcbGroup, finalY: 0.66, startY: 0.66 + 6.4, tiltX: 0.04, tiltZ: 0.06, spinY: 0, delay: 220, dur: 950, ease: easeOutCubic });
+  items.push({ obj: foam, finalY: 0.92, startY: 0.92 + 5.4, tiltX: 0.05, tiltZ: -0.05, spinY: 0, delay: 1080, dur: 680, ease: easeOutCubic });
+  items.push({ obj: plateGroup, finalY: 0, startY: 5.4, tiltX: 0.05, tiltZ: 0.06, spinY: 0, delay: 1520, dur: 680, ease: easeOutCubic });
+  ordered.forEach((k, i) => {
+    items.push({ obj: k.sw, finalY: 0, startY: 3.8, tiltX: k.sw.rotation.x, tiltZ: k.sw.rotation.z, spinY: 0, delay: 2280 + i * 55, dur: 480, ease: easeOutCubic });
+  });
+  ordered.forEach((k, i) => {
+    items.push({ obj: k.cap, finalY: 1.8, startY: 1.8 + 3.9, tiltX: 0, tiltZ: 0, spinY: k.cap.rotation.y, delay: 6050 + i * 55, dur: 520, ease: easeOutBack });
+  });
+  items.push({ obj: knobGroup, finalY: 0, startY: 4.2, tiltX: 0, tiltZ: 0, spinY: 0, delay: 6050 + ordered.length * 55 + 200, dur: 650, ease: easeOutCubic });
+
+  assembly = { t0: performance.now(), items };
+  state = 'assembling';
+  setReadout('ASSEMBLING…');
+}
+
+/* ============================ HUD / INTERACTION ============================ */
+const lastKeyEl = document.getElementById('lastKey');
+const knobEl = document.getElementById('knobVal');
+function setReadout(t) { lastKeyEl.textContent = t; }
+function bumpReadout(label) {
+  lastKeyEl.textContent = String(label).toUpperCase();
+  lastKeyEl.classList.remove('flash'); void lastKeyEl.offsetWidth; lastKeyEl.classList.add('flash');
+}
+function updateKnobReadout() { knobEl.textContent = 'VOL ' + knobValue; }
+
+function setKey(k, source, on) {
+  if (source === 'pointer') k.pointer = on;
+  else k.hold = Math.max(0, (k.hold || 0) + (on ? 1 : -1));
+  const effective = k.pointer || k.hold > 0;
+  if (effective === k.pressed) return;
+  k.pressed = effective;
+  k.capMat.emissive.setHex(effective ? 0xff5a3c : 0x000000);
+  k.capMat.emissiveIntensity = effective ? 0.42 : 0;
+  if (effective) { playSound(k.group); bumpReadout(k.label); }
+}
+
+const codeToKey = new Map();
+for (const k of keys) { if (k.code) codeToKey.set(k.code, k); }
+codeToKey.set('MetaRight', keys.find(k => k.label === 'Super'));
+
+/* ============================ POINTER ============================ */
+const raycaster = new THREE.Raycaster();
+const pointerNdc = new THREE.Vector2();
+let dragKnob = null;
+let pointerKey = null;
+
+function setNdc(e) {
+  pointerNdc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+}
+function findInteractive(hits) {
+  for (const h of hits) {
+    let o = h.object;
+    while (o) {
+      if (o.userData.knob) return { type: 'knob' };
+      if (o.userData.key) return { type: 'key', key: o.userData.key };
+      o = o.parent;
+    }
+  }
+  return null;
+}
+
+renderer.domElement.addEventListener('pointerdown', e => {
+  ensureAudio();
+  if (e.button !== 0) return;
+  setNdc(e);
+  raycaster.setFromCamera(pointerNdc, camera);
+  const hits = raycaster.intersectObject(kb, true);
+  const hit = findInteractive(hits);
+  if (!hit) return;
+  if (hit.type === 'knob') {
+    if (state !== 'idle') return;
+    dragKnob = { x0: e.clientX, v0: knobValue, lastTick: Math.floor(knobValue / 4) };
+    return;
+  }
+  if (hit.type === 'key') {
+    if (state !== 'idle') return;
+    pointerKey = hit.key;
+    setKey(pointerKey, 'pointer', true);
+  }
+});
+
+window.addEventListener('pointermove', e => {
+  if (!dragKnob) return;
+  const nv = THREE.MathUtils.clamp(Math.round(dragKnob.v0 + (e.clientX - dragKnob.x0) * 0.35), 0, 100);
+  if (nv !== knobValue) {
+    knobValue = nv;
+    dial.rotation.y = angleFor(knobValue);
+    const ti = Math.floor(knobValue / 4);
+    if (ti !== dragKnob.lastTick) { dragKnob.lastTick = ti; playTick(); }
+    updateKnobReadout();
+  }
+});
+
+window.addEventListener('pointerup', () => {
+  if (pointerKey) { setKey(pointerKey, 'pointer', false); pointerKey = null; }
+  dragKnob = null;
+});
+window.addEventListener('pointercancel', () => {
+  if (pointerKey) { setKey(pointerKey, 'pointer', false); pointerKey = null; }
+  dragKnob = null;
+});
+
+/* ============================ PHYSICAL KEYBOARD ============================ */
+window.addEventListener('keydown', e => {
+  ensureAudio();
+  const k = codeToKey.get(e.code);
+  if (!k) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (state !== 'idle') return;
+  setKey(k, 'physical', true);
+});
+window.addEventListener('keyup', e => {
+  const k = codeToKey.get(e.code);
+  if (!k) return;
+  e.preventDefault();
+  setKey(k, 'physical', false);
+});
+
+/* ============================ BUTTONS ============================ */
+const btnReplay = document.getElementById('btnReplay');
+const btnRgb = document.getElementById('btnRgb');
+const btnMute = document.getElementById('btnMute');
+let rgbOn = true;
+
+btnReplay.addEventListener('click', () => startAssembly());
+btnRgb.addEventListener('click', () => {
+  rgbOn = !rgbOn;
+  btnRgb.classList.toggle('on', rgbOn);
+  rgbStrip.visible = rgbOn;
+  rgbLight.visible = rgbOn;
+});
+btnMute.addEventListener('click', () => {
+  muted = !muted;
+  btnMute.textContent = muted ? '🔇 Muted' : '🔊 Sound';
+  btnMute.classList.toggle('on', !muted);
+});
+btnMute.classList.add('on');
+btnMute.textContent = '🔊 Sound';
+
+/* ============================ RESIZE ============================ */
+function fitCamera() {
+  const aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = aspect;
+  camera.updateProjectionMatrix();
+  const v = THREE.MathUtils.degToRad(camera.fov / 2);
+  const d = Math.max(10.4 / (Math.tan(v) * aspect), 4.8 / Math.tan(v), 13);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d);
+}
+function onResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  fitCamera();
+}
+window.addEventListener('resize', onResize);
+fitCamera();
+
+/* Orbit pause on interaction */
+let resumeTimer = null;
+controls.addEventListener('start', () => { controls.autoRotate = false; clearTimeout(resumeTimer); });
+controls.addEventListener('end', () => {
+  clearTimeout(resumeTimer);
+  resumeTimer = setTimeout(() => { controls.autoRotate = !prefersReduced; }, 5000);
+});
+
+/* ============================ MAIN LOOP ============================ */
+let prev = performance.now();
+function setCaseOpacityAll(v) { for (const m of caseOpacityList) m.opacity = v; }
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(0.05, (now - prev) / 1000);
+  prev = now;
+
+  if (assembly) {
+    const t = now - assembly.t0;
+    let allDone = true;
+    for (const it of assembly.items) {
+      const p = clamp01((t - it.delay) / it.dur);
+      if (p < 1) allDone = false;
+      const e = it.ease(p);
+      it.obj.position.y = it.startY + (it.finalY - it.startY) * e;
+      if (it.tiltX) it.obj.rotation.x = it.tiltX * (1 - e);
+      if (it.tiltZ) it.obj.rotation.z = it.tiltZ * (1 - e);
+      if (it.spinY) it.obj.rotation.y = it.spinY * (1 - e);
+    }
+    const cp = clamp01(t / 800);
+    setCaseOpacityAll(easeOutCubic(cp));
+    if (allDone && cp >= 1) {
+      assembly = null;
+      state = 'idle';
+      setReadout('READY');
+    }
+  }
+
+  if (state === 'idle') {
+    for (const k of keys) {
+      const target = k.pressed ? 1 : 0;
+      const prevAmt = k.pressAmt;
+      k.pressAmt += (target - k.pressAmt) * Math.min(1, dt * 17);
+      if (Math.abs(k.pressAmt - prevAmt) > 0.0004 || (k.pressed && k.pressAmt > 0.99)) {
+        const off = -0.2 * k.pressAmt;
+        k.cap.position.y = 1.8 + off;
+        k.sw.position.y = off * 0.55;
+      }
+    }
+  }
+
+  if (rgbOn) {
+    const hue = (now * 0.000045) % 1;
+    const c = new THREE.Color().setHSL(hue, 0.82, 0.55);
+    rgbStripMat.emissive.copy(c);
+    rgbLight.color.copy(c);
+    rgbLight.intensity = 4.4 + Math.sin(now * 0.004) * 1.2;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+/* boot */
+setCaseOpacity(0);
+rgbStrip.visible = rgbOn;
+rgbLight.visible = rgbOn;
+startAssembly();
+updateKnobReadout();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
