@@ -1,0 +1,2551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BRAMBLEGLASS — Winterfern</title>
+<style>
+  :root{
+    --ice:#dff6ff;
+    --cyan:#63d8ff;
+    --ink:#0a1216;
+    --panel:rgba(9,17,21,.72);
+    --panel2:rgba(14,25,31,.58);
+    --line:rgba(120,210,255,.28);
+    --txt:#dff3fb;
+    --dim:#86a8b5;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#060a0c;color:var(--txt);
+    font-family:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;touch-action:none;}
+
+  /* ---------- loading ---------- */
+  #load{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:radial-gradient(60% 60% at 50% 40%,#0b1b22,#04070a 70%);
+    transition:opacity .9s ease;flex-direction:column;gap:18px;align-items:center;}
+  #load.hide{opacity:0;pointer-events:none}
+  #load .ring{width:54px;height:54px;border-radius:50%;border:1px solid rgba(99,216,255,.25);
+    border-top-color:var(--cyan);animation:spin 1.1s linear infinite;box-shadow:0 0 30px rgba(99,216,255,.18) inset;}
+  #load .t{font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:var(--dim)}
+  #load .l{font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:var(--txt)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---------- brand ---------- */
+  #brand{position:fixed;top:16px;left:20px;z-index:30;pointer-events:none}
+  #brand .mk{width:26px;height:26px;margin-bottom:6px;opacity:.95}
+  #brand h1{margin:0;font-size:13px;letter-spacing:.34em;font-weight:500;color:var(--txt);text-transform:uppercase}
+  #brand h1 b{font-weight:500;color:var(--cyan)}
+  #brand p{margin:4px 0 0;font-size:9.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim)}
+
+  /* ---------- panel ---------- */
+  #ui{position:fixed;left:16px;bottom:16px;z-index:30;width:300px;
+    background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 1px rgba(99,216,255,.05) inset;
+    transition:transform .35s cubic-bezier(.2,.8,.2,1),opacity .3s;}
+  #ui.hide{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}
+  #ui .hd{display:flex;align-items:center;justify-content:space-between;padding:11px 13px 9px;
+    border-bottom:1px solid rgba(120,210,255,.14);}
+  #ui .hd h2{margin:0;font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--cyan);font-weight:600}
+  #ui .hd .x{background:none;border:1px solid transparent;color:var(--dim);cursor:pointer;
+    width:22px;height:22px;border-radius:6px;font-size:15px;line-height:1;padding:0}
+  #ui .hd .x:hover{color:var(--txt);border-color:var(--line)}
+  #ui .body{padding:11px 13px 13px;max-height:calc(100vh - 220px);overflow:auto}
+  #ui .body::-webkit-scrollbar{width:5px}
+  #ui .body::-webkit-scrollbar-thumb{background:rgba(99,216,255,.25);border-radius:3px}
+
+  /* ---------- caption / move ---------- */
+  #cap{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:28;text-align:center;
+    pointer-events:none;transition:opacity .25s;}
+  #cap .n{font-size:15px;letter-spacing:.34em;text-transform:uppercase;color:var(--txt);text-shadow:0 2px 14px rgba(0,0,0,.9)}
+  #cap .d{margin-top:4px;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);opacity:.9}
+  #cap.k{opacity:0}
+  #capWrap{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;pointer-events:none;z-index:26;padding-top:26px;}
+
+  /* ---------- specs ---------- */
+  .specs{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin:2px 0 13px}
+  .specs div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed rgba(120,210,255,.13);padding-bottom:4px}
+  .specs span:first-child{font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .specs span:last-child{font-size:9.5px;color:var(--txt);letter-spacing:.02em;text-align:right}
+
+  /* ---------- move buttons ---------- */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px}
+  .btn{background:linear-gradient(180deg,rgba(99,216,255,.10),rgba(99,216,255,.03));
+    border:1px solid rgba(120,210,255,.18);color:var(--txt);border-radius:8px;padding:7px 6px;
+    font-size:9.5px;letter-spacing:.1em;cursor:pointer;text-align:left;position:relative;
+    transition:.16s;font-family:inherit;line-height:1.15}
+  .btn:hover{background:linear-gradient(180deg,rgba(99,216,255,.22),rgba(99,216,255,.07));border-color:rgba(99,216,255,.45)}
+  .btn .k{position:absolute;right:6px;top:5px;font-size:8px;color:var(--dim);letter-spacing:.05em}
+  .btn.on{background:linear-gradient(180deg,rgba(99,216,255,.30),rgba(99,216,255,.10));border-color:rgba(99,216,255,.75);color:#fff;
+    box-shadow:0 0 18px rgba(99,216,255,.15) inset}
+  .btn.warm .k{color:var(--cyan)}
+
+  /* ---------- sliders ---------- */
+  .row{display:flex;align-items:center;gap:8px;margin:7px 0;font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim)}
+  .row label{flex:0 0 auto}
+  .row .val{flex:0 0 auto;width:34px;text-align:right;color:var(--txt);font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;border-radius:2px;
+    background:linear-gradient(90deg,rgba(99,216,255,.65),rgba(99,216,255,.12));outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--ice);border:1px solid rgba(99,216,255,.9);box-shadow:0 0 10px rgba(99,216,255,.6);cursor:grab}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--ice);
+    border:1px solid rgba(99,216,255,.9);box-shadow:0 0 10px rgba(99,216,255,.6);cursor:grab}
+
+  /* ---------- segmented ---------- */
+  .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:12px}
+  .seg button{background:none;border:1px solid rgba(120,210,255,.16);color:var(--dim);border-radius:7px;
+    padding:6px 2px;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;font-family:inherit;transition:.16s}
+  .seg button.on{background:rgba(99,216,255,.18);border-color:rgba(99,216,255,.6);color:#fff}
+  .seg button:hover{color:var(--txt)}
+
+  /* ---------- colourways ---------- */
+  .cw{display:flex;gap:7px;align-items:center;margin-bottom:12px}
+  .cw button{width:34px;height:34px;border-radius:9px;border:1px solid rgba(120,210,255,.3);cursor:pointer;
+    position:relative;transition:.16s;background-size:cover;background-position:center}
+  .cw button:hover{transform:translateY(-2px)}
+  .cw button.on{border-color:var(--ice);box-shadow:0 0 0 2px rgba(99,216,255,.35),0 0 18px rgba(99,216,255,.3)}
+  .cw span{margin-left:auto;font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+
+  /* ---------- camera presets ---------- */
+  .presets{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:11px}
+  .presets button{background:none;border:1px solid rgba(120,210,255,.14);color:var(--dim);border-radius:7px;
+    padding:5px 1px;font-size:8px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;font-family:inherit;transition:.16s}
+  .presets button:hover{color:#fff;border-color:rgba(99,216,255,.5)}
+  .presets button.on{color:var(--cyan);border-color:rgba(99,216,255,.6);background:rgba(99,216,255,.1)}
+
+  .foot{border-top:1px solid rgba(120,210,255,.12);padding-top:9px;display:flex;gap:6px}
+  .foot button{flex:1;background:none;border:1px solid rgba(120,210,255,.16);color:var(--dim);border-radius:7px;
+    padding:6px 2px;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;font-family:inherit;transition:.16s}
+  .foot button:hover{color:#fff;border-color:rgba(99,216,255,.55)}
+  .foot button.on{color:var(--cyan);border-color:rgba(99,216,255,.6);background:rgba(99,216,255,.08)}
+  .hint{margin-top:11px;font-size:8.5px;line-height:1.7;color:var(--dim);letter-spacing:.06em}
+  .hint b{color:var(--txt);font-weight:600;letter-spacing:.1em}
+
+  /* ---------- bottom-right: sound / help ---------- */
+  #tools{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;gap:6px;align-items:center}
+  .tb{background:var(--panel);backdrop-filter:blur(12px);border:1px solid var(--line);color:var(--dim);
+    border-radius:9px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer;transition:.16s}
+  .tb:hover{color:var(--txt);border-color:rgba(99,216,255,.6)}
+  .tb.on{color:var(--cyan);border-color:rgba(99,216,255,.65);box-shadow:0 0 14px rgba(99,216,255,.22)}
+  .tb svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- HUD readout ---------- */
+  #hud{position:fixed;right:16px;top:16px;z-index:28;font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--dim);text-align:right;line-height:1.9;pointer-events:none;opacity:.85}
+  #hud b{color:var(--txt);font-weight:500;display:inline-block;min-width:76px;text-align:right}
+
+  /* ---------- hover label ---------- */
+  .lbl{position:fixed;z-index:35;pointer-events:none;padding:4px 8px;border-radius:6px;
+    background:rgba(8,16,20,.92);border:1px solid rgba(99,216,255,.4);color:var(--txt);
+    font-size:10px;letter-spacing:.08em;transform:translate(-50%,-140%);white-space:nowrap;
+    box-shadow:0 6px 20px rgba(0,0,0,.5);transition:opacity .15s;opacity:0}
+  .lbl.show{opacity:1}
+
+  #hideBtn{position:fixed;left:16px;top:16px;z-index:40;background:var(--panel);border:1px solid var(--line);
+    color:var(--dim);border-radius:9px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer}
+  #hideBtn:hover{color:var(--txt)}
+
+  @media (max-width:760px){
+    #ui{left:8px;right:8px;width:auto;bottom:8px;max-height:46vh}
+    #brand h1{font-size:11px}
+    #hud{display:none}
+    #cap .n{font-size:12px}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="load">
+  <div class="ring"></div>
+  <div class="l">Forging Winterfern</div>
+  <div class="t">Brambleglass Atelier · Kirklawn</div>
+</div>
+
+<div id="brand">
+  <svg class="mk" viewBox="0 0 32 32">
+    <defs>
+      <linearGradient id="mkG" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#e9fbff"/><stop offset=".5" stop-color="#7fd8f5"/><stop offset="1" stop-color="#2f6f86"/>
+      </linearGradient>
+    </defs>
+    <polygon points="16,1.5 30.5,16 16,30.5 1.5,16" fill="none" stroke="url(#mkG)" stroke-width="1.6"/>
+    <g fill="none" stroke="url(#mkG)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M16 27 V12"/>
+      <path d="M16 20 C12 20 9 17.5 9 14 C13 14 16 16 16 20Z"/>
+      <path d="M16 15.5 C12.5 15.5 10.5 13 10.5 10 C14 10 16 12 16 15.5Z"/>
+      <path d="M16 11.5 C19 11.5 20.5 9 20.5 6.5 C17.5 6.5 16 8.5 16 11.5Z"/>
+      <path d="M16 21.5 C19.5 21.5 21.5 24 21.5 27 C18 27 16 25 16 21.5Z"/>
+    </g>
+  </svg>
+  <h1><b>Brambleglass</b> Atelier</h1>
+  <p>Kirklawn · Model Winterfern</p>
+</div>
+
+<div id="hud"></div>
+
+<div id="capWrap"><div id="cap"><div class="n"></div><div class="d"></div></div></div>
+
+<div id="ui">
+  <div class="hd"><h2>Controls</h2><button class="x" id="uiX">×</button></div>
+  <div class="body">
+    <div class="specs" id="specs"></div>
+    <div class="grid" id="movegrid"></div>
+    <div class="row"><label>Speed</label><input type="range" id="spd" min="25" max="200" value="100"><span class="val" id="spdv">1.00×</span></div>
+    <div class="seg" id="segMode">
+      <button data-m="move" class="on">Sequence</button>
+      <button data-m="free">Freestyle</button>
+      <button data-m="combo">Combo</button>
+    </div>
+    <div class="row"><label>Slow-mo</label><input type="range" id="slow" min="0" max="100" value="0"><span class="val" id="slowv">1.00×</span></div>
+    <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="100" value="72"><span class="val" id="volv">72</span></div>
+    <div class="seg" id="segTrail"><button data-t="0" class="on">Trail Off</button><button data-t="1">Trail On</button></div>
+    <div class="seg" id="segView">
+      <button data-v="hero" class="on">Hero</button>
+      <button data-v="blade">Blade</button>
+      <button data-v="pivot">Pivot</button>
+      <button data-v="latch">Latch</button>
+      <button data-v="top">Top</button>
+    </div>
+    <div class="row"><label>Colourway</label></div>
+    <div class="cw" id="cways"></div>
+    <div class="row"><label>Exploded</label></div>
+    <div class="foot">
+      <button id="btnExpl">Explode</button>
+      <button id="btnL">Latch</button>
+      <button id="btnR">Reset</button>
+    </div>
+    <div class="hint"><b>Drag</b> orbit · <b>wheel</b> zoom · <b>right-drag</b> pan<br>
+      Drag a <b>handle</b> to open or close by hand · <b>1–9</b> moves · <b>space</b> pause<br>
+      <b>H</b> hide UI · <b>M</b> mute</div>
+  </div>
+</div>
+
+<div id="tools">
+  <button class="tb" id="tbHide" title="Hide UI (H)">
+    <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/></svg>
+  </button>
+  <button class="tb" id="tbMute" title="Mute (M)">
+    <svg viewBox="0 0 24 24" id="icMute"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="mw" d="M16.5 8.5a5 5 0 010 7"/><path class="mw" d="M18.8 6a8.5 8.5 0 010 12"/></svg>
+  </button>
+</div>
+<div id="hideBtn" title="Hide UI (H)">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6L3 12l6 6M15 6l6 6-6 6"/></svg>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+const H_LEN = 4.60;     // pivot -> handle end (cm)
+const B_LEN = 8.50;     // pivot -> tip (cm)
+const PIV = new THREE.Vector3(0,0,0);
+
+const T = {
+  HANDLE_TOP : -1.60,   // top of handle block
+  HANDLE_BOT : -3.60,   // bottom of handle block (2.0cm wide)
+  BLADE_TOP  :  0.58,   // spine
+  BLADE_BOT  : -0.62,   // edge
+  KICKER_TOP : -0.62,   // just under edge
+  KICKER_BOT : -0.72,
+};
+
+/* =========================================================
+   RENDERER / SCENE
+========================================================= */
+const app = document.getElementById('app');
+let renderer, scene, camera, controls;
+let rendererOK = true;
+try{
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
+}catch(e){
+  rendererOK = false;
+  document.getElementById('load').innerHTML =
+    '<div style="color:#dff3fb;font-size:13px;letter-spacing:.2em;text-align:center;line-height:1.8">WebGL is unavailable.<br>This piece needs a browser with WebGL enabled.</div>';
+}
+if(rendererOK){
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth, innerWidth);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.info.autoReset = false;
+}
+window.addEventListener('error',()=>{ /* keep going */ });
+
+if(rendererOK) build();
+
+/* =========================================================
+   PROCEDURAL TEXTURES
+========================================================= */
+function hash2(x,y){ const s = Math.sin(x*127.1 + y*311.7)*43758.5453; return s - Math.floor(s); }
+
+function makeCanvas(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return c; }
+
+/* --- brushed metal --- */
+function brushTex(base, accent, ox=900, oy=40, noiseAmt=0.055){
+  const c = makeCanvas(ox,oy), g = c.getContext('2d');
+  g.fillStyle = base; g.fillRect(0,0,ox,oy);
+  for(let i=0;i<ox*1.2;i++){
+    const x = Math.random()*ox, w = 1+Math.random()*5;
+    const a = (Math.random()-0.5)*noiseAmt;
+    g.fillStyle = Math.random()>0.5 ? `rgba(255,255,255,${0.05+Math.random()*0.10})` : `rgba(0,0,0,${0.04+Math.random()*0.12})`;
+    g.globalAlpha = 0.35+Math.random()*0.65;
+    g.fillRect(x, Math.random()*oy, w, 1+Math.random()*3);
+  }
+  // long streaks
+  for(let i=0;i<460;i++){
+    const y=Math.random()*oy, hgt=1+Math.random()*6;
+    g.globalAlpha = Math.random()*0.09;
+    g.fillStyle = Math.random()>0.5?'#ffffff':'#000000';
+    g.fillRect(Math.random()*ox, y, 20+Math.random()*220, hgt);
+  }
+  g.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(24,3); t.needsUpdate=true; t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+/* --- anodised / iridescent metal --- */
+function anodiseTex(base1, base2, accent){
+  const c = makeCanvas(512,512), g = c.getContext('2d');
+  g.fillStyle = base1; g.fillRect(0,0,512,512);
+  const step = 11;
+  for(let y=0;y<512;y+=step){
+    for(let x=0;x<512;x+=step){
+      const n = hash2(x*0.08,y*0.08);
+      g.fillStyle = n>0.5 ? base2 : base1;
+      g.globalAlpha = 0.10 + n*0.16;
+      g.fillRect(x,y,step,step);
+    }
+  }
+  // etched vignette + fine scratches
+  for(let i=0;i<2400;i++){
+    g.globalAlpha = Math.random()*0.06;
+    g.strokeStyle = Math.random()>0.5?'#ffffff':'#000000';
+    g.beginPath();
+    const x=Math.random()*512,y=Math.random()*512;
+    g.moveTo(x,y); g.lineTo(x+(Math.random()-0.5)*26, y+(Math.random()-0.5)*26); g.stroke();
+  }
+  g.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(4,2); t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+/* --- G10 / resin (matte, slightly hazy) --- */
+function g10Tex(c1, c2, c3){
+  const c=makeCanvas(256,256), g=c.getContext('2d');
+  g.fillStyle=c1; g.fillRect(0,0,256,256);
+  for(let i=0;i<9000;i++){
+    g.fillStyle = i%3===0?c2:(i%3===1?c3:c1);
+    g.globalAlpha = 0.18+Math.random()*0.5;
+    g.fillRect(Math.random()*256, Math.random()*256, 1+Math.random()*2, 1+Math.random()*10);
+  }
+  g.globalAlpha=1;
+  for(let i=0;i<26;i++){
+    g.strokeStyle=`rgba(255,255,255,${0.03+Math.random()*0.05})`;
+    g.beginPath(); const x=Math.random()*256,y=Math.random()*256;
+    g.moveTo(x,y); g.lineTo(x+Math.random()*40-20, y+Math.random()*8-4); g.stroke();
+  }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2,2); t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+/* --- damascene / engraved dark metal for tangs --- */
+function damascTex(){
+  const c=makeCanvas(256,512), g=c.getContext('2d');
+  g.fillStyle='#101a1e'; g.fillRect(0,0,256,512);
+  for(let i=0;i<700;i++){
+    const x=Math.random()*256, y=Math.random()*512;
+    const w=10+Math.random()*50, h=0.6+Math.random()*2.2;
+    g.strokeStyle = Math.random()>0.45 ? `rgba(120,220,245,${0.04+Math.random()*0.13})` : `rgba(255,255,255,${0.03+Math.random()*0.07})`;
+    g.lineWidth = 0.5+Math.random()*0.8;
+    g.beginPath();
+    for(let j=0;j<7;j++){ const px=x+j*w/6, py=y+Math.sin(j*1.7+i)*h; j?g.lineTo(px,py):g.moveTo(px,py); }
+    g.stroke();
+  }
+  for(let i=0;i<1400;i++){
+    g.fillStyle = Math.random()>0.5?'#ffffff':'#000000';
+    g.globalAlpha = Math.random()*0.05;
+    g.fillRect(Math.random()*256,Math.random()*512,1,1);
+  }
+  g.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(6,24); t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+/* --- stamped "frost" microtexture --- */
+function frostTex(){
+  const c=makeCanvas(256,256), g=c.getContext('2d');
+  g.fillStyle='#000000'; g.fillRect(0,0,256,256);
+  for(let i=0;i<2600;i++){
+    const x=Math.random()*256,y=Math.random()*256,r=1+Math.random()*13;
+    const grd=g.createRadialGradient(x,y,0,x,y,r);
+    grd.addColorStop(0,`rgba(200,245,255,${0.05+Math.random()*0.18})`);
+    grd.addColorStop(1,'rgba(200,245,255,0)');
+    g.fillStyle=grd; g.beginPath(); g.arc(x,y,r,0,7); g.fill();
+  }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(14,14); t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+/* =========================================================
+   THEME MATERIAL PALETTE
+========================================================= */
+const WALLS = {
+  frost : { bladeA:'#f2fbff', bladeB:'#cfe8f2', tang:'#d9e9f0', handle1:'#2a3f48', handle2:'#1b2c33', accent:'#7fdcff', latch:'#bfeaff', detail:'#0d1a1f', col1:'#eaf8ff', col2:'#9fe8ff', steel:'#c8d8e0' },
+  dew   : { bladeA:'#c9ecff', bladeB:'#a4d8ef', tang:'#cfeaf7', handle1:'#3f5561', handle2:'#2b3b44', accent:'#9ee9ff', latch:'#d6f4ff', detail:'#16272e', col1:'#eaffff', col2:'#8fe2f7', steel:'#bcd8e6' },
+  green : { bladeA:'#d7f4e8', bladeB:'#b3e0ce', tang:'#d6f0e4', handle1:'#1f3b34', handle2:'#152a25', accent:'#a8f0d2', latch:'#c9f7e4', detail:'#0b1d18', col1:'#e8fff7', col2:'#7fe6c4', steel:'#bfe6d8' }
+};
+
+/* =========================================================
+   GEOMETRY HELPERS
+========================================================= */
+function bevelledShape(points, depth, bevel){
+  // points: CCW in XY, shape extruded along +Z by depth
+  const shape = new THREE.Shape();
+  shape.moveTo(points[0][0], points[0][1]);
+  for(let i=1;i<points.length;i++) shape.lineTo(points[i][0], points[i][1]);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled:true, bevelSegments:2, bevelSize:bevel, bevelThickness:bevel, curveSegments:8 });
+  geo.translate(0,0,-depth-bevel);
+  return geo;
+}
+
+function lathe(profile, seg=48){
+  const pts = profile.map(p=>new THREE.Vector2(p[0],p[1]));
+  return new THREE.LatheGeometry(pts, seg);
+}
+
+/* rounded rect outline for extrude */
+function roundRect(x,y,w,h,r,seg=6){
+  const pts=[];
+  const N=seg;
+  const ctr=[[x+r,y+r,Math.PI,Math.PI/2],[x+w-r,y+r,Math.PI/2,0],[x+w-r,y+h-r,0,Math.PI/2],[x+r,y+h-r,Math.PI/2,Math.PI]];
+  for(const [cx,cy,a0,a1] of ctr){
+    for(let i=0;i<=N;i++){ const a=a0+(a1-a0)*i/N; pts.push([cx+Math.cos(a)*r, cy+Math.sin(a)*r]); }
+  }
+  return pts;
+}
+
+/* =========================================================
+   SCENE BUILD
+========================================================= */
+let knifeRoot, pivotGroup, biteGroup, safeGroup, biteHandleMesh, safeHandleMesh, bladeHalfGeoRef, latchGroup, latchPivot, bladeTipHelper;
+let exploded = 0, explodedT = 0;
+const parts = {};       // name -> mesh (for explode)
+const pivotJoints = []; // {pivot: Object3D, angle: number, mesh}
+const colliders = [];
+
+const COL = 'WINTERFERN';
+let C = WALLS.frost;
+
+function build(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x060a0c);
+  scene.fog = new THREE.FogExp2(0x060a0c, 0.022);
+
+  camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 400);
+  camera.position.set(7.5, 4.2, 11.5);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0,0,0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.minDistance = 2.2;
+  controls.maxDistance = 46;
+  controls.maxPolarAngle = Math.PI*0.495;
+  controls.autoRotate = false;
+
+  // ---- environment (procedural room) ----
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envRT = pmrem.fromScene(buildEnvRoom(), 0.04, 0.1, 300);
+  scene.environment = envRT.texture;
+  const roomTex = pmrem.fromScene(buildEnvRoom(0.06), 0.06, 0.1, 300).texture;
+  // use simple room as scene.environment only (we don't need roomTex)
+
+  // ---- lights ----
+  const key = new THREE.SpotLight(0xdff4ff, 240, 0, 0.5, 0.55, 1.6);
+  key.position.set(-7, 11, 6);
+  key.target.position.set(0,0,0);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024,1024);
+  key.shadow.camera.near = 1; key.shadow.camera.far = 40;
+  key.shadow.bias = -0.0016; key.shadow.normalBias = 0.012;
+  key.shadow.radius = 4;
+  scene.add(key); scene.add(key.target);
+
+  const rim = new THREE.SpotLight(0x7fe9ff, 150, 0, 0.42, 0.6, 1.8);
+  rim.position.set(8, 6, -8);
+  scene.add(rim);
+
+  const fill = new THREE.SpotLight(0x9fc8dd, 70, 0, 0.5, 0.8, 2);
+  fill.position.set(0, -7, 8);
+  scene.add(fill);
+
+  const warmLamp = new THREE.PointLight(0xffd3a1, 60, 26, 2);
+  warmLamp.position.set(-5.5, -3.5, -7);
+  scene.add(warmLamp);
+
+  scene.add(new THREE.HemisphereLight(0x9fd8ee, 0x1a2429, 0.55));
+
+  // ---- stage ----
+  buildStage();
+
+  // ---- knife ----
+  buildKnife();
+
+  // ---- trail ----
+  buildTrail();
+
+  // ---- labels ----
+  buildLabels();
+
+  // ---- static props to enable shadow map update ----
+  scene.updateMatrixWorld(true);
+
+  document.getElementById('load').classList.add('hide');
+  setTimeout(()=>{ const l=document.getElementById('load'); l.style.display='none'; }, 1100);
+}
+
+/* ---------- procedural environment room ---------- */
+function buildEnvRoom(){
+  const g = new THREE.Group();
+  const roomMat = new THREE.MeshStandardMaterial({color:0x22323a, roughness:0.85, metalness:0.02, side:THREE.BackSide});
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(120,80), roomMat); back.position.set(0,0,-38); g.add(back);
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(120,80), roomMat); left.rotation.y=Math.PI/2; left.position.set(-45,0,0); g.add(left);
+  const right = new THREE.Mesh(new THREE.PlaneGeometry(120,80), roomMat); right.rotation.y=-Math.PI/2; right.position.set(45,0,0); g.add(right);
+
+  // glowing panels
+  const panelMats = [
+    new THREE.MeshBasicMaterial({color:0xa9ecff}),
+    new THREE.MeshBasicMaterial({color:0xffe0b0}),
+    new THREE.MeshBasicMaterial({color:0xffffff}),
+  ];
+  for(let i=0;i<7;i++){
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(6+Math.random()*8, 4+Math.random()*5), panelMats[i%3]);
+    const a = -0.35 + Math.random()*0.7;
+    p.position.set(Math.sin(a)*24, 4+Math.random()*12, -Math.cos(a)*24);
+    p.lookAt(0,0,0);
+    g.add(p);
+  }
+  // floor bounce
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(120,120), new THREE.MeshStandardMaterial({color:0x33424a, roughness:0.9}));
+  fl.rotation.x=-Math.PI/2; fl.position.y=-16; g.add(fl);
+  return g;
+}
+
+/* ---------- the workshop stage ---------- */
+function buildStage(){
+  const stage = new THREE.Group();
+  stage.position.set(0,0,0);
+
+  const wood = new THREE.MeshStandardMaterial({map:brushTex('#241a14','#3a2a1e', 512,64,0.10), roughness:0.62, metalness:0.06});
+  const tabletop = new THREE.Mesh(new THREE.BoxGeometry(22, 2.2, 17), wood);
+  tabletop.position.y = -11.1;
+  tabletop.receiveShadow = true; tabletop.castShadow = true;
+  stage.add(tabletop);
+
+  // edge lip
+  const lip = new THREE.Mesh(new THREE.BoxGeometry(22.4, 0.5, 17.4), wood);
+  lip.position.y = -12.2; lip.receiveShadow = true; stage.add(lip);
+
+  // leather pad
+  const pad = new THREE.Mesh(new THREE.CircleGeometry(3.2, 48), new THREE.MeshStandardMaterial({color:0x241b13, roughness:0.96, metalness:0.0}));
+  pad.rotation.x=-Math.PI/2; pad.position.y=-10.985; pad.scale.set(1,1,1);
+  stage.add(pad);
+  const pad2 = pad.clone(); pad2.scale.set(0.9,1,1); pad2.position.set(0.2, -10.98, 0.1); stage.add(pad2);
+
+  // ---------- vice ----------
+  const vmat = new THREE.MeshStandardMaterial({color:0x2b3236, roughness:0.38, metalness:0.9, envMapIntensity:0.9});
+  const dark = new THREE.MeshStandardMaterial({color:0x171c1f, roughness:0.5, metalness:0.85});
+  const vg = new THREE.Group();
+  const vBase = new THREE.Mesh(new THREE.BoxGeometry(7.5,0.9,5.2), vmat); vBase.position.y=-0.45; vBase.castShadow=true; vBase.receiveShadow=true; vg.add(vBase);
+  const vBed  = new THREE.Mesh(new THREE.BoxGeometry(6.2,1.0,3.6), dark); vBed.position.set(-1.4,0.5,-0.2); vg.add(vBed);
+  const vSwAn = new THREE.Mesh(new THREE.BoxGeometry(0.7,5.0,4.2), vmat); vSwAn.position.set(-2.2,2.5,0); vSwAn.castShadow=true; vg.add(vSwAn);
+  const vSwSe = new THREE.Mesh(new THREE.BoxGeometry(0.7,5.0,4.2), vmat); vSwSe.position.set(-0.6,2.5,0); vSwSe.castShadow=true; vg.add(vSwSe);
+  const vSwKn = new THREE.Mesh(new THREE.BoxGeometry(1.6,4.2,3.4), dark); vSwKn.position.set(-2.9,2.1,0); vSwKn.castShadow=true; vg.add(vSwKn);
+  const vSwKnR= new THREE.Mesh(new THREE.BoxGeometry(0.5,4.2,3.4), vmat); vSwKnR.position.set(-3.65,2.1,0); vSwKnR.castShadow=true; vg.add(vSwKnR);
+  const vJawTop = new THREE.Mesh(new THREE.BoxGeometry(3.4,0.4,3.6), vmat); vJawTop.position.set(-1.6,5.0,0); vJawTop.castShadow=true; vg.add(vJawTop);
+  const vJawBot = new THREE.Mesh(new THREE.BoxGeometry(3.4,0.4,3.6), vmat); vJawBot.position.set(-1.6,0.0,0); vJawBot.castShadow=true; vg.add(vJawBot);
+  vg.position.set(-8.2,-10.95,2.6); vg.rotation.y = 0.28;
+  stage.add(vg);
+
+  // ---------- lamp arm ----------
+  const armMat = new THREE.MeshStandardMaterial({color:0x1d2327, roughness:0.35, metalness:0.95});
+  const arm = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(1.0,1.25,0.5,24), armMat); base.position.y=-0.25; base.castShadow=true; arm.add(base);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,9,16), armMat); pole.position.y=4.5; pole.castShadow=true; arm.add(pole);
+  const j = new THREE.Mesh(new THREE.SphereGeometry(0.32,16,12), new THREE.MeshStandardMaterial({color:0x2a3136, roughness:0.3, metalness:0.95})); j.position.y=9.0; arm.add(j);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,3.2,12), armMat); stem.position.set(0,10.9,-0.2); stem.rotation.z=Math.PI/2; arm.add(stem);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(1.55, 1.05, 24, 1, true), new THREE.MeshStandardMaterial({color:0xffe0b8, roughness:0.75, side:THREE.DoubleSide}));
+  shade.position.set(0,12.35,-0.1); shade.rotation.x=Math.PI; arm.add(shade);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.34,16,12), new THREE.MeshStandardMaterial({color:0xfff0cf, emissive:0xffdca8, emissiveIntensity:1.4, roughness:0.35}));
+  bulb.position.set(0,12.05,-0.1); arm.add(bulb);
+  arm.position.set(-7.4,-10.95,-5.6); arm.rotation.y=-0.42;
+  stage.add(arm);
+
+  // ---------- coffee grinder (prop) ----------
+  const gr = new THREE.Group();
+  const grBody = new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.0,1.5,24), new THREE.MeshStandardMaterial({color:0x3b3f42, roughness:0.3, metalness:0.95}));
+  grBody.position.y=0.9; grBody.castShadow=true; gr.add(grBody);
+  const grTop = new THREE.Mesh(new THREE.CylinderGeometry(0.72,0.82,0.35,24), new THREE.MeshStandardMaterial({color:0x24282b, roughness:0.35, metalness:0.95}));
+  grTop.position.y=1.78; gr.add(grTop);
+  const grKn = new THREE.Mesh(new THREE.BoxGeometry(0.9,0.55,0.6), new THREE.MeshStandardMaterial({color:0x191d1f, roughness:0.4, metalness:0.9}));
+  grKn.position.set(0,2.12,0); gr.add(grKn);
+  gr.position.set(6.0,-10.9,2.2); gr.rotation.y = -0.7; stage.add(gr);
+
+  // ---------- ring of felt / tools on wall? skip ----------
+
+  // small parts tray
+  const tray = new THREE.Group();
+  const trayMat = new THREE.MeshStandardMaterial({color:0x1d2529, roughness:0.55, metalness:0.85});
+  const tBase = new THREE.Mesh(new THREE.BoxGeometry(2.6,0.14,1.9), trayMat); tBase.position.y=0.07; tray.add(tBase);
+  for(let i=0;i<4;i++) for(let j=0;j<3;j++){
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.08,0.26), new THREE.MeshStandardMaterial({color:0x8fa3ad, roughness:0.3, metalness:0.95}));
+    b.position.set(-1.05+i*0.72, 0.16, -0.62+j*0.62); b.castShadow=true; tray.add(b);
+  }
+  tray.position.set(7.4,-10.95,1.6); tray.rotation.y=0.5; stage.add(tray);
+
+  scene.add(stage);
+
+  // stage contact shadow blob under knife
+  const blobGeo = new THREE.CircleGeometry(6.2, 64);
+  const blob = new THREE.Mesh(blobGeo, new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.55, depthWrite:false}));
+  blob.rotation.x=-Math.PI/2; blob.position.y=-10.96; scene.add(blob);
+
+  return stage;
+}
+
+/* =========================================================
+   KNIFE CONSTRUCTION
+========================================================= */
+function buildKnife(){
+  knifeRoot = new THREE.Group();
+  scene.add(knifeRoot);
+
+  /* ---------- pivot joint (at origin) ---------- */
+  pivotGroup = new THREE.Group();
+  knifeRoot.add(pivotGroup);
+
+  /* ================= BITE HANDLE (edge side) ================= */
+  const bitePivot = new THREE.Group();
+  bitePivot.position.copy(PIV);
+  bitePivot.rotation.y = -Math.PI/2;  // hmm — we'll build knife along +Z natively
+  knifeRoot.add(bitePivot);
+
+  // Instead of rotating the whole world, build each half in its own orientation.
+  // We build the halves with their own transform: each half extends along +Z from the pivot.
+
+  const bite = new THREE.Group();
+  bite.position.set(0,0,0);
+  bite.rotation.y = 0;
+  pivotGroup.add(bite);
+
+  // bite handle: a rounded, bevelled block with a milled fern pattern
+  const biteHandle = makeHandle({accent:C.accent, col1:C.col1, col2:C.col2, ident:'bite'});
+  biteHandle.position.z = -(H_LEN/2 + 0.02);
+  bite.add(biteHandle);
+
+  // bite handle roller/liners
+  const biteLiner = new THREE.Mesh(makeLiner(2.0,0.62), new THREE.MeshStandardMaterial({color:0x1b2b31, roughness:0.32, metalness:0.95}));
+  biteLiner.position.z = -(H_LEN - 0.75);
+  biteLiner.scale.set(1,1,1.25);
+  bite.add(biteLiner);
+
+  // bite pivot
+  const bitePivotPart = new THREE.Group();
+  buildPivotAssembly(bitePivotPart, C);
+  bitePivotPart.position.set(0, -2.55, 0);
+  bite.add(bitePivotPart);
+
+  const biteZen = makeZenPin();
+  biteZen.position.set(0,-2.55,-H_LEN+0.95);
+  bite.add(biteZen);
+
+  // bite eyelet / lanyard hole
+  // (included in handle mesh)
+
+  /* ================= SAFE HANDLE ================= */
+  const safe = new THREE.Group();
+  pivotGroup.add(safe);
+  const safeHandle = makeHandle({accent:C.accent, col1:C.col1, col2:C.col2, ident:'safe'});
+  safeHandle.position.z = -(H_LEN/2 + 0.02);
+  safe.add(safeHandle);
+
+  const safeLiner = new THREE.Mesh(makeLiner(2.0,0.62), new THREE.MeshStandardMaterial({color:0x1b2b31, roughness:0.32, metalness:0.95}));
+  safeLiner.position.z = -(H_LEN - 0.75);
+  safe.add(safeLiner);
+
+  const safePivotPart = new THREE.Group();
+  buildPivotAssembly(safePivotPart, C, true);
+  safePivotPart.position.set(0, 2.55, 0);
+  safe.add(safePivotPart);
+
+  const safeZen = makeZenPin();
+  safeZen.position.set(0,2.55,-H_LEN+0.95);
+  safe.add(safeZen);
+
+  /* ================= BLADE HALVES ================= */
+  // Two halves, folded back-to-back around the closed edge.
+  const bladeHalfA = new THREE.Group();   // lower
+  const bladeHalfB = new THREE.Group();   // upper
+  bladeHalfA.position.set(-0.028, 0, 0);
+  bladeHalfB.position.set( 0.028, 0, 0);
+  pivotGroup.add(bladeHalfA);
+  pivotGroup.add(bladeHalfB);
+
+  const bladeMat = bladeMaterial();
+  const innerMat = innerBladeMaterial();
+
+  // each half: geometry from z=0 (pivot end) to z=B_LEN, with tang from 0..-1.6 and blade 0..B_LEN
+  const tangLen = 1.55;
+  const tangW = 1.90;
+  const bladeHalf = makeBladeHalf(tangLen, tangW, B_LEN, bladeMat, innerMat);
+  bladeHalf.position.set(0,0,0);
+  bladeHalfA.add(bladeHalf);
+  bladeHalfB.add(bladeHalf.clone());
+
+  // kickers: small pointed pads under the edge near the pivot end
+  const kickMat = new THREE.MeshStandardMaterial({color:C.accent, metalness:0.85, roughness:0.22, envMapIntensity:0.9, clearcoat:0.9, clearcoatRoughness:0.12});
+  [bladeHalfA, bladeHalfB].forEach((g,i)=>{
+    const k = new THREE.Mesh(makeKicker(), kickMat);
+    k.position.set(0, -0.55, -0.05);
+    g.add(k);
+  });
+
+  /* ================= LATCH ================= */
+  const latchRoot = new THREE.Group();
+  latchRoot.position.set(0, 0, -H_LEN - 0.55);  // near the bottom end of the handles
+  latchRoot.rotation.x = 0.0;
+  pivotGroup.add(latchRoot);
+  const latchPivot = new THREE.Group();
+  latchPivot.position.set(0, 2.9, 0);
+  latchRoot.add(latchPivot);
+  buildLatch(latchPivot, C);
+  const latchPost = new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.075,1.5,12), new THREE.MeshStandardMaterial({color:0xc9dbe4, roughness:0.3, metalness:1.0, envMapIntensity:1.1}));
+  latchPost.rotation.z = Math.PI/2;
+  latchPost.position.set(0, 2.9, 0);
+  latchRoot.add(latchPost);
+
+  /* ================= PIVOT HARDWARE ================= */
+  const pivotScrewA = new THREE.Group();
+  const pivotScrewB = new THREE.Group();
+
+  /* ---------- STATE ---------- */
+  knifeRoot.userData = {};
+  bite.rotation.z = 0; bite.rotation.x = 0;
+  safe.rotation.z = 0; safe.rotation.x = 0;
+
+  parts.biteHandle = biteHandle;
+  parts.safeHandle = safeHandle;
+  parts.bladeA = bladeHalfA;
+  parts.bladeB = bladeHalfB;
+  parts.latch = latchRoot;
+  parts.biteZen = biteZen;
+  parts.safeZen = safeZen;
+
+  // mark mesh names for hover labels
+  [biteHandle, safeHandle, bladeHalfA, bladeHalfB, latchRoot].forEach((m,i)=>{
+    m.traverse(o=>{ if(o.isMesh){ o.userData.part = i===0?'Bite handle (fern-milled)':i===1?'Safe handle (ivory inlay)':i===2?'Blade half · lower':'Blade half · upper'; } });
+  });
+  latchRoot.traverse(o=>{ if(o.isMesh) o.userData.part='Sprung fern latch'; });
+
+  /* ---------- explode offsets ---------- */
+  explodeSetup();
+
+  updateCameraPresets();
+}
+
+/* ---------- handle ---------- */
+function makeHandle(o){
+  const g = new THREE.Group();
+  const t = o.ident;
+  const colA = o.col1, colB = o.col2, accent = o.accent;
+
+  // main scale body: rounded beveled block
+  const w = 1.92;                       // width (x)
+  const htop = t==='bite' ? T.HANDLE_TOP : T.HANDLE_BOT; // both ± around y=0
+  const hBot = t==='bite' ? T.HANDLE_BOT : T.HANDLE_TOP;
+  const yc = (htop+hBot)/2, hh = Math.abs(hBot-htop);
+
+  const shapePts = roundRect(-w/2, -hBot, w, hh+0.06, 0.42, 8);
+  const shapePts2 = roundRect(-w/2, -htop, w, hh, 0.42, 8);
+  const shape = new THREE.Shape();
+  // build as outline
+  const outer = roundRect(-w/2, -hBot, w, hh+0.05, 0.42, 8);
+  const hole = roundRect(-w/2+0.34, -htop, w-0.68, hh, 0.3, 8);
+  // outer polygon must be CW for hole... use absarc
+  const sh = new THREE.Shape();
+  outer.forEach((p,i)=> i?sh.lineTo(p[0],p[1]):sh.moveTo(p[0],p[1]));
+  sh.closePath();
+  const holePath = new THREE.Path();
+  hole.forEach((p,i)=> i?holePath.lineTo(p[0],p[1]):holePath.moveTo(p[0],p[1]));
+  holePath.closePath();
+  sh.holes.push(holePath);
+  const bodyGeo = new THREE.ExtrudeGeometry(sh, {depth:2.05, bevelEnabled:true, bevelSegments:3, bevelSize:0.045, bevelThickness:0.045, curveSegments:6});
+  bodyGeo.translate(0,0,-2.05-0.045);
+
+  const matHandle = new THREE.MeshPhysicalMaterial({
+    map: anodiseTex(o.col2, o.col1, accent),
+    color: 0xffffff,
+    roughness: 0.26, metalness: 0.82,
+    clearcoat: 0.75, clearcoatRoughness: 0.18,
+    iridescence: 0.28, iridescenceIOR: 1.5, iridescenceThicknessRange: [90, 520],
+    envMapIntensity: 1.05,
+    side: THREE.DoubleSide
+  });
+
+  const body = new THREE.Mesh(bodyGeo, matHandle);
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+
+  // ---- milled fern pattern on the visible face ----
+  const fernGroup = new THREE.Group();
+  const fernMat = new THREE.MeshPhysicalMaterial({
+    map: g10Tex('#0c161b', '#1b2b31', '#33525c'),
+    roughness: 0.45, metalness: 0.35, clearcoat:0.5, clearcoatRoughness:0.35,
+    envMapIntensity:0.8
+  });
+  // the pattern is a shallow negative relief cut into the face — we add raised fern-line geometry on the BOTTOM face (x = -w/2-0.05)
+  const faceSign = (t==='bite') ? -1 : 1;   // bite top face is at +y... for x faces use facing
+  // Milled into the front/top surface: we build a fern relief on the top/bottom faces.
+  // Add the fern relief slightly proud on the outer face so it catches a raking highlight.
+  const relief = makeFernRelief(1.30, 0.16, 0.055, colA, accent);
+  relief.rotation.x = Math.PI/2;
+  relief.position.set(0, -hBot - 0.052, 0.55);
+  if(t==='bite'){
+    relief.rotation.z = 0;
+    relief.position.y = -hBot - 0.052;
+    relief.rotation.x = Math.PI/2;
+  } else {
+    relief.rotation.x = -Math.PI/2;
+    relief.position.y = -htop + 0.052;
+  }
+  // Actually simpler: put relief as a thin slab on each side face
+  relief.rotation.set(0, Math.PI/2, 0);
+  relief.position.set(-w/2 - 0.05, -hBot - 0.05, 0.55);
+  const relief2 = relief.clone();
+  relief2.rotation.set(0, -Math.PI/2, 0);
+  relief2.position.set(w/2 + 0.05, -hBot - 0.05, 0.55);
+  fernGroup.add(relief, relief2);
+  g.add(fernGroup);
+
+  // ---- iron inset line (inlay) ---- set as thin chamfer ring
+  // ---- pommel end cap ----
+  const capMat = new THREE.MeshStandardMaterial({color:colB, metalness:1.0, roughness:0.18, envMapIntensity:1.15});
+  const capGeo = new THREE.CylinderGeometry(0.86,0.96,0.16,24);
+  const cap = new THREE.Mesh(capGeo, capMat);
+  cap.rotation.x = Math.PI/2;
+  cap.position.set(0, -hBot - 0.55, 0);
+  g.add(cap);
+
+  // lanyard hole
+  const holeG = new THREE.TorusGeometry(0.42, 0.075, 8, 28);
+  const holeMat = new THREE.MeshStandardMaterial({color:0x0d171b, roughness:0.6, metalness:0.4});
+  const hole = new THREE.Mesh(holeG, holeMat);
+  hole.position.set(0, -hBot - 0.58, -H_LEN + 0.30);
+  g.add(hole);
+
+  // ---- soft rolled edge ----
+  const edge = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.075, 8, 28, Math.PI), new THREE.MeshStandardMaterial({color:colB, roughness:0.32, metalness:0.9}));
+  edge.rotation.set(Math.PI/2, 0, 0);
+  edge.position.set(0, -hBot, 0.1);
+  g.add(edge);
+
+  return g;
+}
+
+/* ---- fern relief relief: a milled fern sprig ---- */
+function makeFernRelief(w, h, depth, colA, accent){
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({color:colA, roughness:0.42, metalness:0.72, envMapIntensity:1.0});
+  const mid = new THREE.MeshStandardMaterial({color:accent, metalness:0.95, roughness:0.16, envMapIntensity:1.1});
+  const segs = 6;
+  // stem
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(0.045, depth*0.35, h*1.0), mid);
+  stem.position.set(0,-h/2,0);
+  g.add(stem);
+  const leafMat = m;
+  // leaflets each side
+  for(let i=0;i<7;i++){
+    const t = 0.14 + i*0.11;
+    const yy = -h/2 + h*t;
+    const lw = (1.0 - Math.abs(t-0.5)*1.55) * 0.55;
+    for(const s of [-1,1]){
+      const lf = new THREE.Mesh(new THREE.CircleGeometry(1, 7), leafMat);
+      lf.scale.set(lw, 0.30 + i*0.05, depth*0.42);
+      lf.rotation.x = s * (0.62 - i*0.035);
+      lf.rotation.z = 0.0;
+      lf.position.set(s*(lw*0.72), yy, 0);
+      g.add(lf);
+    }
+    // little cross-vein
+    const vg2 = new THREE.Mesh(new THREE.BoxGeometry(0.028*0, depth*0.2, 0.02), mid);
+  }
+  // tiny tip
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), mid);
+  tip.rotation.x = -Math.PI/2; tip.position.set(0, h/2 - 0.02, 0);
+  g.add(tip);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+/* ---------- handle liner ---------- */
+function makeLiner(w, h){
+  const geo = new THREE.CylinderGeometry(w/2, h/2, 2.6, 20, 1, true);
+  return geo;
+}
+
+/* ---------- pivot assembly ---------- */
+function buildPivotAssembly(root, C, isSafe){
+  const steel = new THREE.MeshStandardMaterial({color:0xc8dbe4, metalness:1.0, roughness:0.16, envMapIntensity:1.25});
+  const steelDark = new THREE.MeshStandardMaterial({color:0x6f858f, metalness:1.0, roughness:0.22, envMapIntensity:1.0});
+  const collarMat = new THREE.MeshStandardMaterial({color:C.accent, metalness:1.0, roughness:0.14, envMapIntensity:1.15, clearcoat:1, clearcoatRoughness:0.06});
+
+  // bushing (blue-steel sleeve)
+  const bush = new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.17,1.28,24), steelDark);
+  bush.rotation.x = Math.PI/2; bush.castShadow=true; root.add(bush);
+  // washers
+  const washerGeo = new THREE.CylinderGeometry(0.30,0.30,0.055,24);
+  const w1 = new THREE.Mesh(washerGeo, steel); w1.rotation.x=Math.PI/2; w1.position.z=-0.72; root.add(w1);
+  const w2 = new THREE.Mesh(washerGeo, steel); w2.rotation.x=Math.PI/2; w2.position.z= 0.72; root.add(w2);
+  const w3 = new THREE.Mesh(washerGeo, steel); w3.rotation.x=Math.PI/2; w3.position.z=-0.44; root.add(w3);
+  const w4 = new THREE.Mesh(washerGeo, steel); w4.rotation.x=Math.PI/2; w4.position.z= 0.44; root.add(w4);
+  // cyan anodised pivot collar (signature colour)
+  for(const s of [-0.79,0.79]){
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.245,0.245,0.075,24), collarMat);
+    col.rotation.x=Math.PI/2; col.position.z=s; col.castShadow=true; root.add(col);
+    // radial facet marks
+    for(let i=0;i<8;i++){
+      const f = new THREE.Mesh(new THREE.BoxGeometry(0.012,0.34,0.014), new THREE.MeshStandardMaterial({color:'#0d4b5c', metalness:1.0, roughness:0.18}));
+      f.rotation.z = i*Math.PI/4; f.rotation.y = 0.35; f.position.z = s;
+      root.add(f);
+    }
+  }
+  // pivot screw head (countersunk)
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.29,0.29,0.10,28), new THREE.MeshStandardMaterial({color:0xd9e8ef, metalness:1.0, roughness:0.12, envMapIntensity:1.2}));
+  head.rotation.x = Math.PI/2; head.position.z = -0.88; head.castShadow = true; root.add(head);
+  const screwCross = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.05,0.045), new THREE.MeshStandardMaterial({color:0x93aab4, metalness:1, roughness:0.2}));
+  screwCross.rotation.z = Math.PI/4; screwCross.rotation.x=Math.PI/2; screwCross.position.z=-0.935; root.add(screwCross);
+  // tang slot visual
+  const tangSlot = new THREE.Mesh(new THREE.BoxGeometry(0.19,0.30,0.24), new THREE.MeshStandardMaterial({color:'#0e1b20', metalness:0.55, roughness:0.45}));
+  tangSlot.rotation.x = Math.PI/2; tangSlot.position.z = 0; root.add(tangSlot);
+
+  return root;
+}
+
+/* ---------- zen pin ---------- */
+function makeZenPin(){
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({color:0xb7c9d1, metalness:1.0, roughness:0.2, envMapIntensity:1.15});
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.055,1.1,16), m);
+  bar.rotation.x = Math.PI/2; g.add(bar);
+  const tipMat = new THREE.MeshStandardMaterial({color:'#d9885a', metalness:0.7, roughness:0.35});
+  for(const s of [-0.42,0.42]){
+    const t = new THREE.Mesh(new THREE.ConeGeometry(0.075,0.20,14), tipMat);
+    t.rotation.x = s<0 ? -Math.PI/2 : Math.PI/2;
+    t.position.z = s; g.add(t);
+  }
+  const clip = new THREE.Mesh(new THREE.CylinderGeometry(0.10,0.10,0.09,18), m);
+  clip.rotation.x = Math.PI/2; clip.position.z = 0; g.add(clip);
+  g.traverse(o=>{if(o.isMesh) o.castShadow = true;});
+  return g;
+}
+
+/* ---------- blade half ---------- */
+function makeBladeHalf(tangLen, tangW, bladeLen, bladeMat, innerMat){
+  const g = new THREE.Group();
+
+  /* --- tang: extruded profile in YZ, extruded along X --- */
+  const tangPts = [
+    [-tangW/2, 0.02],
+    [ tangW/2, 0.02],
+    [ tangW/2, -0.30],
+    [-tangW/2, -0.30],
+  ];
+  const tangShape = new THREE.Shape();
+  tangShape.moveTo(-tangW/2, 0.0);
+  tangShape.lineTo(tangW/2, 0.0);
+  tangShape.lineTo(tangW/2, -0.34);
+  tangShape.lineTo(-tangW/2, -0.34);
+  tangShape.closePath();
+  const tangGeo = new THREE.ExtrudeGeometry(tangShape, {depth:0.10, bevelEnabled:true, bevelSegments:2, bevelSize:0.035, bevelThickness:0.03});
+  tangGeo.translate(0,0,-0.05);
+  // rotate so that "x" in shape becomes Z: build shape in (Z,Y) then rotateX? Easier: build along Z using XY shape then rotateY
+  // We'll build the profile in XY then rotate the mesh -90 about Y to lay it along Z.
+  // Keep simple: tang extruded along X then rotate group.
+  const tang = new THREE.Mesh(tangGeo, new THREE.MeshStandardMaterial({
+    map: damascTex(), color: 0x9fb6bf, metalness:0.92, roughness:0.28, envMapIntensity:0.95
+  }));
+  tang.rotation.y = Math.PI/2;   // x-> z... rotating about Y by +90 maps +X to -Z
+  tang.position.z = -(tangLen/2);
+  tang.rotation.y = -Math.PI/2;
+  tang.castShadow = true; tang.receiveShadow = true;
+  g.add(tang);
+
+  // tang slot & grain lines engraved
+  // slot between two half-tangs is filled by pivot hardware on the other side.
+
+  /* --- blade: 2D profile extruded in Z with bevel, then a thin ground edge --- */
+  const prof = [
+    [0.020, 0.16],     // at pivot, under tang
+    [0.035, 0.30],
+    [0.070, 0.55],
+    [0.130, 0.74],
+    [0.230, 0.90],
+    [0.400, 1.02],
+    [0.600, 1.09],
+    [0.760, 1.12],     // spine max
+    [1.000, 1.115],
+    [1.220, 1.07],
+    [1.400, 0.98],
+    [1.500, 0.85],
+    [1.545, 0.72],
+    [1.545, 0.55],     // choil top
+    [1.470, 0.50],
+    [1.440, 0.36],
+    [1.445, 0.24],     // choil bottom
+    [1.340, 0.06],
+    [1.200, -0.10],
+    [1.050, -0.28],
+    [0.800, -0.48],
+    [0.520, -0.60],
+    [0.240, -0.62],
+    [0.050, -0.615],
+  ];
+  // build a shape from (y, -z)? We want: y = height, length along +Z.
+  // Use shape in (x=y, y=length) then rotate.
+  const shape = new THREE.Shape();
+  const P = prof.map(p=>[p[0], p[1]]);   // (y, z)
+  shape.moveTo(P[0][0], P[0][1]);
+  for(let i=1;i<P.length;i++) shape.lineTo(P[i][0], P[i][1]);
+  shape.lineTo(0.0, B_LEN);
+  shape.lineTo(0.0, 0.0);
+  shape.closePath();
+
+  const bevel = 0.062;
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.052, bevelEnabled: true, bevelSegments: 4, bevelSize: bevel, bevelThickness: bevel, curveSegments: 6
+  });
+  geo.translate(0,0,-0.052-bevel);
+
+  const blade = new THREE.Mesh(geo, bladeMat);
+  // orient: shape x -> blade y, shape y -> blade z
+  blade.rotation.y = Math.PI/2;   // shape +X -> world +Y? rotation about Y by +90: (x,y,0)->(y? ) 
+  // rotation about Y by angle a: x' = x cos a + z sin a ; z' = -x sin a + z cos a
+  // with a = -PI/2: x' = -z, z' = x. So shape +X (y-coord of profile) -> world +Z?? no.
+  // Let's use a = -PI/2: point (1,0,0) -> (0,0,1)? x'=1*cos(-90)+0 = 0; z' = -1*sin(-90)=1. yes +Z. 
+  blade.rotation.y = -Math.PI/2;
+  blade.castShadow = true; blade.receiveShadow = true;
+  g.add(blade);
+
+  // edge bevel: thin satin face on the cutting side
+  const edgeGeo = new THREE.BoxGeometry(0.05, 0.030, B_LEN-1.4);
+  const edgeMesh = new THREE.Mesh(edgeGeo, innerMat);
+  edgeMesh.position.set(0, -0.565, B_LEN*0.5 - 0.55);
+  blade.add(edgeMesh);
+
+  // spine highlight line
+  const spineMesh = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.012, B_LEN-1.3), innerMat);
+  spineMesh.position.set(0, 1.108, B_LEN*0.5 - 0.55);
+  blade.add(spineMesh);
+
+  // blade tip "frost" — a small satin ball at the point
+  const tipG = new THREE.SphereGeometry(0.045, 10, 8);
+  const tip = new THREE.Mesh(tipG, innerMat);
+  tip.position.set(0, 1.115, B_LEN-0.02);
+  blade.add(tip);
+
+  // skeletonised window pattern: a fern-shaped hole through the blade
+  // We fake it with a darker recess + a visible gap via a second, thinner extrusions layered.
+  addBladeWindow(blade, shape, bevel, innerMat);
+
+  /* --- CHONO / choil scallop --- */
+  const choil = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.045, 8, 20, Math.PI), innerMat);
+  choil.position.set(0, 0.20, 0.10);
+  blade.add(choil);
+
+  // maker's mark etched on the blade
+  addMakerMark(blade, 0.02);
+
+  /* --- tang pin holes (visualization) --- */
+  return g;
+}
+
+/* --- blade window: fern-shaped recessed cutout represented by a thin dark overlay + inner satin leaf --- */
+function addBladeWindow(bladeMesh, shape, bevel, innerMat){
+  const g = new THREE.Group();
+  g.position.set(0,0,0);
+
+  // compute approximate frond outline in blade-local (y, z)
+  // Frond of length 5.2 starting at z=1.9, rising to y=0.95
+  const pts = [];
+  const baseY = 0.80, baseZ = 1.75;
+  for(let i=0;i<=40;i++){
+    const t = i/40;
+    const z = baseZ + t*5.0;
+    const wdt = 0.10 + Math.sin(t*Math.PI*1.5)*0.30*(1-t*0.5);
+    pts.push([baseY + t*0.28, z]);
+  }
+  const frond = new THREE.Shape();
+  frond.moveTo(pts[0][0], pts[0][1]);
+  for(let i=1;i<pts.length;i++) frond.lineTo(pts[i][0], pts[i][1]);
+  frond.closePath();
+
+  // second frond, mirrored, shorter
+  const frond2 = new THREE.Shape();
+  frond2.moveTo(baseY-0.40, 2.5);
+  frond2.bezierCurveTo(baseY-0.1,3.0, baseY-0.5,3.6, baseY-0.3,4.3);
+  frond2.bezierCurveTo(baseY-0.05,4.0, baseY-0.25,4.9, baseY-0.3,5.6);
+  frond2.bezierCurveTo(baseY-0.42,4.9, baseY-0.5,4.2, baseY-0.55,3.5);
+  frond2.bezierCurveTo(baseY-0.62,3.6, baseY-0.72,3.1, baseY-0.40,2.5);
+  frond2.closePath();
+
+  // side (left) window
+  const winMat = new THREE.MeshPhysicalMaterial({
+    color: 0x071115, metalness: 0.6, roughness: 0.30, envMapIntensity:0.9, clearcoat:0.6
+  });
+  const windowSide = (x) => {
+    const s = new THREE.Shape();
+    s.moveTo(0.02,0.02);
+    s.lineTo(1.05,0.02);
+    s.lineTo(1.05, B_LEN-0.02);
+    s.lineTo(0.02,B_LEN-0.02);
+    s.closePath();
+    const hole = new THREE.Path();
+    const build = (sh) => {
+      const p = new THREE.Path();
+      const a = sh.getPoints(64);
+      a.forEach((pt,i)=> i?p.lineTo(pt.x,pt.y):p.moveTo(pt.x,pt.y));
+      p.closePath();
+      return p;
+    };
+    hole.holes.push(build(frond));
+    hole.holes.push(build(frond2));
+    s.holes.push(hole);
+    const gg = new THREE.ExtrudeGeometry(s, {depth:0.006, bevelEnabled:false, curveSegments:6});
+    gg.translate(0,0,-0.006);
+    const m = new THREE.Mesh(gg, winMat);
+    m.rotation.y = x*Math.PI/2;
+    m.position.z = 0.1;
+    m.scale.z = 1;
+    return m;
+  };
+  const wL = windowSide(-1);
+  wL.scale.set(1, 1.0, 1);
+  const wR = windowSide(1);
+  wR.scale.set(1, 1.0, 1);
+
+  // The blade geometry's "shape y" maps to world z after rotation.y = -PI/2.
+  // So extrude depth along shape +Z maps to world -X. Hence side windows at world x = ±0.048.
+  wL.position.x = -0.030; wL.rotation.y = 0;      // actually simpler: build windows in blade-local directly
+  wR.position.x = 0.030; wR.rotation.y = 0;
+
+  bladeMesh.add(wL, wR);
+
+  // Inner satin leaf that fills the window with a satin tone, slightly inset
+  const innerLeaf = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 4.6), innerMat);
+  innerLeaf.rotation.x = -Math.PI/2;  // flat
+  // convert: leaf on the YZ plane facing x
+  innerLeaf.rotation.y = Math.PI/2;
+  innerLeaf.position.set(0, 0.86, 3.6);
+  bladeMesh.add(innerLeaf);
+
+  // engraving of the window veins
+  const veinMat = new THREE.MeshStandardMaterial({color:0x8fb6c2, metalness:0.9, roughness:0.25, envMapIntensity:1.0});
+  for(const [x, side] of [[-0.049,1],[0.049,1]]){
+    const vg = new THREE.Group();
+    for(let i=0;i<6;i++){
+      const l = 0.9 - i*0.11;
+      const v = new THREE.Mesh(new THREE.BoxGeometry(0.005,0.055,l*0.9), veinMat);
+      v.rotation.y = Math.PI/2;
+      v.position.set(x, 0.92 + 0.9 - i*0.62, 2.9 + i*0.22);
+      vg.add(v);
+    }
+    bladeMesh.add(vg);
+  }
+}
+
+/* --- maker's mark etched on blade --- */
+function addMakerMark(parent, z){
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({color:0xa9c8d2, metalness:1.0, roughness:0.34, envMapIntensity:1.0});
+  // hexagonal lozenge
+  const hx = new THREE.Shape();
+  const r = 0.20;
+  for(let i=0;i<6;i++){
+    const a = i*Math.PI/3 + Math.PI/6;
+    const p = hx.getPoints ? null : null;
+  }
+  // hexagon outline
+  const hex = new THREE.Shape();
+  for(let i=0;i<6;i++){
+    const a = i*Math.PI/3;
+    const x = Math.cos(a)*r*0.9, y = Math.sin(a)*r*0.62;
+    i?hex.lineTo(x,y):hex.moveTo(x,y);
+  }
+  hex.closePath();
+  const hexMesh = new THREE.Mesh(new THREE.ShapeGeometry(hex), m);
+  hexMesh.rotation.x = -Math.PI/2;
+  hexMesh.rotation.z = Math.PI/6;
+  hexMesh.position.set(0, 0.55, z);
+  g.add(hexMesh);
+
+  // little sprout inside
+  const sprout = new THREE.Group();
+  sprout.position.set(0, 0.55, z + 0.001);
+  const st = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.16, 0.014), m);
+  st.position.y = 0; sprout.add(st);
+  for(const s of [-1,1]){
+    const lf = new THREE.Mesh(new THREE.CircleGeometry(0.075, 6), m);
+    lf.scale.set(1,0.55,1);
+    lf.rotation.set(s<0?0.5:-0.5, 0, s*0.45);
+    lf.position.set(s*0.055, 0.045, 0);
+    sprout.add(lf);
+  }
+  g.add(sprout);
+
+  parent.add(g);
+
+  // motto on tang
+  const motto = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.55, 0.075),
+    new THREE.MeshStandardMaterial({color:0x9db8c2, metalness:1.0, roughness:0.3, envMapIntensity:1.0})
+  );
+  motto.rotation.x = -Math.PI/2;
+  motto.position.set(0, 0.0, z);
+  parent.add(motto);
+}
+
+/* ---------- blade material ---------- */
+let bladeMatCache = null;
+function bladeMaterial(){
+  if(bladeMatCache) return bladeMatCache;
+  const pal = C;
+  const map = makeCanvas(1024, 64), g = map.getContext('2d');
+  // pale satin with frost
+  g.fillStyle = pal.bladeA; g.fillRect(0,0,1024,64);
+  for(let i=0;i<4000;i++){
+    g.fillStyle = i%2 ? `rgba(255,255,255,${0.03+Math.random()*0.10})` : `rgba(70,110,130,${0.02+Math.random()*0.07})`;
+    g.fillRect(Math.random()*1024, Math.random()*64, 1+Math.random()*16, 0.7+Math.random()*1.8);
+  }
+  for(let i=0;i<160;i++){
+    g.fillStyle = `rgba(255,255,255,${0.02+Math.random()*0.06})`;
+    g.beginPath();
+    const x=Math.random()*1024, y=Math.random()*64, r=2+Math.random()*16;
+    g.ellipse(x,y,r,0.6+Math.random()*1.8,0,0,7); g.fill();
+  }
+  const t = new THREE.CanvasTexture(map); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1,1); t.colorSpace=THREE.SRGBColorSpace;
+  bladeMatCache = new THREE.MeshPhysicalMaterial({
+    map:t,
+    color:0xffffff,
+    metalness:0.92,
+    roughness:0.16,
+    clearcoat:1.0, clearcoatRoughness:0.09,
+    iridescence:0.22, iridescenceIOR:1.4, iridescenceThicknessRange:[120,600],
+    envMapIntensity:1.25
+  });
+  return bladeMatCache;
+}
+
+function innerBladeMaterial(){
+  if(innerBladeMaterial._m) return innerBladeMaterial._m;
+  const c = makeCanvas(256,256), g = c.getContext('2d');
+  g.fillStyle='#dff0f6'; g.fillRect(0,0,256,256);
+  for(let i=0;i<2000;i++){
+    g.fillStyle=`rgba(255,255,255,${0.05+Math.random()*0.2})`;
+    g.fillRect(Math.random()*256, Math.random()*256, 1+Math.random()*20, 0.8+Math.random()*1.4);
+  }
+  const t=new THREE.CanvasTexture(c); t.repeat.set(4,12); t.colorSpace=THREE.SRGBColorSpace;
+  return innerBladeMaterial._m = new THREE.MeshPhysicalMaterial({map:t, color:0xeaf7fc, metalness:0.95, roughness:0.13, clearcoat:1, clearcoatRoughness:0.06, envMapIntensity:1.3});
+}
+
+/* ---------- kicker ---------- */
+function makeKicker(){
+  const g = new THREE.Group();
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.14, 0.0);
+  shape.quadraticCurveTo(0, 0.10, 0.14, 0.0);
+  shape.lineTo(0.12, -0.09);
+  shape.lineTo(-0.12, -0.09);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {depth:0.16, bevelEnabled:true, bevelSegments:2, bevelSize:0.02, bevelThickness:0.02});
+  geo.translate(0,0,-0.08);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color:0xc7dde6, metalness:0.95, roughness:0.2, envMapIntensity:1.05}));
+  return m;
+}
+
+/* ---------- latch ---------- */
+function buildLatch(root, C){
+  const g = new THREE.Group();
+  const brass = new THREE.MeshStandardMaterial({color:0xffffff, metalness:1.0, roughness:0.16, envMapIntensity:1.2});
+  const latheM = new THREE.MeshStandardMaterial({color:C.latch, metalness:1.0, roughness:0.16, envMapIntensity:1.1, clearcoat:1, clearcoatRoughness:0.05});
+  // leaf-shaped latch body
+  const leaf = new THREE.Shape();
+  leaf.moveTo(0, 0.02);
+  leaf.bezierCurveTo(0.30, 0.02, 0.34, 0.42, 0.22, 0.78);
+  leaf.bezierCurveTo(0.16, 0.98, -0.02, 1.05, -0.20, 0.98);
+  leaf.bezierCurveTo(-0.36, 0.90, -0.38, 0.62, -0.26, 0.40);
+  leaf.bezierCurveTo(-0.16, 0.18, -0.10, 0.02, 0, 0.02);
+  leaf.closePath();
+  const lg = new THREE.ExtrudeGeometry(leaf, {depth:0.13, bevelEnabled:true, bevelSegments:3, bevelSize:0.035, bevelThickness:0.03, curveSegments:20});
+  lg.translate(0,0,-0.065);
+  const lm = new THREE.Mesh(lg, latheM);
+  lm.rotation.y = -Math.PI/2;  // extrude depth along X -> thickness across knife
+  lm.castShadow = true; lm.receiveShadow = true;
+  g.add(lm);
+
+  // central spring pin (rolled, looks like a spiral)
+  const pin = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.035, 10, 24), latheM);
+  pin.rotation.x = Math.PI/2;
+  pin.position.set(-0.03, 0.52, 0);
+  g.add(pin);
+
+  // two spring leaves behind
+  for(const s of [-1,1]){
+    const leaf2 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.045, 0.12), latheM);
+    leaf2.position.set(-0.10, 0.52, s*0.115);
+    leaf2.rotation.y = s*0.3;
+    g.add(leaf2);
+  }
+
+  // hook end that catches the tang
+  const hook = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.34, 0.16), latheM);
+  hook.position.set(0.20, 0.30, 0);
+  hook.rotation.x = -0.25;
+  g.add(hook);
+
+  // tiny icon (fern)
+  const im = new THREE.Mesh(new THREE.CircleGeometry(0.075, 10), new THREE.MeshStandardMaterial({color:C.accent, metalness:0.95, roughness:0.2, envMapIntensity:1.1}));
+  im.rotation.x = -Math.PI/2;
+  im.position.set(0.02, 0.62, 0.0);
+  g.add(im);
+
+  root.add(g);
+
+  // stored for animation
+  latchUserData = g;
+  latchOffset = new THREE.Vector3(0.0, 0.5, 0);
+  latchAngle = 0;
+  latchMesh = lm;
+  latchIsOpen = false;
+  latchOpenAmount = 0;
+}
+
+let latchUserData=null, latchMesh=null, latchOpenAmount=0, latchAngle=0;
+
+/* ---------- explode setup ---------- */
+function explodeSetup(){
+  const biteHandle = parts.biteHandle;
+  // compute world offsets relative to knifeRoot
+  const bitePos = new THREE.Vector3(0, -2.55, -(H_LEN/2+0.02));
+  const safePos = new THREE.Vector3(0,  2.55, -(H_LEN/2+0.02));
+  parts._exp = {
+    biteHandle: new THREE.Vector3(0,-3.4,-1.5),
+    safeHandle: new THREE.Vector3(0, 3.4,-1.5),
+    bladeA: new THREE.Vector3(-1.7, -1.9, 2.2),
+    bladeB: new THREE.Vector3( 1.7, -1.9, 2.2),
+    latch: new THREE.Vector3(0, -5.6, 2.4),
+  };
+}
+
+/* ---------- update transforms ---------- */
+function applyPose(pose, dt, t){
+  const biteA = pose.bite, safeA = pose.safe;
+  bite.rotation.z = biteA;
+  safe.rotation.z = safeA;
+  // latch follows
+  const apart = Math.abs(safeA - biteA);
+  const latched = apart < 0.09;
+  latchOpenAmount += ((latched ? 0 : 1) - latchOpenAmount) * Math.min(1, dt*18);
+  latchMesh.rotation.x = lerp(0, 1.35, latchOpenAmount) + Math.sin(latchOpenAmount*Math.PI)*0.12;
+  latchMesh.position.x = 0.02 + 0.10*latchOpenAmount;
+  latchMesh.position.z = -0.12*latchOpenAmount;
+
+  // explode offsets
+  const ex = pose.explode || 0;
+  const target = ex * 1.0;
+  const biteH = parts._exp.biteHandle, safeH = parts._exp.safeHandle;
+  const bA = parts.bladeA, sA = parts.bladeB;
+  const e = THREE.MathUtils.lerp(0, 1, target);
+  biteHandleWorldOffset.set(
+    biteH.x*e, biteH.y*e, biteH.z*e
+  );
+  // apply explode to the root groups
+  parts.explodeRootBite.position.copy(biteHandleWorldOffset);
+  parts.explodeRootSafe.position.copy(new THREE.Vector3(safeH.x*e, safeH.y*e, safeH.z*e));
+  parts.explodeRootBladeA.position.copy(new THREE.Vector3(bA.x*e, bA.y*e, bA.z*e));
+  parts.explodeRootBladeB.position.copy(new THREE.Vector3(bA.x*e, bA.y*e, bA.z*e).multiplyScalar(-1));
+  parts.explodeRootLatch.position.copy(new THREE.Vector3(0, -4.6*e, 1.9*e));
+  parts.explodeRootLatch.rotation.y = -1.2*e;
+
+  // explode on pivot screws etc.: just hide extra
+  scene.userData.explodeT = e;
+}
+
+const biteHandleWorldOffset = new THREE.Vector3();
+
+/* =========================================================
+   MANIMATION / POSES
+========================================================= */
+const PI = Math.PI;
+
+// A move is a list of keys: [t, biteAngle, safeAngle, extraRot(radians), spin(radians), ease]
+// Angle units: radians. Bite handle rotates about Y axis so that the handle sweeps.
+// bite rotation.z: positive rotates handle upward (toward +Y) which for a group at origin
+// with handle pointing -Z means the handle tip swings toward +X.
+const POSES = {
+  basicOpen: [
+    [0.00, 0.00, 0.00, 0, 0],
+    [0.16, 0.00, 0.00, 0, 0],
+    [0.24, 0.00, 0.42, 0, 0],
+    [0.34, 0.00, 2.45, 0, 0],
+    [0.40, 0.00, 0.95, 0, 0],
+    [0.52, 0.00, -1.10, 0, 0],
+    [0.60, 0.00, -1.55, 0, 0],
+    [0.66, 0.00, -1.57, 0, 0],
+    [0.72, 0.00, -1.57, 0, 0],
+    [1.00, 0.00, -1.57, 0, 0],
+  ],
+  basicClose: [
+    [0.00, 0.00, -PI, 0, 0],
+    [0.08, 0.00, -PI, 0, 0],
+    [0.16, 0.00, -2.62, 0, 0],
+    [0.30, 0.00, -1.30, 0, 0],
+    [0.40, 0.00, -0.55, 0, 0],
+    [0.46, 0.00, -0.28, 0, 0],
+    [0.50, 0.00, 0.00, 0, 0],
+    [1.00, 0.00, 0.00, 0, 0],
+  ],
+  chaplin: [
+    [0.00, 0.00, -PI, 0, 0],
+    [0.06, 0.00, -PI, 0, 0],
+    [0.14, 0.00, -3.05, 0, 0],
+    [0.30, 0.00, -1.60, 0, 0],
+    [0.44, 0.10, -1.58, 0, 0],
+    [0.56, 0.60, -1.50, 0, 0],
+    [0.70, 1.20, -1.42, 0, 0],
+    [0.82, 1.55, -1.38, 0, 0],
+    [0.92, 1.57, -1.37, 0, 0],
+    [1.00, 1.57, -1.37, 0, 0],
+  ],
+  zenRollover: [
+    [0.00, 1.57, -1.37, 0, 0],
+    [0.06, 1.57, -1.37, 0, 0],
+    [0.16, 1.50, -1.30, 0, 0],
+    [0.34, 0.95, -0.85, 0, 0],
+    [0.52, 0.45, -0.40, 0, 0],
+    [0.66, 0.10, -0.05, 0, 0],
+    [0.74, 0.00, 0.00, 0, 0],
+    [1.00, 0.00, 0.00, 0, 0],
+  ],
+  fan: [
+    [0.00, 0.00, -PI, 0, 0],
+    [0.05, 0.00, -PI, 0, 0],
+    [0.12, 0.00, -2.60, 0, 0],
+    [0.20, 0.02, -1.10, 0, 0],
+    [0.30, 0.06, -0.05, 0, 0],
+    [0.36, 0.20, 0.45, 0, 0],
+    [0.44, 0.00, 0.00, 0, 0],
+    [0.48, 0.00, 0.00, 0, 0],
+    [1.00, 0.00, 0.00, 0, 0],
+  ],
+  helix: [
+    [0.00, 0.00, -PI, 0, 0],
+    [0.05, 0.00, -PI, 0, 0],
+    [0.12, 0.00, -2.60, 0, 0],
+    [0.22, 0.00, -1.10, 0, 0],
+    [0.32, 0.02, -0.05, 0, 0],
+    [0.40, 0.25, 0.40, 0, 0],
+    [0.46, 0.00, 0.00, 0, 0],
+    [1.00, 0.00, 0.00, 0, 0],
+  ],
+  arial: [
+    [0.00, 0.00, -PI, 0, 0],
+    [0.05, 0.00, -PI, 0, 0],
+    [0.12, 0.00, -2.70, 0, 0],
+    [0.24, 0.00, -1.35, 0, 0],
+    [0.36, 0.02, -0.25, 0, 0],
+    [0.44, 0.08, 0.30, 0, 0],
+    [0.50, 0.00, 0.00, 0, 0],
+    [0.54, 0.00, 0.00, 0, 0],
+    [1.00, 0.00, 0.00, 0, 0],
+  ],
+  winterfern: [
+    [0.00, 0.00, -PI, 0, 0],
+    [0.05, 0.00, -PI, 0, 0],
+    [0.12, 0.00, -2.75, 0, 0],
+    [0.24, 0.00, -1.45, 0, 0],
+    [0.34, 0.05, -0.40, 0, 0],
+    [0.44, 0.30, 0.20, 0, 0],
+    [0.54, 0.00, 0.00, 0, 0],
+    [0.58, 0.00, 0.00, 0, 0],
+    [1.00, 0.00, 0.00, 0, 0],
+  ],
+};
+
+/* ---------- full gesture with overall rotation, tilt, spin ---------- */
+// Each move is defined as a timeline in "normalized seconds" (0..1),
+// with overall rotation about Y (yaw), X (pitch), Z (roll), spin about Z, and a hop.
+const MOVES = [
+  { id:'basicOpen', name:'Basic Open', n:'01', dur:1.35, fn:'basicOpen',
+    pose:'open', startClosed:true,
+    track:{ y0:0.0, y1:0.05, x0:0.15, x1:0.20, z0:0.0, z1:0.0, spin0:0, spin1:0.0, hop:0.0 } },
+  { id:'basicClose', name:'Basic Close', n:'02', dur:1.10, fn:'basicClose',
+    pose:'closed', startClosed:true,
+    track:{ y0:0.06, y1:0.10, x0:0.22, x1:0.26, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+  { id:'chaplin', name:'Chaplin', n:'03', dur:1.55, fn:'chaplin',
+    pose:'open', startClosed:true,
+    track:{ y0:0.10, y1:0.20, x0:0.26, x1:0.34, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+  { id:'zenRollover', name:'Zen Rollover', n:'04', dur:1.45, fn:'zenRollover',
+    pose:'open', startClosed:true,
+    track:{ y0:0.20, y1:0.12, x0:0.34, x1:0.42, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+  { id:'fan', name:'Flower Fan', n:'05', dur:1.70, fn:'fan',
+    pose:'open', startClosed:true,
+    track:{ y0:0.12, y1:0.18, x0:0.38, x1:0.46, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+  { id:'helix', name:'Helix', n:'06', dur:1.60, fn:'helix',
+    pose:'open', startClosed:true,
+    track:{ y0:0.18, y1:0.28, x0:0.30, x1:0.38, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+  { id:'arial', name:'Aerial', n:'07', dur:2.10, fn:'arial',
+    pose:'open', startClosed:true,
+    track:{ y0:0.26, y1:0.36, x0:0.30, x1:0.44, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+  { id:'winterfern', name:'Winterfern', n:'08', dur:1.90, fn:'winterfern',
+    pose:'open', startClosed:true,
+    track:{ y0:0.16, y1:0.24, x0:0.22, x1:0.32, z0:0.0, z1:0.0, spin0:0, spin1:0, hop:0.0 } },
+];
+
+/* ---------- driving ---------- */
+let state = {
+  mode:'move',
+  moveIndex:0,
+  t:0,
+  playing:true,
+  speed:1,
+  slow:0,
+  trail:false,
+  muted:false,
+  audioReady:false,
+  showUI:true,
+};
+
+const poseCurrent = { bite:0, safe:0, yaw:0, pitch:0, roll:0, spin:0, explode:0, explodeTarget:0 };
+
+function setMode(m){
+  state.mode = m;
+  state.t = 0;
+  state.playing = true;
+  state.moveIndex = 0;
+  document.querySelectorAll('#segMode button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  // snap to a sensible opening
+  if(m==='combo' || m==='free'){ /* play */ }
+  if(m==='free'){ startFree(); }
+}
+
+/* ---------- interpolate ---------- */
+function sampleTimeline(tl, t){
+  t = Math.max(0, Math.min(1, t));
+  for(let i=0;i<tl.length-1;i++){
+    const a = tl[i], b = tl[i+1];
+    if(t >= a[0] && t <= b[0]){
+      const k = (t - a[0]) / Math.max(1e-6, b[0]-a[0]);
+      const e = k*k*(3-2*k);
+      return { bite: a[1]+(b[1]-a[1])*e, safe: a[2]+(b[2]-a[2])*e, rot: a[3]+(b[3]-a[3])*e, spin: a[4]+(b[4]-a[4])*e };
+    }
+  }
+  const l = tl[tl.length-1];
+  return { bite:l[1], safe:l[2], rot:l[3], spin:l[4] };
+}
+
+/* make a nicer easing for the whole timeline (smoothstep per segment is fine) */
+
+/* =========================================================
+   AUDIO
+========================================================= */
+const AudioSys = {
+  ctx:null, master:null, muted:false, noiseBuf:null,
+  init(){
+    if(this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.0;
+    this.master.connect(this.ctx.destination);
+    // noise buffer
+    const len = this.ctx.sampleRate * 2;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    this.noiseBuf = buf;
+    this.volTarget = 0.72;
+  },
+  setVol(v){
+    this.volTarget = v;
+    if(this.ctx) this.master.gain.setTargetAtTime(v*0.9, this.ctx.currentTime, 0.05);
+  },
+  resume(){
+    if(!this.ctx) this.init();
+    if(this.ctx && this.ctx.state==='suspended') this.ctx.resume();
+  },
+  now(){ return this.ctx ? this.ctx.currentTime : 0; },
+  env(g, a, peak, d, sus=0){
+    const t0 = this.now();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t0+a);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, sus), t0+a+d);
+  },
+  /* latch click */
+  latch(close=false){
+    if(!this.ctx) return;
+    const t0 = this.now();
+    const g = this.ctx.createGain();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.11, t0+0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.09);
+    g.connect(f); f.connect(this.master);
+    // metallic tick
+    const o = this.ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(close ? 3100 : 2300, t0);
+    o.frequency.exponentialRampToValueAtTime(500, t0+0.07);
+    const g2 = this.ctx.createGain();
+    g2.gain.setValueAtTime(0.05, t0);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t0+0.06);
+    o.connect(g2); g2.connect(this.master);
+    o.start(t0); o.stop(t0+0.1);
+  },
+  /* pin clack */
+  pin(loud=1, bright=1){
+    if(!this.ctx) return;
+    const t0 = this.now();
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.26*loud, t0+0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.16*Math.min(1.6,loud+0.3));
+    const f = this.ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=3200*bright; f.Q.value=0.8;
+    g.connect(f); f.connect(this.master);
+    // body thud
+    const o = this.ctx.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(420, t0); o.frequency.exponentialRampToValueAtTime(110, t0+0.09);
+    const g2 = this.ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, t0);
+    g2.gain.exponentialRampToValueAtTime(0.13*loud, t0+0.004);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t0+0.22);
+    o.connect(g2); g2.connect(this.master);
+    o.start(t0); o.stop(t0+0.25);
+    // ring
+    this.bladeRing(0.12*loud, t0);
+  },
+  /* noise swish */
+  swish(speed, energy=1, pitchShift=1){
+    if(!this.ctx) return;
+    const t0 = this.now();
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    const base = 500 + Math.min(6000, Math.pow(speed, 1.35) * 40) * pitchShift;
+    f.frequency.setValueAtTime(base*0.7, t0);
+    f.frequency.exponentialRampToValueAtTime(base*1.5, t0 + 0.10);
+    f.Q.value = 1.4;
+    const g = this.ctx.createGain();
+    const amp = 0.02 + Math.min(0.16, speed*0.012) * energy;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, amp), t0+0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t0); src.stop(t0 + 0.3);
+  },
+  /* pivot grind */
+  pivotGrind(speed, intensity=1){
+    if(!this.ctx) return;
+    const t0 = this.now();
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 900 + Math.min(3000, speed*60);
+    f.Q.value = 7;
+    const g = this.ctx.createGain();
+    const amp = 0.012 + Math.min(0.05, speed*0.006)*intensity;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, amp), t0+0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.4);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t0); src.stop(t0+0.45);
+  },
+  /* blade ring */
+  bladeRing(amp=1, at=0){
+    if(!this.ctx) return;
+    const t0 = at || this.now();
+    const partials = [1, 2.76, 5.40, 8.93, 13.34];
+    const amps = [1, 0.42, 0.24, 0.12, 0.06];
+    const pans = [-0.4, 0.3, -0.6, 0.6, 0.1];
+    partials.forEach((p,i)=>{
+      const o = this.ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = 1750 * p * (1 + (Math.random()-0.5)*0.01);
+      const g = this.ctx.createGain();
+      const dur = 0.9 - i*0.12;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(amps[i]*amp, t0+0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+      const pan = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+      o.connect(g);
+      if(pan){ pan.pan.value = pans[i]; g.connect(pan); pan.connect(this.master); }
+      else g.connect(this.master);
+      o.start(t0); o.stop(t0+dur+0.05);
+    });
+  },
+};
+
+/* =========================================================
+   TRAIL
+========================================================= */
+let trailLine = null, trailGeom = null, trailPts = [];
+let bladeTipWorld = new THREE.Vector3();
+
+function buildTrail(){
+  trailGeom = new THREE.BufferGeometry();
+  trailGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(1200*3), 3));
+  trailGeom.setDrawRange(0,0);
+  const mat = new THREE.LineBasicMaterial({color:0x8fe9ff, transparent:true, opacity:0.72, blending:THREE.AdditiveBlending, depthWrite:false});
+  trailLine = new THREE.Line(trailGeom, mat);
+  trailLine.frustumCulled = false;
+  trailLine.visible = false;
+  scene.add(trailLine);
+}
+
+function addTrailPoint(p){
+  if(!state.trail){ trailLine.visible=false; trailPts.length=0; return; }
+  trailPts.push(p.clone());
+  if(trailPts.length > 700) trailPts.shift();
+  trailGeom.attributes.position.needsUpdate = true;
+  const arr = trailGeom.attributes.position.array;
+  for(let i=0;i<trailPts.length;i++){ arr[i*3]=trailPts[i].x; arr[i*3+1]=trailPts[i].y; arr[i*3+2]=trailPts[i].z; }
+  trailGeom.setDrawRange(0, trailPts.length);
+  trailGeom.computeBoundingSphere();
+  trailLine.visible = true;
+}
+
+function clearTrail(){
+  trailPts.length = 0;
+  trailLine.visible = false;
+  trailGeom.setDrawRange(0,0);
+}
+
+/* =========================================================
+   LABELS (exploded view)
+========================================================= */
+let labelLayer = null;
+function buildLabels(){
+  labelLayer = document.createElement('div');
+  labelLayer.id = 'labelLayer';
+  labelLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:35;overflow:hidden';
+  document.body.appendChild(labelLayer);
+}
+
+const PART_LABELS = [
+  ['biteHandle','Bite handle · fern-milled'],
+  ['safeHandle','Safe handle · ivory inlay'],
+  ['bladeA','Blade half · lower (frost-satin)'],
+  ['bladeB','Blade half · upper (frost-satin)'],
+  ['latch','Spring-loaded fern latch'],
+];
+
+function updateLabels(){
+  if(!parts._exp) return;
+  const ex = scene.userData.explodeT || 0;
+  if(ex < 0.05){ if(labelLayer) labelLayer.innerHTML=''; return; }
+  if(!labelLayer) return;
+  const arr = labelLayer.children;
+  PART_LABELS.forEach(([key, text], i)=>{
+    const part = parts[key];
+    if(!part) return;
+    const wp = new THREE.Vector3();
+    part.getWorldPosition(wp);
+    // offset outward
+    const v = new THREE.Vector3(wp.x, wp.y, wp.z);
+    if(key==='biteHandle') v.y -= 4.6;
+    if(key==='safeHandle') v.y += 4.6;
+    if(key==='bladeA') v.x -= 3.4;
+    if(key==='bladeB') v.x += 3.4;
+    if(key==='latch') v.y -= 5.2;
+    v.project(camera);
+    const x = (v.x*0.5+0.5)*innerWidth;
+    const y = (-v.y*0.5+0.5)*innerHeight;
+    let el = arr[i];
+    if(!el){
+      el = document.createElement('div');
+      el.className = 'lbl';
+      labelLayer.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.left = x+'px';
+    el.style.top = y+'px';
+    el.style.opacity = 0.92;
+  });
+}
+
+/* =========================================================
+   ANIMATION LOOP
+========================================================= */
+let lastTime = 0;
+let curYaw = 0, curPitch = 0.20, curRoll = 0, curSpin = 0;
+let prevBiteSpeed = 0, prevSafeSpeed = 0;
+let latchState = 'closed';
+let handleIsBiting = false;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  let dt = (now - lastTime)/1000;
+  lastTime = now;
+  dt = Math.min(dt, 0.05);
+
+  if(rendererOK) step(dt, now);
+}
+
+function step(dt, now){
+  const t = now/1000;
+
+  /* -------- input: manual handle drag -------- */
+  if(manual.dragging !== null && !state.manualOverride){
+    // compute angles
+    const d = manual.dragging;
+    let a = manual.angle0;
+    if(d === 'bite') a = Math.max(-2.2, Math.min(0.6, manual.angle0 + manual.dx*0.005));
+    else a = Math.min(2.2, Math.max(-0.6, manual.angle0 - manual.dx*0.005));
+    poseCurrent.bite = a;
+    poseCurrent.safe = d==='safe' ? a : poseCurrent.safe;
+    handleSpeedBite = 0; handleSpeedSafe = 0;
+  } else {
+    // audio-style click / drag inertia
+  }
+
+  if(!state.manual){
+    /* -------- move progression -------- */
+    if(state.mode === 'move'){
+      const mv = MOVES[state.moveIndex];
+      state.t += dt * (state.slow>0 ? (1-state.slow)*state.speed : state.speed);
+      if(state.t > 1){ state.t = 1; state.playing = false; }
+      applyMoveTimeline(mv, state.t, dt, t);
+    } else if(state.mode === 'combo'){
+      state.t += dt * (state.slow>0 ? (1-state.slow)*state.speed : state.speed);
+      applyComboTimeline(state.t, dt, t);
+      if(state.t >= state.comboLen){ state.t -= state.comboLen; }
+    } else if(state.mode === 'free'){
+      state.t += dt * (state.slow>0 ? (1-state.slow)*state.speed : state.speed);
+      if(!state.freeActive || state.t >= state.freeDur){
+        startFree();
+      } else {
+        applyMoveTimeline(state.freeCurMove, state.t / state.freeDur, dt, t);
+      }
+    }
+  }
+
+  /* -------- base orientation -------- */
+  const sm = state.speed;
+  curYaw += dt * 0.10 * (state.showUI ? 1 : 0.6);
+  if(state.mode === 'move' && state.t > 0.9) curYaw += dt * 0.0;
+  const mv = MOVES[state.moveIndex];
+  const tr = mv ? mv.track : null;
+  const tt = state.mode === 'move' ? state.t : (state.mode==='combo' ? state.t : (state.freeT||0));
+  if(tr){
+    const e = easeInOutCubic(tt);
+    const targetYaw = THREE.MathUtils.lerp(tr.y0, tr.y1, e);
+    const targetPitch = THREE.MathUtils.lerp(tr.x0, tr.x1, e);
+    const targetRoll = THREE.MathUtils.lerp(tr.z0, tr.z1, e);
+    curYaw += (targetYaw - curYaw) * Math.min(1, dt*2.4);
+    curPitch += (targetPitch - curPitch) * Math.min(1, dt*2.4);
+    curRoll += (targetRoll - curRoll) * Math.min(1, dt*2.4);
+  } else {
+    curYaw += dt*0.18;
+  }
+
+  /* -------- apply transform -------- */
+  knifeRoot.position.set(0, 0, 0);
+  knifeRoot.rotation.set(curPitch, curYaw, curRoll);
+  knifeRoot.rotation.z += curSpin;
+  if(state.mode === 'free' && state.freeRotZ){
+    knifeRoot.rotation.z += state.freeRotZ * dt * 60 * 0.006;
+  }
+
+  /* -------- orientation of handle groups -------- */
+  const a = poseCurrent.bite, b = poseCurrent.safe;
+  bite.rotation.z = a;
+  safe.rotation.z = b;
+
+  // latch open amount
+  const apart = Math.abs(b - a);
+  const targetLatchOpen = apart > 0.10 ? 1 : 0;
+  latchOpenAmount += (targetLatchOpen - latchOpenAmount) * Math.min(1, dt*16);
+  if(latchMesh){
+    latchMesh.rotation.x = latchOpenAmount * 1.45;
+    latchMesh.position.x = 0.03 + 0.09*latchOpenAmount;
+    latchMesh.position.z = -0.10*latchOpenAmount;
+    latchMesh.position.y = 0.5;
+  }
+
+  // latch spin snap sound when latch angle crosses threshold
+  const cross = Math.abs(Math.abs(b-a) - 1.2);
+  if(cross < 0.35){
+    // handled in sound trigger pass
+  }
+
+  /* -------- explode lerp -------- */
+  if(parts.explodeRootBite){
+    const eTarget = poseCurrent.explodeTarget;
+    const e = THREE.MathUtils.lerp(poseCurrent.explode, eTarget, Math.min(1, dt*6));
+    poseCurrent.explode = e;
+    const H = H_LEN, BL = B_LEN;
+    parts.explodeRootBite.position.set(
+      0, -2.55 - 4.6*e, -(H/2) + 1.5*e + 0.6*e
+    );
+    parts.explodeRootSafe.position.set(
+      0, 2.55 + 4.6*e, -(H/2) + 1.5*e + 0.6*e
+    );
+    parts.explodeRootBladeA.position.set(-1.35 - 1.5*e, -2.0 + 0.4*e, BL*0.30 + 2.0*e);
+    parts.explodeRootBladeB.position.set(1.35 + 1.5*e, -2.0 + 0.4*e, BL*0.30 + 2.0*e);
+    parts.explodeRootLatch.position.set(0, -5.0*e, 1.6*e);
+    parts.explodeRootLatch.rotation.y = -1.15*e;
+    parts.explodeRootLatch.rotation.x = -0.3*e;
+  }
+
+  /* -------- pin detection + sound -------- */
+  const absB = Math.abs(a), absS = Math.abs(b);
+  const nowMs = now;
+  const dB = Math.abs(a - poseCurrent._prevBite || 0) / Math.max(0.0001, dt);
+  const dS = Math.abs(b - poseCurrent._prevSafe || 0) / Math.max(0.0001, dt);
+  const biteSpd = Math.abs(a - (poseCurrent._prevBite===undefined?a:poseCurrent._prevBite)) / Math.max(0.0001, dt);
+  const safeSpd = Math.abs(b - (poseCurrent._prevSafe===undefined?b:poseCurrent._prevSafe)) / Math.max(0.0001, dt);
+
+  // store speeds for sound
+  handleSpeedBite = biteSpd;
+  handleSpeedSafe = safeSpd;
+
+  // Bite handle reaches its closed pin (bite -> 0)
+  if(!poseCurrent._bPin && Math.abs(a) < 0.045 && state.lastT < 1){
+    poseCurrent._bPin = true;
+    triggerPinSound(true, biteSpd);
+  }
+  if(Math.abs(a) > 0.08) poseCurrent._bPin = false;
+  // Bite handle reaches open pin (bite -> -PI)
+  if(!poseCurrent._bO && Math.abs(Math.abs(a) - PI) < 0.06 && state.lastT < 1){
+    poseCurrent._bO = true;
+    triggerPinSound(false, biteSpd, true);
+  }
+  if(Math.abs(Math.abs(a) - PI) > 0.15) poseCurrent._bO = false;
+
+  // Safe handle reaches open (-PI)
+  if(!poseCurrent._sO && Math.abs(Math.abs(b) - PI) < 0.06 && state.lastT < 1){
+    poseCurrent._sO = true;
+    triggerPinSound(true, safeSpd, true);
+  }
+  if(Math.abs(Math.abs(b) - PI) > 0.15) poseCurrent._sO = false;
+
+  poseCurrent._prevBite = a;
+  poseCurrent._prevSafe = b;
+  state.lastT = state.t;
+
+  // latch state change
+  const latchedNow = apart < 0.10;
+  if(latchedNow && latchState === 'open'){
+    AudioSys.latch(true);
+  } else if(!latchedNow && latchState === 'closed'){
+    AudioSys.latch(false);
+  }
+  latchState = latchedNow ? 'open' : 'closed';
+
+  // swish volume from overall angular speed
+  const overallSpd = Math.abs(a) * 0.5 + Math.abs(b) * 0.5 + Math.abs(curSpin)*0.2;
+  const swishAmp = 0.01 + Math.min(0.08, (Math.abs(biteSpd)+Math.abs(safeSpd))*0.004);
+
+  /* -------- continuous swish (gain modulation via oscillator) -------- */
+  if(!AudioSys._swish){
+    if(AudioSys.ctx){
+      const src = AudioSys.ctx.createBufferSource();
+      src.buffer = AudioSys.noiseBuf; src.loop = true;
+      const f = AudioSys.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 1200; f.Q.value = 2.2;
+      const g = AudioSys.ctx.createGain(); g.gain.value = 0.0001;
+      src.connect(f); f.connect(g); g.connect(AudioSys.master);
+      src.start();
+      AudioSys._swish = {src, f, g};
+    }
+  }
+  if(AudioSys._swish && AudioSys.ctx){
+    const s = AudioSys._swish;
+    const base = 420 + Math.min(4200, Math.abs(a)*260 + Math.abs(b)*260) * (1+state.speed*0.5);
+    s.f.frequency.setTargetAtTime(base, AudioSys.ctx.currentTime, 0.06);
+    s.g.gain.setTargetAtTime(0.0001 + swishAmp*0.5, AudioSys.ctx.currentTime, 0.08);
+  }
+
+  /* -------- pivot grind sound when handles move -------- */
+  if(AudioSys.ctx && (Math.abs(a - (poseCurrent._prevBite||0)) > 0.002 || Math.abs(b - (poseCurrent._prevSafe||0)) > 0.002)){
+    if(AudioSys.ctx.currentTime > (poseCurrent._lastGrind||0) + 0.18){
+      poseCurrent._lastGrind = AudioSys.ctx.currentTime;
+      AudioSys.pivotGrind(Math.min(1.4, Math.abs(biteSpd)+Math.abs(safeSpd)), 1);
+    }
+  }
+
+  /* -------- camera + trail -------- */
+  updateCamera(dt, t);
+  updateHandleDragVisuals();
+  if(state.trail){
+    // blade tip world position
+    const tipLocal = new THREE.Vector3(0, 1.11, B_LEN-0.05);
+    // get world position of a point on blade B tip
+    const tipObj = parts.bladeB;
+    if(tipObj){
+      tipObj.updateMatrixWorld(true);
+      const worldTip = new THREE.Vector3(0, 1.11, B_LEN-0.05).applyMatrix4(tipObj.matrixWorld);
+      bladeTipWorld.lerp(worldTip, 0.4);
+      addTrailPoint(bladeTipWorld);
+    }
+  } else {
+    clearTrail();
+  }
+
+  if(parts.explodeRootBite && scene.userData.explodeT !== undefined){
+    scene.userData.explodeT = poseCurrent.explode;
+  }
+  updateLabels();
+  updateHUD(mv);
+
+  renderer.render(scene, camera);
+}
+
+/* ---------- sound trigger helpers ---------- */
+function triggerPinSound(isBite, speed, isOpen){
+  const loud = Math.min(1.4, 0.25 + Math.abs(speed) * 0.16);
+  AudioSys.pin(loud, isOpen?1.3:0.8);
+  if(isOpen) AudioSys.bladeRing(0.5, AudioSys.now()+0.001);
+}
+
+/* =========================================================
+   MANUAL DRAG
+========================================================= */
+const manual = { dragging:null, angle0:0, dx:0 };
+let handleSpeedBite = 0, handleSpeedSafe = 0;
+
+function onPointerDown(e){
+  if(!rendererOK) return;
+  AudioSys.resume();
+  const r = renderer.domElement.getBoundingClientRect();
+  const px = (e.clientX - r.left)/r.width;
+  const py = (e.clientY - r.top)/r.height;
+  const ndc = new THREE.Vector2(px*2-1, -(py*2-1));
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+
+  // check handles first
+  const hit = ray.intersectObjects([parts.biteHandle, parts.safeHandle], true);
+  if(hit.length){
+    // find topmost handle group
+    let o = hit[0].object;
+    while(o && o !== parts.biteHandle && o !== parts.safeHandle) o = o.parent;
+    if(o === parts.biteHandle) manual.dragging = 'bite';
+    else if(o === parts.safeHandle) manual.dragging = 'safe';
+    else return;
+
+    // compute current angle from position of handle centre in the bite/safe plane
+    const biteP = new THREE.Vector3(0, -2.55, -H_LEN/2);
+    const safeP = new THREE.Vector3(0, 2.55, -H_LEN/2);
+    const wp = new THREE.Vector3(0,0,0);
+    (o === parts.biteHandle ? biteP : safeP).applyMatrix4(knifeRoot.matrixWorld);
+    // project onto the plane perpendicular to pivot axis
+    const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
+    // screen-space ray direction from camera to that point
+    const toP = wp.clone().sub(camera.position).normalize();
+    // handle angle = angle between screen x and direction
+    const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+    const up = new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion);
+    const a = Math.atan2(toP.dot(up), toP.dot(right));
+    manual.angle0 = a;
+    manual.dx = 0;
+    state.manual = true;
+    renderer.domElement.style.cursor = 'grabbing';
+  }
+}
+
+function onPointerMove(e){
+  if(!rendererOK) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  const px = (e.clientX - r.left)/r.width;
+  const py = (e.clientY - r.top)/r.height;
+  const ndc = new THREE.Vector2(px*2-1, -(py*2-1));
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects([parts.biteHandle, parts.safeHandle], true);
+  if(manual.dragging){
+    const d = manual.dragging;
+    const base = d === 'bite' ? 0 : PI;
+    // simple: pointer delta in screen space maps to angle
+    const dx = e.clientX - (manual._lastX ?? e.clientX);
+    const dy = e.clientY - (manual._lastY ?? e.clientY);
+    manual._lastX = e.clientX; manual._lastY = e.clientY;
+    if(d === 'bite'){
+      const a = THREE.MathUtils.clamp(manual.angle0 + dx*0.006, -PI*0.95, 0.55);
+      poseCurrent.bite = a;
+      if(d==='safe' || Math.abs(biteLock()) < 0.01) poseCurrent.safe = a;
+      handleSpeedBite = dx*0.006/Math.max(0.001, dtGlobal);
+    } else {
+      const a = THREE.MathUtils.clamp(manual.angle0 - dx*0.006, -0.55, PI*0.95);
+      poseCurrent.safe = a;
+      handleSpeedSafe = dx*0.006/Math.max(0.001, dtGlobal);
+    }
+  } else if(hit.length){
+    let o = hit[0].object;
+    while(o && o !== parts.biteHandle && o !== parts.safeHandle) o = o.parent;
+    renderer.domElement.style.cursor = (o===parts.biteHandle||o===parts.safeHandle) ? 'grab' : 'default';
+  } else {
+    renderer.domElement.style.cursor = 'grab';
+  }
+}
+
+function biteLock(){ return 0; }
+
+function onPointerUp(){
+  if(manual.dragging){
+    manual.dragging = null;
+    state.manual = false;
+    renderer.domElement.style.cursor = 'grab';
+    poseCurrent._prevBite = poseCurrent.bite;
+    poseCurrent._prevSafe = poseCurrent.safe;
+    if(Math.abs(poseCurrent.bite) < 0.10 || Math.abs(Math.abs(poseCurrent.bite)-PI) < 0.2) { }
+    // settle
+    AudioSys.latch(true);
+  }
+}
+
+/* =========================================================
+   CAMERA
+========================================================= */
+const camPresets = {
+  hero  : { pos:[7.6,4.4,10.5], tgt:[0,0.15,0.3], rot:[0.06,0.30,0.0] },
+  blade : { pos:[3.4,2.4,13.2], tgt:[0,0.55,3.6], rot:[0.0,0.0,0.0] },
+  pivot : { pos:[-2.6,2.2,6.0], tgt:[0,-0.35,1.2], rot:[0.0,0.0,0.0] },
+  latch : { pos:[-6.8,4.2,1.0], tgt:[0,-1.75,-3.1], rot:[0.0,0.0,0.0] },
+  top   : { pos:[2.2,11.5,2.6], tgt:[0,0,0], rot:[0.0,0.0,0.0] },
+};
+let curPreset = 'hero';
+let camVel = new THREE.Vector3();
+
+function updateCameraPresets(){
+  document.querySelectorAll('#segView button').forEach(b=>{
+    b.classList.toggle('on', b.dataset.v === curPreset);
+  });
+}
+
+function updateCamera(dt, t){
+  if(manual.dragging === null && !state.manual){
+    if(presetVel.length > 0){
+      camVel.lerp(presetVel, Math.min(1, dt*4));
+    } else {
+      // slow showcase drift
+      const target = camPresets[curPreset];
+      const tp = new THREE.Vector3().fromArray(target.pos);
+      tp.y = Math.sin(t*0.22)*1.6 + target.pos[1];
+      camVel.lerp(tp, Math.min(1, dt*0.9));
+    }
+    camera.position.lerp(camVel, Math.min(1, dt*2.2));
+  }
+  controls.update();
+}
+
+const presetVel = [];
+
+function flyTo(name){
+  curPreset = name;
+  const p = camPresets[name];
+  presetVel.length = 0;
+  camVel.set(p.pos[0], p.pos[1], p.pos[2]);
+  controls.target.set(p.tgt[0], p.tgt[1], p.tgt[2]);
+  updateCameraPresets();
+}
+
+/* =========================================================
+   UI WIRING
+========================================================= */
+const moveButtons = {};
+
+function buildUI(){
+  // specs
+  const specs = [
+    ['Overall','13.0 cm closed / 23.2 cm open'],
+    ['Blade','8.50 cm, trainer, blunt'],
+    ['Weight','218 g'],
+    ['Pivots','2 × 3/32" steel screws'],
+    ['Build','Heavy solid steel'],
+    ['Latch','Sprung fern latch'],
+  ];
+  document.getElementById('specs').innerHTML = specs.map(([k,v])=>`<div><span>${k}</span><span>${v}</span></div>`).join('');
+
+  // move buttons
+  const grid = document.getElementById('movegrid');
+  MOVES.forEach((m,i)=>{
+    const b = document.createElement('button');
+    b.className = 'btn' + (i===0 ? ' on':'');
+    b.innerHTML = `${m.n} <b style="font-weight:500">${m.name}</b><span class="k">${i+1}</span>`;
+    b.onclick = ()=>{ AudioSys.resume(); playMove(i); };
+    b.id = 'mb_'+m.id;
+    grid.appendChild(b);
+    moveButtons[m.id] = b;
+  });
+
+  // colourways
+  const cw = document.getElementById('cways');
+  [['Winterfern','#7fdcff,#d9f2fb,#2a3f48'],['Dewlight','#8fe2f7,#eaffff,#3f5561'],['Verdigris','#7fe6c4,#e8fff7,#1f3b34'],['Nightfrost','#6fd0ff,#d7f4ff,#172027']].forEach(([name, cols], i)=>{
+    const b = document.createElement('button');
+    b.title = name;
+    b.style.background = `linear-gradient(140deg, ${cols.split(',')[1]}, ${cols.split(',')[2]})`;
+    b.onclick = ()=> setColourway(i);
+    if(i===0) b.classList.add('on');
+    cw.appendChild(b);
+  });
+  const lab = document.createElement('span');
+  lab.textContent = 'Winterfern';
+  document.getElementById('cways').appendChild(lab);
+
+  // sliders
+  const spd = document.getElementById('spd');
+  spd.oninput = ()=>{
+    state.speed = spd.value/100;
+    document.getElementById('spdv').textContent = state.speed.toFixed(2)+'×';
+  };
+  const slow = document.getElementById('slow');
+  slow.oninput = ()=>{
+    state.slow = slow.value/100;
+    document.getElementById('slowv').textContent = state.speed*(1-state.slow).toFixed(2)+'×';
+  };
+  const vol = document.getElementById('vol');
+  vol.oninput = ()=>{
+    AudioSys.resume();
+    AudioSys.setVol(vol.value/100);
+    document.getElementById('volv').textContent = vol.value;
+  };
+  AudioSys.volTarget = vol.value/100;
+
+  // segs
+  document.querySelectorAll('#segMode button').forEach(b=>{
+    b.onclick = ()=> setMode(b.dataset.m);
+  });
+  document.querySelectorAll('#segView button').forEach(b=>{
+    b.onclick = ()=> flyTo(b.dataset.v);
+  });
+  document.querySelectorAll('#segTrail button').forEach(b=>{
+    b.onclick = ()=>{
+      state.trail = b.dataset.t === '1';
+      document.querySelectorAll('#segTrail button').forEach(x=>x.classList.toggle('on', x===b));
+      if(!state.trail) clearTrail();
+    };
+  });
+
+  // buttons
+  document.getElementById('btnExpl').onclick = ()=>{
+    const e = (poseCurrent.explodeTarget || 0) > 0.5 ? 0 : 1;
+    poseCurrent.explodeTarget = e;
+    document.getElementById('btnExpl').classList.toggle('on', e>0.5);
+  };
+  document.getElementById('btnL').onclick = ()=>{
+    poseCurrent.explodeTarget = 0;
+    document.getElementById('btnExpl').classList.remove('on');
+    // toggle latch open
+    if(Math.abs(poseCurrent.safe - poseCurrent.bite) < 0.1){
+      // open
+      poseCurrent.bite = 0;
+      poseCurrent.safe = -PI;
+    } else {
+      poseCurrent.bite = 0; poseCurrent.safe = 0;
+    }
+    state.mode = 'move';
+    state.playing = false;
+    state.t = 1;
+  };
+  document.getElementById('btnR').onclick = ()=>{
+    poseCurrent.explodeTarget = 0;
+    document.getElementById('btnExpl').classList.remove('on');
+    flyTo('hero');
+    setMode('move');
+    playMove(0);
+  };
+
+  // sound
+  const tbMute = document.getElementById('tbMute');
+  tbMute.onclick = ()=>{
+    AudioSys.resume();
+    AudioSys.muted = !AudioSys.muted;
+    tbMute.classList.toggle('on', !AudioSys.muted);
+    AudioSys.master.gain.setTargetAtTime(AudioSys.muted?0:AudioSys.volTarget*0.9, AudioSys.ctx.currentTime, 0.05);
+  };
+  const tbHide = document.getElementById('tbHide');
+  tbHide.onclick = toggleUI;
+  document.getElementById('hideBtn').onclick = toggleUI;
+  document.getElementById('uiX').onclick = toggleUI;
+}
+
+function toggleUI(){
+  state.showUI = !state.showUI;
+  document.getElementById('ui').classList.toggle('hide', !state.showUI);
+  document.getElementById('tools').style.opacity = state.showUI ? 1 : 0.35;
+}
+
+function playMove(i){
+  state.mode = 'move';
+  state.moveIndex = i;
+  state.t = 0;
+  state.playing = true;
+  poseCurrent.explodeTarget = 0;
+  document.getElementById('btnExpl').classList.remove('on');
+  clearTrail();
+  // sync caption
+  const mv = MOVES[i];
+  showCaption(mv.name, `${mv.n} · ${modeLabel()}`);
+  // reset pose to start
+  const tl = POSES[mv.fn];
+  const s = sampleTimeline(tl, 0);
+  poseCurrent.bite = s.bite; poseCurrent.safe = s.safe;
+  poseCurrent._prevBite = s.bite; poseCurrent._prevSafe = s.safe;
+  poseCurrent._bPin=false; poseCurrent._bO=false; poseCurrent._sO=false;
+  latchState = Math.abs(poseCurrent.safe - poseCurrent.bite) < 0.10 ? 'open' : 'closed';
+  updateMoveButtons();
+}
+
+function modeLabel(){
+  return state.mode==='free' ? 'Freestyle' : state.mode==='combo' ? 'Combo' : 'Sequence';
+}
+
+function updateMoveButtons(){
+  MOVES.forEach((m,i)=>{
+    const b = moveButtons[m.id];
+    if(b) b.classList.toggle('on', state.mode==='move' && state.moveIndex===i);
+  });
+}
+
+let capTimer = null;
+function showCaption(name, detail){
+  const cap = document.getElementById('cap');
+  cap.querySelector('.n').textContent = name;
+  cap.querySelector('.d').textContent = detail;
+  cap.classList.remove('k');
+  clearTimeout(capTimer);
+  capTimer = setTimeout(()=>cap.classList.add('k'), 2600);
+}
+
+/* ---------- move timeline ---------- */
+function applyMoveTimeline(mv, tt, dt, t){
+  const tl = POSES[mv.fn];
+  const s = sampleTimeline(tl, tt);
+  poseCurrent.bite = s.bite;
+  poseCurrent.safe = s.safe;
+  poseCurrent._prevBite = poseCurrent._prevBite ?? s.bite;
+  poseCurrent._prevSafe = poseCurrent._prevSafe ?? s.safe;
+  poseCurrent._lastBBite = poseCurrent.bite;
+  poseCurrent._lastBSafe = poseCurrent.safe;
+  // spin & roll from track
+  const e = easeInOutCubic(tt);
+  curSpin = THREE.MathUtils.lerp(mv.track.spin0, mv.track.spin1, e);
+  curRoll = THREE.MathUtils.lerp(mv.track.z0, mv.track.z1, e);
+  if(tt > 0.04 && tt < 0.98){
+    AudioSys.swish(Math.abs(s.bite - (s2 || s.bite)) * 40, 0.9, 1);
+    AudioSys.pivotGrind(Math.min(1.4, Math.abs(s.bite-s.bite)*20 + Math.abs(s.safe-s.safe)*20), 0.6);
+  }
+  // pulse the swish from handle speed
+  if(AudioSys.ctx && AudioSys.ctx.currentTime > (poseCurrent._lastSwish||0)){
+    const spd = Math.abs(s.bite - s.safe) * 2.4;
+    if(spd > 0.2){
+      poseCurrent._lastSwish = AudioSys.ctx.currentTime + 0.06;
+      AudioSys.swish(spd, 0.8, 1);
+    }
+  }
+}
+
+let s2 = 0;
+
+function applyComboTimeline(t, dt, now){
+  // concatenate all moves with small gaps
+  const durations = MOVES.map(m=>m.dur);
+  const gaps = MOVES.map((_,i)=> i < MOVES.length-1 ? 0.16 : 0);
+  let total = 0, seg = 0;
+  for(let i=0;i<MOVES.length;i++){ total += durations[i] + gaps[i]; }
+  state.comboLen = total;
+  let tt = t;
+  let i = 0;
+  for(let k=0;k<MOVES.length;k++){
+    const len = durations[k] + gaps[k];
+    if(tt <= len){ i = k; break; }
+    tt -= len;
+  }
+  const mv = MOVES[i];
+  applyMoveTimeline(mv, tt/durations[i], dt, now);
+}
+
+function startFree(){
+  state.freeT = 0;
+  const pool = MOVES.filter(m=> m.id !== state.lastFreeId);
+  if(!pool.length) return;
+  const mv = pool[Math.floor(Math.random()*pool.length)];
+  state.lastFreeId = mv.id;
+  state.freeCurMove = mv;
+  state.freeDur = mv.dur * 0.9;
+  poseCurrent.explodeTarget = 0;
+  document.getElementById('btnExpl').classList.remove('on');
+  const s = sampleTimeline(POSES[mv.fn], 0);
+  poseCurrent.bite = s.bite; poseCurrent.safe = s.safe;
+  poseCurrent._prevBite = s.bite; poseCurrent._prevSafe = s.safe;
+  showCaption(mv.name, `Freestyle · ${mv.n}`);
+  clearTrail();
+}
+
+/* =========================================================
+   CAMERA PRESET / BOUNCE / DAISY
+========================================================= */
+function easeInOutCubic(x){ return x<0.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2; }
+
+/* =========================================================
+   UI HELPERS
+========================================================= */
+function updateHUD(mv){
+  const el = document.getElementById('hud');
+  if(!el) return;
+  el.innerHTML = `
+    <div>Move <b>${mv ? mv.n : '—'}</b></div>
+    <div>State <b>${Math.abs(poseCurrent.safe-poseCurrent.bite)</b></div>
+    <div>Explode <b>${((poseCurrent.explode||0)*100).toFixed(0)}%</b></div>
+    <div>Lathe <b>${(poseCurrent.explodeTarget*100).toFixed(0)}%</b></div>
+  `;
+}
+
+/* =========================================================
+   COLOURWAYS
+========================================================= */
+function setColourway(i){
+  C = [WALLS.frost, WALLS.dew, WALLS.green, WALLS.frost][i];
+  bladeMatCache = null;
+  innerBladeMaterial._m = null;
+  // update handle materials
+  applyColourway();
+  // update UI label
+  document.querySelectorAll('#cways button').forEach((b,k)=>b.classList.toggle('on', k===i));
+  document.querySelector('#cways span').textContent = ['Winterfern','Dewlight','Verdigris','Winterfern'][i];
+  // body panel tint
+  document.documentElement.style.setProperty('--cyan', i===2 ? '#7fe6c4' : '#63d8ff');
+  if(AudioSys.ctx) AudioSys.bladeRing(0.12);
+}
+
+function applyColourway(){
+  // handle
+  const handleBody = parts.biteHandle.children[0];
+  if(handleBody) handleBody.material = new THREE.MeshPhysicalMaterial({
+    map: anodiseTex(C.col2, C.col1, C.accent),
+    color:0xffffff, roughness:0.26, metalness:0.82,
+    clearcoat:0.75, clearcoatRoughness:0.18,
+    iridescence:0.28, iridescenceIOR:1.5, iridescenceThicknessRange:[90,520],
+    envMapIntensity:1.05, side:THREE.DoubleSide
+  });
+  if(parts.safeHandle) parts.safeHandle.children[0].material = handleBody.material;
+
+  // latch
+  latchMesh.material.color.set(C.latch);
+
+  // blade: use class tints (keep palette arrays)
+  applyBladeTint();
+}
+
+function applyBladeTint(){
+  const mats = scene.children.flatMap(o=>o.children||[]);
+  // simpler: iterate blade meshes
+  bladeHalfMeshes = [];
+  scene.traverse(o=>{ if(o.userData && o.userData.part && o.userData.part.startsWith('Blade half')) bladeHalfMeshes.push(o); });
+  bladeHalfMeshes.forEach(m=>{
+    m.traverse(ch=>{
+      if(ch.material){
+        const mm = ch.material.clone ? ch.material : null;
+        if(mm && mm.isMeshPhysicalMaterial){
+          mm.color.setHex(0xffffff);
+          if(C._bladeA) mm.map = C._bladeA;
+        }
+      }
+    });
+  });
+}
+
+/* =========================================================
+   EVENT LISTENERS
+========================================================= */
+window.addEventListener('resize', ()=>{
+  if(!rendererOK) return;
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+document.addEventListener('pointerdown', (e)=>{
+  if(e.target.closest('#ui') || e.target.closest('#tools') || e.target.closest('#hideBtn') || e.target.id==='load') return;
+  if(e.target.tagName === 'INPUT') return;
+  onPointerDown(e);
+});
+document.addEventListener('pointermove', onPointerMove);
+document.addEventListener('pointerup', onPointerUp);
+document.addEventListener('pointercancel', onPointerUp);
+document.addEventListener('wheel', (e)=>{
+  if(e.target.closest('#ui') || e.target.closest('#tools')) return;
+}, {passive:true});
+document.addEventListener('keydown', (e)=>{
+  if(e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if(k >= '1' && k <= '8'){ const i = parseInt(k)-1; if(MOVES[i]) playMove(i); }
+  if(k === ' '){ e.preventDefault(); if(state.playing){ state.playing = false; } else { state.playing = true; state.t = Math.min(state.t,1); } }
+  if(k === 'h') toggleUI();
+  if(k === 'm') document.getElementById('tbMute').click();
+});
+
+/* =========================================================
+   MANUAL OVERLAY / HELP
+========================================================= */
+let dtGlobal = 0.016;
+
+/* =========================================================
+   FALLBACK
+========================================================= */
+if(!rendererOK){
+  document.getElementById('load').innerHTML =
+    '<div style="color:#dff3fb;font-size:13px;letter-spacing:.2em;text-align:center;line-height:1.8">WebGL is unavailable.<br>This piece needs a browser with WebGL enabled.</div>';
+}
+
+/* =========================================================
+   BOOT
+========================================================= */
+if(rendererOK){
+  buildUI();
+  build();
+  document.getElementById('load').classList.add('hide');
+  setTimeout(()=>{ const l=document.getElementById('load'); if(l) l.style.display='none'; }, 1200);
+
+  // manual drag controls
+  renderer.domElement.addEventListener('pointerdown', (e)=>{
+    if(e.button !== 0) return;
+    if(e.target.closest('#ui')) return;
+  });
+
+  lastTime = performance.now();
+  requestAnimationFrame(animate);
+}
+</script>
+</body>
+</html>
