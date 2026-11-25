@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A Timeline of the World</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#04050a;font-family:Georgia,serif}
+  #stage{position:fixed;inset:0}
+  svg{width:100%;height:100%;display:block}
+  #hud{position:fixed;left:24px;bottom:84px;color:#e8ecff;pointer-events:none;text-shadow:0 2px 12px rgba(0,0,0,.9)}
+  #hud h1{font-size:clamp(20px,3vw,40px);letter-spacing:.04em;line-height:1.15}
+  #hud .date{font-size:clamp(13px,1.5vw,20px);color:#ffce6b;margin:6px 0 8px;font-variant-numeric:tabular-nums}
+  #hud p{font-size:clamp(11px,1.15vw,15px);line-height:1.45;max-width:52ch;opacity:.92}
+  #bar{position:fixed;left:0;right:0;bottom:0;height:64px;background:linear-gradient(#0000,#080a12ee 35%);}
+  #track{position:absolute;left:14px;right:14px;top:12px;height:40px;cursor:pointer;touch-action:none}
+  #spans rect{fill-opacity:.35;stroke:rgba(255,255,255,.15);stroke-width:1}
+  #ticks line{stroke:#fff;stroke-width:1;opacity:.45}
+  #tline{position:absolute;left:14px;right:14px;top:12px;height:40px}
+  #playhead{position:absolute;top:-2px;width:2px;background:#ffce6b;height:44px;box-shadow:0 0 8px #ffce6b;pointer-events:none}
+  #controls{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:14px;align-items:center;color:#cfe0ff;font:12px/1 system-ui,sans-serif}
+  #controls button{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#e8ecff;border-radius:14px;padding:6px 12px;cursor:pointer;font-size:12px}
+  #controls button:hover{background:rgba(255,255,255,.2)}
+  #controls label{display:flex;align-items:center;gap:6px}
+  #dateReadout{color:#ffce6b;font-variant-numeric:tabular-nums;min-width:170px;text-align:center;font-size:12px}
+  @media (max-width:700px){#hud{left:12px;bottom:72px}#hud p{max-width:38ch}#dateReadout{min-width:0}}
+</style>
+</head>
+<body>
+<div id="stage">
+<svg id="svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+<defs>
+  <radialGradient id="gSpace" cx="50%" cy="45%" r="65%">
+    <stop offset="0" stop-color="#101a33"/><stop offset="1" stop-color="#02030a"/>
+  </radialGradient>
+  <radialGradient id="gMagma" cx="50%" cy="55%" r="60%">
+    <stop offset="0" stop-color="#ffd06a"/><stop offset=".45" stop-color="#ff6b1f"/><stop offset="1" stop-color="#3a0a08"/>
+  </radialGradient>
+  <radialGradient id="gOcean" cx="45%" cy="35%" r="75%">
+    <stop offset="0" stop-color="#2b8fbf"/><stop offset="1" stop-color="#05213d"/>
+  </radialGradient>
+  <linearGradient id="gLand" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5a9e5a"/><stop offset="1" stop-color="#2f5c3c"/>
+  </linearGradient>
+  <linearGradient id="gDesert" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9b36c"/><stop offset="1" stop-color="#8a6a3a"/>
+  </linearGradient>
+  <linearGradient id="gCity" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#20242f"/><stop offset="1" stop-color="#0a0c11"/>
+  </linearGradient>
+  <linearGradient id="gSkyO" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2b1a3a"/><stop offset=".55" stop-color="#b3482a"/><stop offset="1" stop-color="#ffb45e"/>
+  </linearGradient>
+  <linearGradient id="gSkyM" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#172a5e"/><stop offset=".6" stop-color="#3f7bb5"/><stop offset="1" stop-color="#a8d8f0"/>
+  </linearGradient>
+  <linearGradient id="gSkyI" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#05070f"/><stop offset="1" stop-color="#1c2438"/>
+  </linearGradient>
+  <filter id="blur"><feGaussianBlur stdDeviation="6"/></filter>
+  <filter id="soft"><feGaussianBlur stdDeviation="2"/></filter>
+  <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="clipLand"><path id="landPath" d="M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z"/></clipPath>
+</defs>
+<rect id="bg" width="1600" height="900" fill="url(#gSpace)"/>
+<g id="stars"></g>
+<g id="skyGrad" style="transition:none">
+  <rect id="sky" width="1600" height="900" fill="url(#gSkyM)"/>
+</g>
+<g id="world">
+  <g id="parallaxBack"></g>
+  <g id="parallaxMid">
+    <g id="oceanG">
+      <rect x="-300" y="380" width="2200" height="520" fill="url(#gOcean)"/>
+      <path id="shore" d="M0,430 Q400,390 800,430 T1600,430 L1600,900 L0,900 Z" fill="#0f3f5f" opacity=".85"/>
+    </g>
+    <g id="landG" clip-path="url(#clipLand)">
+      <path id="landFill" fill="url(#gLand)" d="M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z"/>
+      <g id="iceG"></g>
+      <g id="detailG"></g>
+      <g id="lifeG"></g>
+    </g>
+    <path id="landEdge" fill="none" stroke="#a8e07a" stroke-width="2" opacity=".5" d="M0,300 Q400,240 800,300 T1600,300"/>
+  </g>
+  <g id="parallaxFront">
+    <path id="iceFront" fill="url(#gSkyI)" opacity="0" d="M0,900 L0,560 Q400,500 800,560 T1600,560 L1600,900 Z"/>
+    <path id="fireG" fill="#ff6b1f" opacity="0" d="M0,900 L0,640 Q400,580 800,640 T1600,640 L1600,900 Z" filter="url(#glow)"/>
+    <path id="snowG" fill="#ffffff" opacity="0" d="M0,900 L0,520 Q400,460 800,520 T1600,520 L1600,900 Z"/>
+  </g>
+</g>
+<g id="extrusion" opacity="0"><rect x="0" y="0" width="1600" height="900" fill="url(#gSkyO)"/><circle cx="1100" cy="250" r="40" fill="#fff8dd" opacity=".8"/></g>
+<g id="impactFx" opacity="0"><circle cx="1300" cy="200" r="90" fill="#fff" filter="url(#glow)" opacity=".7"/></g>
+<g id="starField2"></g>
+<g id="captionFx"></g>
+</svg>
+</div>
+<div id="hud"><h1 id="tTitle">—</h1><div class="date" id="tDate"></div><p id="tCaption"></p></div>
+<div id="bar">
+  <div id="tline">
+    <svg id="spans" width="100%" height="40"></svg>
+    <svg id="ticks" width="100%" height="40"></svg>
+    <div id="playhead"></div>
+  </div>
+  <div id="controls">
+    <button id="btnPlay">⏸</button>
+    <button id="btnRestart">↺</button>
+    <label>Speed <select id="selSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+    <div id="dateReadout">4.54 billion years ago</div>
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var SVGNS='http://www.w3.org/2000/svg';
+var svg=document.getElementById('svg');
+var $=function(id){return document.getElementById(id)};
+var bg=$('bg'),sky=$('sky'),stars=$('stars'),starField2=$('starField2'),
+    oceanG=$('oceanG'),shore=$('shore'),landFill=$('landFill'),landPath=$('landPath'),
+    landEdge=$('landEdge'),iceG=$('iceG'),detailG=$('detailG'),lifeG=$('lifeG'),
+    iceFront=$('iceFront'),fireG=$('fireG'),snowG=$('snowG'),
+    extrusion=$('extrusion'),impactFx=$('impactFx'),captionFx=$('captionFx');
+
+/* ---------------- timeline data ---------------- */
+var CH=[
+ {n:0,title:'The Birth of Earth',date:'4.54 billion years ago',dt:4540,'cap':'The Earth coalesces from swirling dust around the young Sun, then a Mars-sized body, Theia, strikes it — flinging debris that becomes the Moon.'},
+ {n:1,title:'Hadean — molten world',date:'~4,400–4,000 million years ago',dt:4400,'cap':'A hellish, lava-covered world cools over tens of millions of years; water vapour condenses into the first oceans.'},
+ {n:2,title:'First life',date:'~3,700 million years ago',dt:3700,'cap':'Microbial mats build stromatolites — layered mounds built by single-celled microbes, the earliest evidence of life.'},
+ {n:3,title:'Great Oxidation Event',date:'~2,400 million years ago',dt:2400,'cap':'Photosynthetic microbes fill the air with oxygen, turning oceans from rust-red to blue and the sky to a pale haze.'},
+ {n:4,title:'Snowball Earth',date:'~720–635 million years ago',dt:700,'cap':'The planet freezes over; ice reaches the tropics before volcanic CO₂ re-warms it.'},
+ {n:5,title:'Cambrian explosion',date:'~538 million years ago',dt:538,'cap':'In a geological blink, most animal body plans appear — trilobites, sponges, early fish fill the seas.'},
+ {n:6,title:'Life onto land',date:'~470–375 million years ago',dt:400,'cap':'Plants first, then animals — forests and amphibians spread across the continents.'},
+ {n:7,title:'Pangaea and the dinosaurs',date:'252–66 million years ago',dt:220,'cap':'Landmasses join into Pangaea, then split; reptiles and the great dinosaurs rule the Mesozoic.'},
+ {n:8,title:'The asteroid impact',date:'66 million years ago',dt:66,'cap':'A six-mile asteroid strikes the Yucatán, and dust and soot darken the sky for months.'},
+ {n:9,title:'The rise of mammals',date:'66–30 million years ago',dt:40,'cap:'title:'Mammals, small and nocturnal, grow into forests and plains after the dinosaurs are gone.'},
+ {n:10,title:'Homo sapiens',date:'~300,000 years ago',dt:0.3,'cap':'Our species appears in Africa, then spreads across the globe in waves.'},
+ {n:11,title:'Farming begins',date:'~10,000 BCE',dt:0.012,'cap':'Fertile river valleys yield the first wheat, rice and the first villages.'},
+ {n:12,title:'Early civilisations',date:'~3500–2560 BCE',dt:0.0035,'cap':'Mesopotamia and Egypt build cities, writing and monuments — including the Great Pyramid of Giza, ~2560 BCE.'},
+ {n:13,title:'The classical world',date:'~500 BCE–500 CE',dt:0.00055,'cap':'Greece, Rome and Han China connect trade and ideas from the Mediterranean to the Pacific.'},
+ {n:14,title:'The medieval world',date:'~500–1450 CE',dt:0.0009,'cap:'title:'Empires rise and fall; silks, spices and faith travel the Silk Road and Indian Ocean.'},
+ {n:15,title:'Printing press and exploration',date:'~1450–1500 CE',dt:0.00049,'cap':'Gutenberg presses books; Columbus sails west in 1492, linking two worlds.'},
+ {n:16,title:'The Industrial Revolution',date:'from ~1760',dt:0.00024,'cap':'Coal-fired steam powers factories and railways, remaking landscapes and work.'},
+ {n:17,title:'The 20th century',date:'1903–1969',dt:0.000164,'cap':'Flying, world wars, antibiotics and the Moon landing in 1969 transform the planet.'},
+ {n:18,title:'The digital age',date:'to today',dt:0.00003,'cap:'title:'Computers, the internet and now billions of connected devices share all human knowledge.'}
+];
+var TOT=4600; // in millions of years, 0 = today
+var t=TOT;   // current millions of years ago
+var playing=true,speed=1;
+var totalDur=170; // seconds at 1x
+var acc=0,last=null;
+var idx=0;
+
+/* helpers */
+function mk(tag,attrs,parent){
+  var e=document.createElementNS(SVGNS,tag);
+  if(attrs)for(var k in attrs)e.setAttribute(k,attrs[k]);
+  if(parent)parent.appendChild(e);
+  return e;
+}
+function ease(u){return u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;}
+function lerp(a,b,u){return a+(b-a)*u;}
+function clamp(v,a,b){return v<a?a:v>b?b:v;}
+function setFill(el,c){el.setAttribute('fill',c);}
+function setOp(el,o){el.setAttribute('opacity',o);}
+
+/* build stars */
+for(var i=0;i<160;i++){
+  mk('circle',{cx:Math.random()*1600,cy:Math.random()*900,r:Math.random()*1.6+.3,fill:'#fff',opacity:(Math.random()*.8+.2).toFixed(2)},stars);
+}
+for(var j=0;j<70;j++){
+  mk('circle',{cx:Math.random()*1600,cy:Math.random()*900,r:Math.random()*1.1+.2,fill:'#cfe6ff',opacity:(Math.random()*.6+.15).toFixed(2)},starField2);
+}
+
+/* parchment texture */
+(function(){
+  var p=mk('defs',{},svg);
+  var pat=mk('pattern',{id:'hatch',width:24,height:24,patternUnits:'userSpaceOnUse'},p);
+  var l=mk('line',{x1:0,y1:0,x2:0,y2:24,stroke:'#ffd88a','stroke-width':1,opacity:'.05'},pat);
+})();
+
+/* ---------------- chapter visuals ---------------- */
+var chapterFns={};
+function landGeo(n){ // returns string for a continent fragment
+  var a={0:['M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z'],
+    1:['M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z'],
+    2:['M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z'],
+    3:['M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z'],
+    4:['M0,300 Q400,240 800,300 T1600,300 L1600,900 L0,900 Z'],
+    5:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    6:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    7:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    8:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    9:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    10:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    11:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    12:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    13:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    14:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    15:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    16:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    17:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z'],
+    18:['M60,310 Q260,250 460,300 T860,300 T1260,300 T1600,310 L1600,900 L0,900 Z']}
+  return a[n][0];
+}
+
+/* ---- visual state builder ---- */
+function build(n){
+  var g={};
+  // background / atmosphere
+  g.skyFill='#172a5e'; g.skyGrad='gSkyM';
+  g.oceanOp=1; g.oceanColor='#1c5f8a'; g.ocean2='#123f63'; g.ocean3='#0b2b4a';
+  g.landOpacity=0; g.landFill='#3f6f5c'; g.landStroke='#8fd38f';
+  g.ice=0; g.snow=0; g.fire=0; g.extrude=0; g.impact=0;
+  g.shoreH=470; g.oceanY=340; g.starsA=1; g.par=0; g.caption=[]; g.bgHaze=0;
+  g.titleX=800; g.titleY=470;
+  switch(n){
+    case 0: // formation
+      g.skyFill='#2b1030'; g.skyGrad='gSkyO'; g.oceanOp=0; g.landOpacity=0;
+      g.fire=1; g.starsA=0; g.extrude=1; g.impact=1; g.ice=0; g.snow=0; g.caption=[1]; g.bgHaze=1;
+      break;
+    case 1: // Hadean
+      g.skyFill='#7a3020'; g.skyGrad='gSkyO'; g.oceanOp=.6; g.oceanColor='#4a2f28'; g.ocean2='#2e1a14'; g.ocean3='#1c0e0b';
+      g.fire=.9; g.landOpacity=.15; g.landFill='#5a3220'; g.landStroke='#ff9a3c'; g.shoreH=450;
+      g.caption=[1,2]; g.bgHaze=.6;
+      break;
+    case 2: // first life
+      g.skyFill='#a25235'; g.skyGrad='gSkyO'; g.oceanOp=.8; g.oceanColor='#3a4a44'; g.ocean2='#233230'; g.ocean3='#151f1e';
+      g.fire=.2; g.landOpacity=.35; g.landFill='#4a5238'; g.landStroke='#9fd07a'; g.shoreH=430;
+      g.caption=[2];
+      break;
+    case 3: // GOE
+      g.skyFill='#5c7f9a'; g.skyGrad='gSkyM'; g.oceanOp=.95; g.oceanColor='#2f6f9a'; g.ocean2='#1c4d78'; g.ocean3='#0e3358';
+      g.fire=0; g.landOpacity=.45; g.landFill='#3f6a4f'; g.landStroke='#9fd08a'; g.shoreH=420; g.caption=[3];
+      break;
+    case 4: // snowball
+      g.skyFill='#3a4a63'; g.skyGrad='gSkyI'; g.oceanOp=.9; g.oceanColor='#6d8ba3'; g.ocean2='#485f75'; g.ocean3='#2c3a4a';
+      g.fire=0; g.landOpacity=.55; g.landFill='#cfd8e0'; g.landStroke='#eef4fa'; g.ice=1; g.shoreH=430; g.caption=[4];
+      break;
+    case 5: // cambrian
+      g.skyFill='#4b86a6'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#24708f'; g.ocean2='#164d6d'; g.ocean3='#0c3149';
+      g.landOpacity=.6; g.landFill='#3c6a52'; g.landStroke='#9fd08a'; g.shoreH=415; g.caption=[5];
+      break;
+    case 6: // land
+      g.skyFill='#6aa0c4'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=.75; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=405; g.caption=[6];
+      break;
+    case 7: // pangaea
+      g.skyFill='#79b2d0'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=395; g.caption=[7];
+      break;
+    case 8: // impact
+      g.skyFill='#221a2a'; g.skyGrad='gSkyO'; g.oceanOp=1; g.oceanColor='#2a2438'; g.ocean2='#1a1524'; g.ocean3='#0e0a14';
+      g.fire=.9; g.landOpacity=1; g.landFill='#5a3420'; g.landStroke='#ff9a3c'; g.shoreH=395; g.impact=1; g.caption=[8];
+      break;
+    case 9: // mammals
+      g.skyFill='#6aa0c4'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=390; g.caption=[9];
+      break;
+    case 10: // sapiens
+      g.skyFill='#6aa0c4'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=390; g.caption=[10];
+      break;
+    case 11: // farming
+      g.skyFill='#a8c878'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#6f9e4a'; g.landStroke='#a8e07a'; g.shoreH=380; g.caption=[11];
+      break;
+    case 12: // civilisation
+      g.skyFill='#8fb8d8'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=375; g.caption=[12];
+      break;
+    case 13: // classical
+      g.skyFill='#8fb8d8'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=370; g.caption=[13];
+      break;
+    case 14: // medieval
+      g.skyFill='#8fb8d8'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=365; g.caption=[14];
+      break;
+    case 15: // exploration
+      g.skyFill='#8fb8d8'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=360; g.caption=[15];
+      break;
+    case 16: // industry
+      g.skyFill='#b08a5e'; g.skyGrad='gSkyO'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#5c6e44'; g.landStroke='#9fd07a'; g.shoreH=355; g.caption=[16];
+      break;
+    case 17: // 20th century
+      g.skyFill='#8fb8d8'; g.skyGrad='gSkyM'; g.oceanOp=1; g.oceanColor='#23709a'; g.ocean2='#154a70'; g.ocean3='#0b2c4a';
+      g.landOpacity=1; g.landFill='#4c7f52'; g.landStroke='#a8e07a'; g.shoreH=350; g.caption=[17];
+      break;
+    case 18: // digital
+      g.skyFill='#0d1117'; g.skyGrad='gSkyI'; g.oceanOp=1; g.oceanColor='#0b1e33'; g.ocean2='#081626'; g.ocean3='#050e1a';
+      g.landOpacity=1; g.landFill='#22343c'; g.landStroke='#5fd0ff'; g.shoreH=345; g.caption=[18];
+      break;
+  }
+  return g;
+}
+
+/* ---------- build chapter layer elements ---------- */
+function buildLayer(n){
+  var g=build(n), layer={}, out=[];
+  out.push(layer.skyFill); layer.skyFill=g.skyFill;
+  layer.oceanFill1=g.oceanColor; layer.oceanFill2=g.ocean2; layer.oceanFill3=g.ocean3;
+  layer.oceanY=g.oceanY; layer.shoreH=g.shoreH;
+  layer.ice=g.ice; layer.snow=g.snow; layer.fire=g.fire; layer.extrude=g.extrude;
+  layer.impact=g.impact; layer.starsA=g.starsA; layer.caption=g.caption; layer.bgHaze=g.bgHaze;
+  layer.landOpacity=g.landOpacity; layer.landFill=g.landFill; layer.landStroke=g.landStroke;
+  layer.pops=[];
+  return layer;
+}
+
+/* helpers for procedural drawing per chapter */
+var animals={};
+
+function chapter0(g){}
+function chapter1(g){}
+function chapter2(g){
+  // stromatolites
+  var st=mk('g',{id:'stroms',fill:'#c8b280'},lifeG);
+  for(var i=0;i<10;i++){
+    var x=120+i*140, h=30+Math.sin(i*1.7)*18, w=26;
+    mk('path',{d:'M'+x+','+560+' q'+w+','+h+' '+(w*2)+',0 q-'+w+','+h+' '+(-w*2)+'0 Z',opacity:.8},st);
+  }
+}
+function chapter3(g){
+  // detail: nothing
+}
+function chapter4(g){
+  // snowflakes as tiny white strokes
+  var s=mk('g',{id:'snowflakes',stroke:'#fff','stroke-width':1.2,opacity:.7},lifeG);
+  for(var i=0;i<26;i++){
+    var x=Math.random()*1600,y=Math.random()*300+200,r=3+Math.random()*9;
+    mk('path',{d:'M'+x+','+(y-r)+' L'+x+','+(y+r)+' M'+(x-r)+','+y+' L'+(x+r)+','+y},s);
+  }
+}
+function chapter5(g){
+  // trilobites
+  var tr=mk('g',{id:'trilobites'},lifeG);
+  var cols=['#e0d0a0','#c8b280','#f0dca8'];
+  for(var i=0;i<7;i++){
+    var t=mk('g',{fill:cols[i%3],opacity:.9},tr);
+    var x=150+i*210, y=520+Math.sin(i)*40;
+    mk('ellipse',{cx:x,cy:y,rx:34,ry:14,fill:cols[i%3],opacity:.85},t);
+    mk('path',{d:'M'+(x-34)+','+y+' q34,-20 68,0 q-34,20 -68,0 Z',fill:cols[i%3],opacity:.9},t);
+    mk('line',{x1:x,y1:y-14,x2:x,y2:y-34,stroke:cols[i%3],'stroke-width':4,'stroke-linecap':'round'},t);
+  }
+}
+function chapter6(g){
+  // fish
+  var f=mk('g',{id:'fish',fill:'#bfe8ff',opacity:.8},lifeG);
+  for(var i=0;i<8;i++){
+    var x=200+i*160,y=520+Math.sin(i*1.3)*60;
+    mk('path',{d:'M'+x+','+y+' q20,-12 40,0 q-20,12 -40,0 Z',fill:'#bfe8ff',opacity:.7},f);
+    mk('path',{d:'M'+(x-6)+','+y+' l-14,-10 l0,20 Z',fill:'#bfe8ff',opacity:.6},f);
+  }
+}
+function chapter7(g){
+  // ferns and forests
+  var fr=mk('g',{id:'ferns',fill:'#6fbf5a'},lifeG);
+  for(var i=0;i<40;i++){
+    var x=60+Math.random()*1480, y=560+Math.random()*220, h=20+Math.random()*50, a=Math.random()*.5+.3;
+    mk('path',{d:'M'+x+','+y+' q'+(Math.random()*30-15)+','+(-h)+' '+(Math.random()*40-20)+','+(-h*1.6),stroke:'#6fbf5a','stroke-width':2,opacity:a},fr);
+  }
+  // early dinosaurs (silhouettes)
+  var d=mk('g',{fill:'#3f6b3a',opacity:.85},lifeG);
+  for(var i=0;i<3;i++){
+    var x=300+i*520, y=560;
+    mk('path',{d:'M'+x+','+y+' q20,-30 40,-20 q10,10 0,25 q5,20 -15,25 l-10,10 l10,10 l12,-15 q5,10 -10,15 l-5,12 l15,15 l5,-25 l25,5 q-5,-30 -25,-55 q-5,-15 -15,-10 q-10,0 -5,20 q-20,5 -30,25 Z'},d);
+  }
+}
+function chapter8(g){
+  // impact flash handled via extrusion; add smoke plumes
+  var sm=mk('g',{id:'smoke',fill:'#2a2226',opacity:.55},parallaxFront);
+  for(var i=0;i<14;i++){
+    var x=1150+Math.random()*300, y=200+Math.random()*300, r=30+Math.random()*90;
+    mk('circle',{cx:x,cy:y,r:r,fill:'#2a2226',opacity:.5},sm);
+  }
+  // meteor streaks
+  var st=mk('g',{id:'meteors'},lifeG);
+  for(var i=0;i<5;i++){
+    var x0=Math.random()*1600, y0=-50-Math.random()*300;
+    mk('line',{x1:x0,y1:y0,x2:x0+Math.random()*120,y2:y0+160,stroke:'#fff8dd','stroke-width':2+Math.random()*3,opacity:.8},st);
+  }
+}
+function chapter9(g){
+  // mammals - simple silhouettes
+  var m=mk('g',{id:'mammals',fill:'#7a6a55',opacity:.85},lifeG);
+  for(var i=0;i<5;i++){
+    var x=250+i*320, y=540+Math.sin(i*2)*20;
+    mk('path',{d:'M'+x+','+y+' q8,-14 18,-10 q5,-8 12,-4 q12,-8 18,2 q6,-6 14,2 q10,-2 8,10 l-6,14 q-10,6 -30,6 l-18,0 q-14,0 -18,-6 Z'},m);
+  }
+}
+function chapter10(g){
+  // people (silhouettes)
+  var p=mk('g',{id:'people',fill:'#4a4a44',opacity:.85},lifeG);
+  for(var i=0;i<12;i++){
+    var x=120+Math.random()*1360, y=560+Math.random()*180, h=30+Math.random()*30;
+    mk('circle',{cx:x,cy:y-h,r:5,fill:'#4a4a44'},p);
+    mk('rect',{x:x-4,y:y-h-10,width:8,height:h,fill:'#4a4a44'},p);
+  }
+}
+function chapter11(g){
+  // farm fields: green strips
+  var fd=mk('g',{id:'fields'},detailG);
+  for(var r=0;r<3;r++){
+    for(var i=0;i<9;i++){
+      var x=60+i*175, y=590+r*60, w=150, h=48;
+      mk('rect',{x:x,y:y,width:w,height:h,fill:'#7fb34f',opacity:.85},fd);
+      mk('line',{x1:x,y1:y+h/2,x2:x+w,y2:y+h/2,stroke:'#4f7a2a','stroke-width':1.5,opacity:.6},fd);
+    }
+  }
+  // barn
+  mk('rect',{x:1150,y:520,width:110,height:90,fill:'#8b5a2b'},fd);
+  mk('path',{d:'M1130,520 L1205,450 L1280,520 Z',fill:'#6e451f'},fd);
+  mk('rect',{x:1250,y:470,width:22,height:50,fill:'#3a2a18'},fd);
+}
+function chapter12(g){
+  // pyramids
+  var pm=mk('g',{id:'pyramids'},detailG);
+  mk('polygon',{points:'760,430 900,240 1040,430',fill:'#d8c9a3'},pm);
+  mk('polygon',{points:'760,430 900,240 900,430',fill:'#efe3bd',opacity:.7},pm);
+  mk('polygon',{points:'760,430 1040,430 900,430',fill:'#b9a87f'},pm);
+  mk('line',{x1:900,y1:240,x2:900,y2:430,stroke:'#a8986f','stroke-width':2},pm);
+  // sphinx
+  mk('path',{d:'M1150,430 q20,-30 60,-30 q50,0 60,30 q10,20 10,40 L1150,430 Z',fill:'#c9b98f'},pm);
+  mk('ellipse',{cx:1195,cy:390,rx:16,ry:18,fill:'#c9b98f'},pm);
+  mk('rect',{x:1170,y:430,width:30,height:30,fill:'#b9a87f'},pm);
+}
+function chapter13(g){
+  // roman columns + han style pagoda
+  var cl=mk('g',{id:'classical'},detailG);
+  for(var i=0;i<5;i++){
+    var x=300+i*70;
+    mk('rect',{x:x,y:340,width:40,height:110,fill:'#d8d0c0'},cl);
+    mk('rect',{x:x-6,y:330,width:52,height:12,fill:'#c0b8a8'},cl);
+    mk('rect',{x:x-6,y:450,width:52,height:12,fill:'#c0b8a8'},cl);
+  }
+  // pagoda
+  var pg=mk('g',{fill:'#7a4a3a'},cl);
+  for(var j=0;j<4;j++){
+    mk('polygon',{points:''+(520-j*30)+','+(300-j*45)+' '+(560-j*30)+','+(300-j*45)+' '+(560-j*30)+','+(285-j*45)+' '+(520-j*30)+','+(285-j*45)+' Z',fill:'#7a4a3a'},pg);
+    mk('line',{x1:520,y1:300-j*45,x2:520,y2:285-j*45,stroke:'#4a2a1e','stroke-width':3},pg);
+    mk('line',{x1:490,y1:285-j*45,x2:550,y2:285-j*45,stroke:'#4a2a1e','stroke-width':2},pg);
+    mk('line',{x1:520,y1:285-j*45,x2:505,y2:282-j*45,stroke:'#4a2a1e','stroke-width':1.5},pg);
+    mk('line',{x1:520,y1:285-j*45,x2:535,y2:282-j*45,stroke:'#4a2a1e','stroke-width':1.5},pg);
+  }
+  // ship
+  var sh=mk('g',{id:'ships'},detailG);
+  mk('path',{d:'M350,400 l220,-40 l60,10 l-80,30 Z',fill:'#5a7a5a',opacity:.9},sh);
+  mk('rect',{x:400,y:360,width:24,height:40,fill:'#4a5a4a',opacity:.9},sh);
+  mk('line',{x1:412,y1:360,x2:430,y2:320,stroke:'#4a5a4a','stroke-width':3},sh);
+  mk('polygon',{points:'430,320 412,360 430,360',fill:'#8a5a3a',opacity:.9},sh);
+}
+function chapter14(g){
+  // castle / monastery
+  var ca=mk('g',{id:'castle'},detailG);
+  mk('rect',{x:600,y:300,width:180,height:140,fill:'#8a8478'},ca);
+  mk('polygon',{points:'590,300 690,230 790,300',fill:'#6e6858'},ca);
+  for(var i=0;i<5;i++)mk('rect',{x:600+i*34,y:285,width:24,height:20,fill:'#5a5548'},ca);
+  mk('rect',{x:670,y:380,width:40,height:60,fill:'#4a3a2a'},ca);
+  // trees
+  for(var j=0;j<6;j++){
+    var x=200+Math.random()*1200, y=380+Math.random()*40;
+    mk('ellipse',{cx:x,cy:y,rx:30,ry:24,fill:'#3f6b3a',opacity:.85},ca);
+    mk('rect',{x:x-5,y:y+20,width:10,height:40,fill:'#4a3520'},ca);
+  }
+}
+function chapter15(g){
+  // gutenberg press
+  var pr=mk('g',{id:'press'},detailG);
+  mk('rect',{x:200,y:420,width:180,height:120,fill:'#6e4a2a'},pr);
+  mk('rect',{x:220,y:390,width:120,height:30,fill:'#4a301a'},pr);
+  mk('rect',{x:250,y:370,width:60,height:20,fill:'#7a5a3a'},pr);
+  mk('line',{x1:210,y1:420,x2:370,y2:420,stroke:'#3a2a16','stroke-width':4},pr);
+  // ships
+  var sh=mk('g',{id:'ships2'},detailG);
+  mk('path',{d:'M1150,420 l180,-30 l40,8 l-60,22 Z',fill:'#5a7a5a'},sh);
+  mk('line',{x1:1240,y1:420,x2:1240,y2:330,stroke:'#4a5a4a','stroke-width':4},sh);
+  mk('polygon',{points:'1240,330 1200,420 1240,420',fill:'#8a5a3a'},sh);
+}
+function chapter16(g){
+  // factory with smoke
+  var fa=mk('g',{id:'factory'},detailG);
+  mk('rect',{x:1150,y:380,width:240,height:130,fill:'#5a4a3a'},fa);
+  mk('rect',{x:1150,y:350,width:60,height:160,fill:'#4a3a2a'},fa);
+  mk('rect',{x:1330,y:330,width:180,height:160,fill:'#4a3a2a'},fa);
+  mk('rect',{x:1360,y:310,width:40,height:80,fill:'#2a1a0a'},fa);
+  mk('rect',{x:1460,y:310,width:40,height:80,fill:'#2a1a0a'},fa);
+  mk('path',{d:'M1150,380 L1150,330 L1210,330 L1210,380 Z',fill:'#6a5a44'},fa);
+  mk('rect',{x:1260,y:410,width:30,height:100,fill:'#2a1a0a'},fa);
+  mk('rect',{x:1260,y:410,width:30,height:20,fill:'#ffb45e'},fa);
+  // trains
+  var tr=mk('g',{id:'trains'},detailG);
+  mk('rect',{x:350,y:380,width:260,height:80,fill:'#8a8a9a'},tr);
+  mk('rect',{x:400,y:330,width:50,height:50,fill:'#6a6a7a'},tr);
+  mk('rect',{x:500,y:330,width:40,height:50,fill:'#6a6a7a'},tr);
+  mk('line',{x1:360,y1:460,x2:580,y2:460,stroke:'#4a4a5a','stroke-width':5},tr);
+  // smoke
+  var sm=mk('g',{id:'smoke2'},detailG);
+  for(var i=0;i<7;i++){
+    var x=1380+Math.random()*120, y=300-Math.random()*120, r=20+Math.random()*40;
+    mk('circle',{cx:x,cy:y,r:r,fill:'#8a7a6a',opacity:.25},sm);
+  }
+}
+function chapter17(g){
+  // biplane + people
+  var bp=mk('g',{id:'biplane'},detailG);
+  mk('ellipse',{cx:700,cy:340,rx:80,ry:10,fill:'#d8d8e8',stroke:'#6a6a7a','stroke-width':2},bp);
+  mk('ellipse',{cx:700,cy:300,rx:70,ry:8,fill:'#c8c8d8',stroke:'#6a6a7a','stroke-width':2},bp);
+  mk('line',{x1:700,y1:340,x2:700,y2:300,stroke:'#6a6a7a','stroke-width':3},bp);
+  mk('line',{x1:700,y1:300,x2:600,y2:250,stroke:'#6a6a7a','stroke-width':2},bp);
+  mk('line',{x1:700,y1:300,x2:800,y2:250,stroke:'#6a6a7a','stroke-width':2},bp);
+  mk('line',{x1:700,y1:340,x2:620,y2:380,stroke:'#6a6a7a','stroke-width':3},bp);
+  mk('line',{x1:700,y1:340,x2:780,y2:380,stroke:'#6a6a7a','stroke-width':3},bp);
+  mk('rect',{x:670,y:340,width:60,height:40,fill:'#8a4a2a'},bp);
+  // soldiers/people
+  var pe=mk('g',{id:'people2'},detailG);
+  for(var i=0;i<8;i++){
+    var x=300+Math.random()*900, y=520+Math.random()*80;
+    mk('path',{d:'M'+x+','+y+' q-4,-16 0,-26 q4,-10 10,-2 l6,14 l-4,14 q-4,6 -8,6 l-4,0 Z',fill:'#3a3a44'},pe);
+  }
+}
+function chapter18(g){
+  // city at night with lights
+  var ct=mk('g',{id:'city'},detailG);
+  var skyline=[];
+  for(var i=0;i<22;i++){
+    var x=40+i*75, w=55, h=100+Math.random()*240, y=480+150-h;
+    mk('rect',{x:x,y:y,width:w,height:h,fill:'#1a1a2a'},ct);
+    skyline.push({x:x,y:y,w:w,h:h});
+    for(var k=0;k<8;k++){
+      mk('rect',{x:x+8+Math.random()*(w-16),y:y+10+Math.random()*(h-20),width:4,height:5,fill:'#ffce6b',opacity:.8},ct);
+    }
+  }
+  // ground glow
+  mk('rect',{x:0,y:590,width:1600,height:60,fill:'#2a1a2a',opacity:.5},ct);
+  mk('rect',{x:0,y:580,width:1600,height:4,fill:'#ffce6b',opacity:.2},ct);
+  // rocket in sky
+  var rk=mk('g',{id:'rocket',transform:'translate(1280,140) rotate(-12)'},ct);
+  mk('path',{d:'M0,-60 L22,-10 L22,30 L0,50 L-22,30 L-22,-10 Z',fill:'#e8e8f0',stroke:'#8a8a9a','stroke-width':1},rk);
+  mk('circle',{cx:0,cy:0,r:8,fill:'#ff8a4a'},rk);
+  mk('polygon',{points:'0,20 34,50 0,70',fill:'#8a4a2a'},rk);
+  mk('polygon',{points:'0,-60 -14,-80 -10,-50 Z',fill:'#c8c8d8'},rk);
+  mk('polygon',{points:'0,-60 14,-80 10,-50 Z',fill:'#c8c8d8'},rk);
+  // stars
+  for(var s=0;s<30;s++)mk('circle',{cx:Math.random()*1600,cy:Math.random()*250,r:Math.random()*1.5+.3,fill:'#fff',opacity:.6},starField2);
+}
+
+/* chapter art switch */
+function applyArt(n){
+  // clear dynamic layers
+  while(lifeG.firstChild)lifeG.removeChild(lifeG.firstChild);
+  while(detailG.firstChild)detailG.removeChild(detailG.firstChild);
+  while(iceG.firstChild)iceG.removeChild(iceG.firstChild);
+  if(n===2)chapter2();
+  if(n===4)chapter4();
+  if(n===5)chapter5();
+  if(n===6){chapter6();chapter7();}
+  if(n===8)chapter8();
+  if(n===9)chapter9();
+  if(n===10)chapter10();
+  if(n===11)chapter11();
+  if(n===12)chapter12();
+  if(n===13){chapter13();}
+  if(n===14)chapter14();
+  if(n===15)chapter15();
+  if(n===16)chapter16();
+  if(n===17)chapter17();
+  if(n===18)chapter18();
+}
+
+/* static timeline bar */
+function buildBar(){
+  var spans=$('spans'),ticks=$('ticks');
+  // Era bands
+  var bands=[
+    ['Hadean',4540,4000],['Archean',4000,2500],['Proterozoic',2500,540],
+    ['Paleozoic',540,252],['Mesozoic',252,66],['Cenozoic',66,0.01],
+    ['Human',0.01,0]
+  ];
+  var totalWidth=1600-28;
+  var x=14;
+  var bandW;
+  function wFor(v){return Math.log10(v+1)/Math.log10(TOT+1)*totalWidth;}
+  function posFor(v){return totalWidth-totalWidth*(Math.log10(v+1)/Math.log10(TOT+1));}
+  var barX=14, barY=20, barH=12;
+  // custom piecewise: deep bands use log, recent use linear
+  var bandDefs=[
+    ['Hadean',4540,4000],['Archean',4000,2500],['Proterozoic',2500,540],
+    ['Paleozoic',540,252],['Mesozoic',252,66],['Cenozoic',66,1000],['Human',1000,0.001]
+  ];
+  // We'll use piecewise log per band width proportional to sqrt
+  var xpos=14;
+  function vx(v){ return 14 + (Math.log10(TOT+1)-Math.log10(v+1))/(Math.log10(TOT+1)-Math.log10(0.0001))*(1600-28-14); }
+  bandDefs.forEach(function(b){
+    var a=Math.max(vx(b[1]),14), z=Math.min(vx(b[2]),1600-14);
+    if(z-a<16)z=a+16;
+    mk('rect',{x:a,y:barY,width:z-a,height:barH,rx:3,fill:'#4a6a8a',stroke:'rgba(255,255,255,.2)'},spans);
+    mk('text',{x:(a+z)/2,y:barY-5,'text-anchor':'middle',fill:'#cfe0ff','font-size':10,'font-family':'system-ui,sans-serif'},spans).textContent=b[0];
+  });
+  // chapter ticks
+  CH.forEach(function(c){
+    var x=Math.max(vx(c.dt),14);
+    var ln=mk('line',{x1:x,y1:barY+barH,x2:x,y2:barY+barH+8,stroke:'#fff','stroke-width':1,opacity:.6},ticks);
+    ln.setAttribute('data-ch',c.n);
+  });
+  // scale labels
+  var scales=[
+    {x:vx(4540),y:38,txt:'deep time — log scale'},
+    {x:vx(1000),y:38,txt:'history — log'},
+    {x:vx(1),y:38,txt:'recent — linear'}
+  ];
+  scales.forEach(function(s){
+    var t=mk('text',{x:s.x,y:s.y,fill:'#8fb8d8','font-size':10,'font-family':'system-ui,sans-serif',opacity:.8},spans);
+    t.textContent=s.txt;
+  });
+}
+
+/* playhead position from dt */
+function dtToX(dt){
+  return 14 + (Math.log10(TOT+1)-Math.log10(dt+1))/(Math.log10(TOT+1)-Math.log10(0.0001))*(1600-28-14);
+}
+function xToDT(x){
+  var a=14, b=1600-14, v=(x-a)/(b-a);
+  if(v<0)v=0; if(v>1)v=1;
+  var mL=Math.log10(TOT+1), mR=Math.log10(0.0001);
+  return Math.pow(10, mL - v*(mL-mR)) - 1;
+}
+
+/* render current dt to scene */
+function render(dt, instant){
+  var ch=nearestChapter(dt);
+  idx=ch.n;
+  var g=build(ch.n);
+  // atmosphere
+  sky.setAttribute('fill',g.skyFill);
+  // ocean
+  oceanG.setAttribute('opacity', g.oceanOp);
+  var shapes=oceanG.querySelectorAll('rect,path');
+  if(shapes[0])shapes[0].setAttribute('fill','url(#gOcean)');
+  if(shapes[1])shapes[1].setAttribute('fill',g.ocean2);
+  // shore
+  var shY=g.shoreH;
+  var shoreD='M0,'+shY+' Q400,'+(shY-40)+' 800,'+shY+' T1600,'+shY+' L1600,900 L0,900 Z';
+  shore.setAttribute('d',shoreD);
+  // land
+  landEdge.setAttribute('d','M0,'+(shY-30)+' Q400,'+(shY-70)+' 800,'+(shY-30)+' T1600,'+(shY-30));
+  landPath.setAttribute('d','M0,'+(shY-30)+' Q400,'+(shY-70)+' 800,'+(shY-30)+' T1600,'+(shY-30)+' L1600,900 L0,900 Z');
+  landFill.setAttribute('fill',g.landFill);
+  landEdge.setAttribute('stroke',g.landStroke);
+  landG.setAttribute('clip-path','url(#clipLand)');
+  // ice
+  if(g.ice>0){
+    var ifill=build(4).landFill;
+    iceFront.setAttribute('d','M0,900 L0,'+(shY+60)+' Q400,'+(shY+10)+' 800,'+(shY+60)+' T1600,'+(shY+60)+' L1600,900 Z');
+    iceFront.setAttribute('fill','#dfe9f4'); setOp(iceFront,g.ice);
+  } else setOp(iceFront,0);
+  // snow / fire
+  setOp(snowG,g.snow);
+  fireG.setAttribute('d','M0,900 L0,'+(shY-20)+' Q400,'+(shY-90)+' 800,'+(shY-20)+' T1600,'+(shY-20)+' L1600,900 Z');
+  setOp(fireG,g.fire);
+  // extrusion
+  setOp(extrusion,g.extrude);
+  // impact
+  setOp(impactFx,g.impact);
+  // parallax parallax for stars (via transform)
+  // caption haze
+  setOp(bg,1);
+  return g;
+}
+
+/* store last rendered for particles/anims */
+var lastG={};
+function nearestChapter(dt){
+  var best=CH[0], bd=Math.abs(CH[0].dt-dt);
+  for(var i=1;i<CH.length;i++){
+    var d=Math.abs(CH[i].dt-dt);
+    if(d<bd){bd=d;best=CH[i];}
+  }
+  return best;
+}
+
+/* interpolation state */
+var curT=TOT, prevT=TOT, curCh=0;
+function stepChapter(prev,next,amt){
+  // amt 0..1
+  var g1=build(prev), g2=build(next);
+  return {
+    sky: lerp(hexToRgb(g1.skyFill),hexToRgb(g2.skyFill),amt),
+    oceanOp: lerp(g1.oceanOp,g2.oceanOp,amt),
+    ocean: lerp(colorRGB(g1.oceanColor),colorRGB(g2.oceanColor),amt),
+    landOp: lerp(g1.landOpacity,g2.landOpacity,amt),
+    land: lerp(colorRGB(g1.landFill),colorRGB(g2.landFill),amt),
+    shore: lerp(g1.shoreH,g2.shoreH,amt),
+    ice: lerp(g1.ice,g2.ice,amt),
+    snow: lerp(g1.snow,g2.snow,amt),
+    fire: lerp(g1.fire,g2.fire,amt),
+    extrude: lerp(g1.extrude,g2.extrude,amt),
+    impact: lerp(g1.impact,g2.impact,amt)
+  };
+}
+function colorRGB(c){if(c[0]==='#')return [parseInt(c.substr(1,2),16),parseInt(c.substr(3,2),16),parseInt(c.substr(5,2),16)];return [128,128,128];}
+function hexToRgb(c){return colorRGB(c);}
+function rgbStr(c,a){return 'rgb('+Math.round(c[0])+','+Math.round(c[1])+','+Math.round(c[2])+')'+(a!==undefined?'rgba('+Math.round(c[0])+','+Math.round(c[1])+','+Math.round(c[2])+','+a+')':'');}
+
+/* main animation loop */
+function renderState(dt,amt,idx){
+  var chA=nearestChapter(dt), chB=nearestChapter(Math.max(0.0001,dt-0.5));
+  // Use direct build for simplicity, but smooth key properties
+  var g=build(chA.n);
+  var prev=build(Math.max(0.0001,dt-40)); // 40 MY ago
+  var prevCh=chA.n===0?0:chA.n;
+  var amt=clamp(1-(dt-40)/(40),0,1); // crude blend, adjust to chapter spacing
+  // Instead blend using actual dt proximity to next/prev chapter
+  var nxt=null;
+  for(var i=0;i<CH.length;i++)if(CH[i].dt<dt){nxt=CH[i];}
+  var nxtCh=nxt?nxt.n:chA.n;
+  var blendA = (nxt&&nxt.dt>dt)?(dt-nxt.dt)/Math.max(1,(nxt.dt-dt)):0; // not used
+  // simple approach: direct state
+  var shY=g.shoreH;
+  sky.setAttribute('fill',g.skyFill);
+  oceanG.setAttribute('opacity',g.oceanOp);
+  var shapes=oceanG.querySelectorAll('rect,path');
+  if(shapes[0])shapes[0].setAttribute('fill','url(#gOcean)');
+  if(shapes[1])shapes[1].setAttribute('fill',g.ocean2);
+  shore.setAttribute('d','M0,'+shY+' Q400,'+(shY-40)+' 800,'+shY+' T1600,'+shY+' L1600,900 L0,900 Z');
+  landEdge.setAttribute('d','M0,'+(shY-30)+' Q400,'+(shY-70)+' 800,'+(shY-30)+' T1600,'+(shY-30));
+  landPath.setAttribute('d','M0,'+(shY-30)+' Q400,'+(shY-70)+' 800,'+(shY-30)+' T1600,'+(shY-30)+' L1600,900 L0,900 Z');
+  landFill.setAttribute('fill',g.landFill);
+  landEdge.setAttribute('stroke',g.landStroke);
+  landFill.setAttribute('opacity',g.landOpacity);
+  landEdge.setAttribute('opacity',g.landOpacity*.5);
+  if(g.ice>0){
+    iceFront.setAttribute('d','M0,900 L0,'+(shY+60)+' Q400,'+(shY+10)+' 800,'+(shY+60)+' T1600,'+(shY+60)+' L1600,900 Z');
+    iceFront.setAttribute('fill','#dfe9f4');
+    setOp(iceFront,g.ice);
+  } else setOp(iceFront,0);
+  setOp(snowG,g.snow);
+  fireG.setAttribute('d','M0,900 L0,'+(shY-20)+' Q400,'+(shY-90)+' 800,'+(shY-20)+' T1600,'+(shY-20)+' L1600,900 Z');
+  setOp(fireG,g.fire);
+  setOp(extrusion,g.extrude);
+  setOp(impactFx,g.impact);
+  // star visibility
+  var stStars=stars, stF2=starField2;
+  var stA = g.starsA;
+  stStars.style.opacity = stA;
+  stF2.style.opacity = stA*.8;
+  // apply blend for smoothness by cross-fading? skip complex blend; snap chapter art
+  if(curCh!==chA.n){curCh=chA.n;applyArt(chA.n);}
+  // caption emphasis fade per chapter
+  updateHud(chA);
+}
+
+function updateHud(ch){
+  $('tTitle').textContent=ch.title;
+  $('tDate').textContent=ch.date;
+  $('tCaption').textContent=ch.cap;
+  setChapterHud(ch.n);
+}
+var hudTimer=null;
+function setChapterHud(n){
+  if(hudTimer)clearTimeout(hudTimer);
+  hudTimer=setTimeout(function(){},10);
+}
+
+function formatDT(dt){
+  if(dt>1000)return (dt/1000).toFixed(dt/1000>10?0:1)+' billion years ago';
+  if(dt>=1000)return Math.round(dt)+' million years ago';
+  if(dt>=1)return Math.round(dt)+' million years ago';
+  if(dt>=1/31536){ // >1 month
+    return Math.max(1,Math.round(dt*12))+' million years ago';
+  }
+  if(dt>=0.001)return Math.round(dt*1000000)+' years ago';
+  if(dt>=0.0001)return Math.round(dt*10000000)+' years ago';
+  return 'today';
+}
+function formatDT2(dt){
+  if(dt>=1000000)return (dt/1000000).toFixed(2).replace(/\.?0+$/,'')+' billion years ago';
+  if(dt>=1000)return Math.round(dt/1000*100)/100+' million years ago';
+  if(dt>=1)return Math.round(dt)+' million years ago';
+  if(dt>=0.001)return Math.round(dt*1000000)+' years ago';
+  if(dt>=0.0001)return Math.round(dt*100000000)+' years ago';
+  if(dt>0.0001)return 'present';
+  return 'today';
+}
+
+/* timeline interaction */
+var track=$('tline');
+var dragging=false;
+function getX(e){
+  var r=track.getBoundingClientRect();
+  var px=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+  return clamp(px,0,r.width);
+}
+function setXFromEvent(e){
+  var x=getX(e), dt=xToDT(x), r=track.getBoundingClientRect();
+  var v=(x-r.left)/(r.width)*(Math.log10(TOT+1)-Math.log10(0.0001))+Math.log10(0.0001);
+  var dt2=Math.pow(10,v)-1;
+  curT=clamp(dt2,0.0001,TOT);
+  updatePlayhead();
+  if(Math.abs(curT-chA().dt)>0.01)applyArt(nearestChapter(curT).n);
+}
+function chA(){return nearestChapter(curT);}
+track.addEventListener('pointerdown',function(e){
+  dragging=true;track.setPointerCapture(e.pointerId);setXFromEvent(e);e.preventDefault();
+});
+track.addEventListener('pointermove',function(e){if(dragging)setXFromEvent(e);});
+track.addEventListener('pointerup',function(e){dragging=false;});
+// tick click
+var tickEls=document.querySelectorAll('#ticks line');
+tickEls.forEach(function(l){
+  l.addEventListener('click',function(){
+    var n=parseInt(l.getAttribute('data-ch'));
+    curT=CH[n].dt*0.9999;
+    updatePlayhead();applyArt(n);
+  });
+});
+
+function updatePlayhead(){
+  var dt=curT;
+  var x=dtToX(dt);
+  var ph=$('playhead');
+  var r=track.getBoundingClientRect();
+  ph.style.left=(x-14)+'px';
+  $('dateReadout').textContent=formatDT2(dt);
+  // chapter
+  var ch=nearestChapter(dt);
+  if(ch.n!==curCh){curCh=ch.n;applyArt(ch.n);updateHud(ch);}
+}
+
+/* playback loop */
+function playPause(){
+  playing=!playing;
+  $('btnPlay').textContent=playing?'⏸':'▶';
+}
+function restart(){
+  curT=TOT;
+  updatePlayhead();
+  applyArt(nearestChapter(curT).n);
+  playing=true;$('btnPlay').textContent='⏸';
+}
+
+$('btnPlay').addEventListener('click',playPause);
+$('btnRestart').addEventListener('click',restart);
+$('selSpeed').addEventListener('change',function(e){speed=parseFloat(e.target.value);});
+
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'){e.preventDefault();playPause();}
+  else if(e.code==='ArrowRight'){e.preventDefault();jumpChapter(1);}
+  else if(e.code==='ArrowLeft'){e.preventDefault();jumpChapter(-1);}
+});
+function jumpChapter(dir){
+  var ch=nearestChapter(curT);
+  var n=ch.n+dir;
+  if(n<0)n=0;if(n>=CH.length)n=CH.length-1;
+  curT=CH[n].dt*0.9999;
+  updatePlayhead();applyArt(n);updateHud(CH[n]);
+}
+
+/* init */
+buildBar();
+applyArt(18);
+updateHud(CH[18]);
+updatePlayhead();
+curT=TOT;
+playing=true;
+$('btnPlay').textContent='⏸';
+
+var startT=null, accum=0;
+function frame(ts){
+  if(startT===null)startT=ts;
+  var dtm=(ts-startT)/1000;
+  startT=ts;
+  if(playing){
+    accum+=dtm*speed;
+    // advance time: total dur seconds for TOT
+    var rate=dtm*speed/totalDur*TOT;
+    if(accum>=1){
+      var units=Math.floor(accum);
+      accum-=units;
+      curT-=rate*units;
+    } else {
+      curT-=rate;
+    }
+    if(curT<0.0001){curT=0.0001;if(playing)restart();}
+    var dt2=curT;
+    var ch=nearestChapter(dt2);
+    renderState(dt2,0,ch.n);
+    updatePlayhead();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
