@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Galactic Voyage</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#cfe6ff;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-user-select:none;user-select:none}
+canvas{display:block}
+#v{position:fixed;inset:0}
+#panel{position:fixed;left:12px;top:12px;pointer-events:auto;background:rgba(6,12,26,.55);border:1px solid rgba(90,180,255,.25);border-radius:8px;padding:8px 10px;font-size:11px;backdrop-filter:blur(6px);min-width:190px}
+#panel b{color:#8fe0ff;letter-spacing:.06em}
+#map{position:fixed;left:12px;bottom:12px;background:rgba(6,12,26,.55);border:1px solid rgba(90,180,255,.25);border-radius:8px;backdrop-filter:blur(6px);pointer-events:auto}
+#tools{position:fixed;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:auto}
+#tools button{background:rgba(6,16,32,.72);border:1px solid rgba(90,180,255,.3);color:#cfe6ff;border-radius:6px;padding:5px 9px;font:inherit;font-size:11px;cursor:pointer}
+#tools button:hover{background:rgba(30,90,160,.6)}
+#tools button.on{background:rgba(40,140,220,.8);color:#fff}
+#hint{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);font-size:11px;color:#9fd0ff;background:rgba(6,12,26,.5);padding:4px 10px;border-radius:6px;pointer-events:none;white-space:nowrap}
+#dim{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;font-size:15px;letter-spacing:.25em;color:#7fd4ff;z-index:9}
+#hide{position:fixed;right:12px;bottom:12px;pointer-events:auto}
+.hidden{opacity:0;pointer-events:none!important}
+</style>
+</head>
+<body>
+<div id="v"></div>
+<div id="panel"><div><b id="reg">DEPARTURE</b></div>
+<div style="margin-top:6px">DIST <span id="dist">0</span> ly</div>
+<div>VELOCITY <span id="vel">0</span> km/s</div>
+<div>ETA <span id="eta">—</span></div>
+<div id="route" style="margin-top:6px;font-size:10px;color:#7f9ec4"></div></div>
+<div id="map"><canvas id="mc" width="240" height="240"></canvas></div>
+<div id="tools">
+<button data-m="0" class="on">CINEMATIC</button><button data-m="1">CHASE</button><button data-m="2">COCKPIT</button><button data-m="3">GALAXY MAP</button>
+<button data-p="0">PAUSE</button><button data-s="0">1×</button><button data-s="1">2×</button><button data-s="2">4×</button><button data-a="0">MUTE</button><button id="hbtn">HIDE UI</button>
+</div>
+<div id="hint">click map to plot course · drag to orbit</div>
+<div id="dim">GENERATING…</div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+const TAU=Math.PI*2, DEG=Math.PI/180;
+const host=document.getElementById('v');
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+host.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.5,3e7);
+scene.add(cam);
+
+// ---------- helpers ----------
+function lerp(a,b,t){return a+(b-a)*t}
+function smooth(a,b,x){const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)}
+function clamp(x,a,b){return x<a?a:x>b?b:x}
+function hslToRgb(h,s,l){const k=n=>(n+h/30)%12;const a=s*Math.min(l,1-l);return [l-a*Math.max(-1,Math.min(k(3)-k(0),k(8)-k(4),k(5)-k(1))),l-a*Math.max(-1,Math.min(k(4)-k(9),k(1)-k(11),k(6)-k(2))),l-a*Math.max(-1,Math.min(k(11)-k(8),k(2)-k(10),k(7)-k(3)))].map(v=>Math.round(v*255));}
+function noise2(x,y){let s=0,n=0,amp=1,f=1;for(let i=0;i<4;i++){s+=amp*Math.sin(x*f+Math.cos(y*f)*1.7)*Math.cos(y*f*1.3+Math.sin(x*f)*1.9);n+=amp;f*=2.1;amp*=.55}return s*0.28}
+function fbm3(x,y,z){let s=0,a=.5,f=1;for(let i=0;i<4;i++){s+=a*(Math.sin(x*f+1.3)*Math.sin(y*f*1.7+2.1)*Math.sin(z*f*1.4+0.7));f*=2.03;a*=.5}return s*2.2}
+function tempColor(t){ // t 0=hot blue-white,1=cool orange
+  const c=hslToRgb(t<.5? lerp(200,60,t*2): lerp(45,28,(t-.5)*2), .55, lerp(.62,.5,t));
+  return new THREE.Color(c[0]/255,c[1]/255,c[2]/255);
+}
+function mkmulmat(rgb,mix=0){ // procedural canvas texture
+  const c=document.createElement('canvas');c.width=128;c.height=128;const x=c.getContext('2d');
+  const g=x.createRadialGradient(64,64,0,64,64,64);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.4,'rgba(255,255,255,.45)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,128,128);
+  const tc=THREE.CanvasTexture(c);tc.colorSpace=THREE.SRGBColorSpace;return {tex:tc,c};
+}
+
+// ---------- GALAXY GEN ----------
+const R_MAX=48000, NARM=4, PITCH=9.4;
+function starPos(i, total){
+  // distribution in plane
+  let r,u,v,a;
+  if(i<total*0.02) return null; // skip fraction -> reroll via separate lists
+  return 0;
+}
+const P={pos:new Float32Array(0),size:new Float32Array(0),col:new Float32Array(0),arm:new Float32Array(0),dust:new Float32Array(0),hue:new Float32Array(0)};
+const COUNT=230000;
+function pushSt(r,col,sz,arm){
+  const c=tempColor(clamp(1-r/R_MAX*.55+randF*.28,0,1));
+  const i=P.pos.length/3;
+  P.pos.push(...[col? 0:0,0,0]);
+}
+let randF=0;
+const Rnd=(()=>{let s=12345;return()=>{s=s*16807%2147483647;return s/2147483647}})();
+function gauss(){return (Rnd()+Rnd()+Rnd())/1.5-1}
+function genGalaxy(){
+  const pos=[],col=[],size=[],arm=[],dust=[],hue=[];
+  const N=COUNT;
+  const starCol=new Float32Array(0);
+  function add(x,y,z,c,s,a,d,h){
+    pos.push(x,y,z);col.push(c.r,c.g,c.b);size.push(s);arm.push(a);dust.push(d);hue.push(h);
+  }
+  const tmp=new THREE.Color();
+  // disc + arms
+  for(let i=0;i<N*0.70;i++){
+    const u=Rnd();
+    const r=Math.pow(u,0.62)*R_MAX*0.96+300;
+    const th=Rnd()*TAU;
+    const armI=Math.floor(Rnd()*NARM);
+    const armAng=armI/NARM*TAU + Math.log(r/9000)*0.55;
+    const ang=th*(PITCH)+ (th*0+ Rnd()*0.0);
+    // proper logarithmic arm: theta = armAng + log(r/9000)/log(PITCH)*TAU*NARM
+    const thArm=armI*TAU/NARM + Math.log(r/9000)/Math.log(PITCH)*TAU*NARM;
+    const spread=60/(1+r*0.00006)+ Rnd()*35;
+    const ang2=thArm+(th-thArm)*0.0+ (Rnd()-.5)*spread*2;
+    const rr=r*(1+(Rnd()-.5)*(.05+.000006*r));
+    const thR=ang2;
+    const x=Math.cos(thR)*rr, z=Math.sin(thR)*rr;
+    const y=(Math.random()-.5)*(9+rr*0.00055);
+    const hot=1-clamp(r/R_MAX,0,1)*.7;
+    const t=clamp(1-r/R_MAX*1.6 + (Rnd()-.5)*.35,0,1);
+    tmp.setRGB(0,0,0).lerp(new THREE.Color(0.35,0.55,1.0),clamp(t*2.2,0,1)).lerp(new THREE.Color(1.0,0.78,0.5),clamp((t-.45)*1.8,0,1));
+    if(Rnd()<0.12) tmp.multiplyScalar(0.75);
+    add(x,y,z,tmp,6+r*Rnd()*0.0048,armI,0,t);
+  }
+  // dust lanes
+  for(let i=0;i<N*0.030;i++){
+    const r=RND()*R_MAX*0.86+900;
+    const ai=Rnd()*NARM;
+    const thArm=ai/NARM*TAU + Math.log(r/9000)/Math.log(PITCH)*TAU*NARM;
+    const rr=r*(1+(Rnd()-.5)*0.035);
+    const th=thArm+(Rnd()-.5)*0.09;
+    const x=Math.cos(th)*rr, z=Math.sin(th)*rr;
+    const y=(Rnd()-.5)*(14+r*0.0012);
+    tmp.setRGB(0.035,0.02,0.028).lerp(new THREE.Color(0.16,0.06,0.13),Math.abs(Rnd()-.5)*2);
+    add(x,y,z,tmp,14+r*0.0014,-1,1,0);
+  }
+  // HII regions
+  for(let i=0;i<N*0.010;i++){
+    const r=RND()*R_MAX*0.8+1400;
+    const ai=Math.floor(Rnd()*NARM);
+    const thArm=ai/NARM*TAU + Math.log(r/9000)/Math.log(PITCH)*TAU*NARM;
+    const th=thArm+(Rnd()-.5)*0.16;
+    const rr=r*(1+(Rnd()-.5)*0.06);
+    const x=Math.cos(th)*rr,z=Math.sin(th)*rr,y=(Rnd()-.5)*(18+r*0.0016);
+    const c=new THREE.Color().setHSL(0.92+Rnd()*0.12,0.85,0.55+Rnd()*0.2).multiplyScalar(1.2+Rnd()*1.4);
+    add(x,y,z,c,26+Rnd()*26,-2,0,1);
+  }
+  // bulge
+  for(let i=0;i<N*0.10;i++){
+    const rr=Math.pow(Rnd(),1.8)*4200;
+    const x=(gauss()+gauss())*rr*0.62, z=(gauss()+gauss())*rr*0.62, y=(gauss()+gauss())*rr*0.30;
+    const t=Math.random()*.85;
+    tmp.setRGB(1,0.9,0.72).lerp(new THREE.Color(1.0,0.62,0.35),t*0.75).lerp(new THREE.Color(0.62,0.5,0.55), (1-Math.abs(t-0.5))*0.3);
+    add(x,y,z,tmp*1.2+Rnd()*0.5,4+rr*0.002,-3,0.6,0);
+  }
+  // bar
+  for(let i=0;i<N*0.045;i++){
+    const u=Rnd(), v=Rnd();
+    const L=9000;
+    const x=(u-.5)*L*2, z=(v-.5)*L*2*0.28;
+    const y=(gauss())*1100+ (x*0.004+0.5)*60;
+    const t=Rnd();
+    tmp.setRGB(1,0.86,0.66).lerp(new THREE.Color(0.8,0.62,0.55),t).multiplyScalar(1.1+Rnd()*0.7);
+    add(x,y,z,tmp,8,4,0,0);
+  }
+  // halo
+  for(let i=0;i<N*0.10;i++){
+    const rr=Math.pow(Rnd(),0.6)*R_MAX*0.95;
+    const a=Rnd()*TAU, e=Math.acos(2*Rnd()-1);
+    const x=Math.sin(e)*Math.cos(a)*rr, z=Math.sin(e)*Math.sin(a)*rr, y=Math.cos(e)*rr*0.35;
+    tmp.setRGB(0.55,0.68,1).multiplyScalar(0.5+Rnd()*0.7);
+    add(x,y,z,tmp,2+Rnd()*7,5,0,0);
+  }
+  const n=pos.length/3;
+  const posA=new Float32Array(n*3),colA=new Float32Array(n*3),sizeA=new Float32Array(n),armA=new Float32Array(n),dustA=new Float32Array(n),hueA=new Float32Array(n);
+  for(let i=0;i<n;i++){posA.set(pos.subarray(i*3,i*3+3),i*3);colA.set(col.subarray(i*3,i*3+3),i*3);sizeA[i]=size[i];armA[i]=arm[i];dustA[i]=dust[i];hueA[i]=hue[i]}
+  P.n=n;
+  return {posA,colA,sizeA,armA,dustA,hueA,n};
+}
+let POS,CSA,SSA,ARA,DSA,HSA;
+{
+  const g=genGalaxy();POS=g.posA;CSA=g.colA;SSA=g.sizeA;ARA=g.armA;DSA=g.dustA;HSA=g.hueA;
+}
+const galGeo=new THREE.BufferGeometry();
+galGeo.setAttribute('position',new THREE.BufferAttribute(POS,3));
+galGeo.setAttribute('aColor',new THREE.BufferAttribute(CSA,3));
+galGeo.setAttribute('aSize',new THREE.BufferAttribute(SSA,1));
+galGeo.setAttribute('aArm',new THREE.BufferAttribute(ARA,1));
+galGeo.setAttribute('aDust',new THREE.BufferAttribute(DSA,1));
+galGeo.setAttribute('aHue',new THREE.BufferAttribute(HSA,1));
+galGeo.setDrawRange(0,P.n);
+
+const galMat=new THREE.ShaderMaterial({
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,vertexColors:false,
+  uniforms:{uTime:{value:0},uDisc:{value:0.5}},
+  vertexShader:`
+    attribute vec3 aColor; attribute float aSize; attribute float aArm; attribute float aDust; attribute float aHue;
+    uniform float uTime; uniform float uDisc;
+    varying vec3 vC; varying float vS; varying float vA;
+    void main(){
+      vec3 p=position;
+      float r=length(p.xz);
+      float rot=uTime*(1400.0/(r+900.0))*0.0000016*6.0;
+      float a=atan(p.z,p.x);
+      p.x+=cos(a+rot)*r-p.x; p.z+=sin(a+rot)*r-p.z;
+      p.y+=sin(uTime*0.0004+a*7.0)*0.4;
+      vec4 mv=modelViewMatrix*vec4(p,1.0);
+      vC=aColor; vS=aSize; vA=aArm;
+      gl_Position=projectionMatrix*mv;
+      float d=max(0.0001,-mv.z);
+      float px=(300.0+p.size*0.00042)/d; p.x=0.0;
+      gl_PointSize=px*(uDisc*1.0+0.4)*(300.0/300.0);
+      gl_PointSize=min(gl_PointSize,420.0);
+    }`,
+  fragmentShader:`
+    varying vec3 vC; varying float vS; varying float vA;
+    void main(){
+      vec2 uv=gl_PointCoord*2.0-1.0;
+      float d=dot(uv,uv);
+      if(d>1.0) discard;
+      float a=pow(1.0-d,2.4);
+      vec3 c=vC;
+      if(vA>2.5) c*=0.55;
+      gl_FragColor=vec4(c*a, a);
+    }`
+});
+scene.add(new THREE.Points(galGeo,galMat));
+
+// nebula
+const nebMat=new THREE.ShaderMaterial({
+  transparent:true,depthWrite:false,side:THREE.DoubleSide,
+  uniforms:{uTime:{value:0},uColA:{value:new THREE.Color(1,0.18,0.45)},uColB:{value:new THREE.Color(0.05,0.35,0.95)}},
+  vertexShader:`varying vec3 vP; void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+    uniform float uTime; uniform vec3 uColA,uColB; varying vec3 vP;
+    float hash(vec3 p){p=fract(p*0.3183099+0.1);p*=17.0;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+    float noise(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.0-2.0*f);
+      return mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+                 mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
+    void main(){
+      vec3 p=vP*0.0028+uTime*0.00012;
+      float n=0.0,amp=0.5,f=1.0;
+      for(int i=0;i<4;i++){n+=amp*noise(p*f);f*=2.1;amp*=0.5}
+      n=pow(clamp(n*0.75+0.25,0.0,1.0),2.2);
+      float r=length(vP.xy);
+      float fade=smoothstep(1.0,0.15,r);
+      vec3 c=mix(uColA,uColB,clamp(n*1.6-0.2+vP.y*0.05,-0.2,1.0));
+      float a=n*n*fade*0.55;
+      gl_FragColor=vec4(c*(0.6+n*1.3),a);
+    }`
+});
+const nebMesh=new THREE.Mesh(new THREE.SphereGeometry(1,32,16),nebMat);nebMesh.scale.set(1,0.42,1);scene.add(nebMesh);
+
+// warp stars
+const WSTAR_N=2400;
+const wPos=new Float32Array(WSTAR_N*3),wCol=new Float32Array(WSTAR_N*3);
+for(let i=0;i<WSTAR_N;i++){const th=Rnd()*TAU,ra=1200+Math.pow(Rnd(),.6)*9000;wPos[i*3]=Math.cos(th)*ra;wPos[i*3+1]=(Rnd()-.5)*2600;wPos[i*3+2]=Math.sin(th)*ra;const c=tempColor(Rnd());wCol[i*3]=c.r;wCol[i*3+1]=c.g;wCol[i*3+2]=c.b}
+const wGeo=new THREE.BufferGeometry();wGeo.setAttribute('position',new THREE.BufferAttribute(wPos,3));wGeo.setAttribute('aColor',new THREE.BufferAttribute(wCol,3));
+const wMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  uniforms:{uTime:{value:0}},vertexShader:`attribute vec3 aColor;varying vec3 vC;uniform float uTime;void main(){vC=aColor;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mv;float d=max(.001,-mv.z);gl_PointSize=(140.0/d)*(1.0+uTime*0.02);}`,
+  fragmentShader:`varying vec3 vC;void main(){vec2 uv=gl_PointCoord*2.-1.;float d=dot(uv,uv);if(d>1.)discard;gl_FragColor=vec4(vC*pow(1.-d,2.),pow(1.-d,3.));}`});
+scene.add(new THREE.Points(wGeo,wMat));
+
+// ---------- PLANETS ----------
+function atmGlow(color){
+  const g=new THREE.SpriteMaterial({map:mkmulmat().tex,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,color,opacity:0.5});
+  const s=new THREE.Sprite(g);s.scale.setScalar(1);return s;
+}
+function makePlanet(radius,canvasTex,clouds,atmosColor,ringTex){
+  const grp=new THREE.Group();
+  const m=new THREE.MeshStandardMaterial({color:0xffffff,map:canvasTex,roughness:.9,metalness:0});
+  const sp=new THREE.Mesh(new THREE.SphereGeometry(radius,48,24),m);sp.scale.y=1;grp.add(sp);
+  if(atmosColor){
+    const s=new THREE.Sprite(new THREE.SpriteMaterial({map:mkmulmat().tex,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,color:atmosColor,opacity:.5}));
+    s.scale.setScalar(radius*3.2);grp.add(s);
+  }
+  if(clouds){
+    const cm=new THREE.MeshStandardMaterial({color:0xffffff,map:clouds,roughness:.9});
+    const cs=new THREE.Mesh(new THREE.SphereGeometry(radius*1.012,48,24),cm);cs.material.transparent=true;cs.material.opacity=.72;grp.add(cs);
+  }
+  if(ringTex){
+    const g=new THREE.RingGeometry(radius*1.55,radius*2.7,128,8);
+    const uv=g.attributes.uv;const inner=1.55,outer=2.7;
+    for(let i=0;i<uv.count;i++){const t=uv.getX(i);uv.setXY(i,(t-inner)/(outer-inner)*0.5,(t-inner)/(outer-inner)*0.5+0.5)}
+    const rm=new THREE.MeshBasicMaterial({map:ringTex,transparent:true,side:THREE.DoubleSide,depthWrite:false,opacity:.92});
+    const ring=new THREE.Mesh(g,rm);ring.rotation.x=Math.PI/2;grp.add(ring);
+  }
+  return grp;
+}
+function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');draw(x,w,h);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
+
+// start star system
+const sysA=new THREE.Group();scene.add(sysA);
+const Astar=new THREE.Mesh(new THREE.SphereGeometry(420,32,16),new THREE.MeshBasicMaterial({color:0xfff2d0}));
+const AstarM=new THREE.Sprite(new THREE.SpriteMaterial({map:mkmulmat().tex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:.95}));
+AstarM.scale.setScalar(2400);Astar.add(AstarM);
+sysA.add(Astar);
+const Aplanet=makePlanet(150,canvasTex(256,128,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#2b4a7a');g.addColorStop(.45,'#3a6ea5');g.addColorStop(.55,'#4f8fc0');g.addColorStop(.8,'#2f5c8c');g.addColorStop(1,'#1e3a5c');x.fillStyle=g;x.fillRect(0,0,w,h);for(let i=0;i<900;i++){x.fillStyle='rgba(200,230,255,'+(0.2+Math.random()*.5)+')';x.beginPath();x.arc(Math.random()*w,Math.random()*h,1+Math.random()*6,0,7);x.fill()}}),
+ canvasTex(256,128,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(0,0,0,0)');for(let i=0;i<14;i++){const y=Math.random()*h;g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.5,'rgba(240,248,255,'+(0.3+Math.random()*.5)+')');g.addColorStop(1,'rgba(0,0,0,0)')}x.fillStyle=g;x.fillRect(0,0,w,h);for(let i=0;i<220;i++){x.fillStyle='rgba(255,255,255,'+(0.2+Math.random()*.6)+')';const yy=Math.random()*h;const ww=20+Math.random()*70;x.fillRect(Math.random()*w,yy,ww,1.5+Math.random()*3);}},
+ 0x66ccff,0);
+Aplanet.position.set(2200,-260,1400);sysA.add(Aplanet);
+Aplanet.rotation.z=0.25;
+const Amoon=makePlanet(30,canvasTex(128,64,(x,w,h)=>{x.fillStyle='#9a9488';x.fillRect(0,0,w,h);for(let i=0;i<400;i++){x.fillStyle='rgba(60,55,50,'+(0.3+Math.random()*.5)+')';x.beginPath();x.arc(Math.random()*w,Math.random()*h,1+Math.random()*4,0,7);x.fill()}}),null,null,null);
+Amoon.position.set(-520,-340,620);sysA.add(Amoon);
+const AmoonP=new THREE.Vector2(300,420);
+const starGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:mkmulmat().tex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:1.4}));
+starGlow.scale.setScalar(6500);Astar.add(starGlow);
+
+// arrival gas giant
+const sysB=new THREE.Group();scene.add(sysB);
+const Bstar=makePlanet(300,canvasTex(256,128,(x,w,h)=>{x.fillStyle='#ffe9a8';x.fillRect(0,0,w,h);for(let i=0;i<300;i++){x.fillStyle='rgba(255,180,80,'+(0.1+Math.random()*.4)+')';x.beginPath();x.arc(Math.random()*w,Math.random()*h,2+Math.random()*8,0,7);x.fill()}}),null,0xffdd88,null);
+Bstar.position.set(20000,-3000,16000);sysB.add(Bstar);
+const Bplanet=makePlanet(620,canvasTex(256,128,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#1c3a5c');g.addColorStop(.35,'#3f7ba8');g.addColorStop(.62,'#86b8d4');g.addColorStop(.85,'#2a5278');g.addColorStop(1,'#17304a');x.fillStyle=g;x.fillRect(0,0,w,h);for(let i=0;i<260;i++){x.fillStyle='rgba(230,245,255,'+(0.1+Math.random()*.35)+')';const y=Math.random()*h;x.fillRect(Math.random()*w,y,20+Math.random()*70,2+Math.random()*5)}},null,0x66d0ff,
+ canvasTex(256,256,(x,w,h)=>{x.fillStyle='rgba(240,200,140,0)';x.fillRect(0,0,w,h);for(let i=0;i<220;i++){const t=Math.random();x.strokeStyle='rgba(255,'+(200+Math.random()*40|0)+',150,'+(0.15+Math.random()*0.45)+')';x.beginPath();x.moveTo(t*256,Math.random()*256);x.lineTo(t*256+40+Math.random()*110,Math.random()*256);x.lineWidth=2+Math.random()*9;x.stroke()}}));
+Bplanet.position.set(-21000,2600,-16000);Bplanet.rotation.z=0.22;sysB.add(Bplanet);
+const Bmoon=makePlanet(46,canvasTex(128,64,(x,w,h)=>{x.fillStyle='#cfd6e0';x.fillRect(0,0,w,h);for(let i=0;i<300;i++){x.fillStyle='rgba(90,100,120,'+(0.2+Math.random()*.5)+')';x.beginPath();x.arc(Math.random()*w,Math.random()*h,1+Math.random()*5,0,7);x.fill()}}),null,0x99ccff,null);
+Bmoon.position.set(0,-1150,0);Bplanet.add(Bmoon);
+
+// black hole
+const bhGroup=new THREE.Group();scene.add(bhGroup);
+const bh=new THREE.Mesh(new THREE.SphereGeometry(520,24,16),new THREE.MeshBasicMaterial({color:0x000000}));
+bhGroup.add(bh);
+const bhDiscGeo=new THREE.CircleGeometry(1,96,0,Math.PI*2);
+const bhDiscMat=new THREE.ShaderMaterial({side:THREE.DoubleSide,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  uniforms:{uTime:{value:0}},
+  vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec2 vU;uniform float uTime;
+    void main(){
+      float r=length(vU-0.5)*2.0;
+      if(r>1.0)discard;
+      float ang=atan(vU.y-0.5,vU.x-0.5);
+      float a=0.5+0.5*sin(ang*10.0+uTime*0.9+r*20.0-uTime*2.4);
+      float disk=pow(1.0-r,1.6);
+      vec3 col=mix(vec3(1.0,0.35,0.08),vec3(1.0,0.92,0.7),pow(1.0-r,2.0));
+      col*= (0.35+0.95*a)*disk*(1.0-r*0.55);
+      float line=pow(max(0.0,sin(ang*24.0+uTime*6.0)),8.0)*0.5;
+      gl_FragColor=vec4(col+line*vec3(1.0,0.6,0.3),1.0);
+    }`});
+const bhDisc=new THREE.Mesh(bhDiscGeo,bhDiscMat);bhDisc.scale.set(9000,5200,1);bhGroup.add(bhDisc);
+const bhInner=new THREE.Mesh(bhDiscGeo,bhDiscMat.clone());bhInner.material=bhDiscMat.clone();
+bhInner.scale.set(4200,2500,1);bhGroup.add(bhInner);
+const bhGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:mkmulmat().tex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,color:0xffcc88,opacity:.95}));
+bhGlow.scale.setScalar(7200);bhGroup.add(bhGlow);
+const bhGlow2=new THREE.Sprite(new THREE.SpriteMaterial({map:mkmulmat().tex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,color:0xff8833,opacity:.5}));
+bhGlow2.scale.setScalar(16000);bhGroup.add(bhGlow2);
+bhGroup.rotation.x=0.35;
+
+// ---------- SHIP ----------
+const ship=new THREE.Group();
+const hullMat=new THREE.MeshStandardMaterial({color:0xc3ccd8,metalness:.85,roughness:.32});
+const darkMat=new THREE.MeshStandardMaterial({color:0x2b313a,metalness:.6,roughness:.5});
+const accentMat=new THREE.MeshStandardMaterial({color:0x3a4a5c,metalness:.7,roughness:.4});
+const glowMat=new THREE.MeshBasicMaterial({color:0x66ddff});
+function lathe(pts,mat,seg=32){const g=new THREE.LatheGeometry(pts.map(p=>new THREE.Vector2(p[0],p[1])),seg);m.rotateX(-Math.PI/2);const m=new THREE.Mesh(g,mat);return m}
+const hullProfile=[[0.02,2.9],[0.42,3.1],[0.72,3.6],[0.92,4.3],[1.0,5.0],[1.02,6.1],[0.98,6.9],[0.82,7.5],[0.55,8.1],[0.30,8.6],[0.16,9.2],[0.10,10.0],[0.12,10.4]];
+const fus=mk();const msh=lathe(hullProfile,hullMat);fus.add(msh);
+const msh2=lathe([[0.02,10.4],[0.10,10.8],[0.20,11.0],[0.22,11.4],[0.14,11.8]],darkMat);fus.add(msh2);
+const canopyGeo=new THREE.SphereGeometry(1.35,24,16);canopyGeo.scale(1,0.62,0.34);
+const canopy=new THREE.Mesh(canopyGeo,new THREE.MeshPhysicalMaterial({color:0x2a3a4a,metalness:.6,roughness:.08,transparent:true,opacity:.62,envMapIntensity:1}));
+canopy.position.set(0,1.98,3.4);canopy.rotation.x=0.25;fus.add(canopy);
+// wings
+const wingGeo=new THREE.ExtrudeGeometry(new THREE.Shape([[0,-1.4],[1.9,-1.9],[4.2,-2.9],[4.6,-3.2],[3.6,-3.0],[0.5,-2.4]]),{depth:0.35,bevelEnabled:true,bevelSize:0.06,bevelThickness:0.06,bevelSegments:2,curveSegments:6});
+wingGeo.translate(0,-1.15,0);wingGeo.rotateX(Math.PI/2);
+const wingR=new THREE.Mesh(wingGeo,accentMat);wingR.position.set(0,0.55,3.2);fus.add(wingR);
+const wingL=new THREE.Mesh(wingGeo,accentMat);wingL.position.set(0,0.55,3.2);wingL.rotation.y=Math.PI;fus.add(wingL);
+const wingR2=new THREE.Mesh(wingGeo,accentMat);wingR2.position.set(0,0.5,1.9);wingR2.scale.set(1,1,1);wingR2.rotation.x=-0.18;fus.add(wingR2);
+// tail
+const tail=new THREE.Mesh(new THREE.ConeGeometry(1.5,3.2,16),accentMat);tail.position.set(0,0.1,-11.2);tail.rotation.x=-Math.PI/2;fus.add(tail);
+const tailTip=new THREE.Mesh(new THREE.SphereGeometry(0.5,12,8),glowMat);tailTip.position.set(0,0.1,-13.0);fus.add(tailTip);
+// nacelles
+function nacelle(x,y,z){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.75,0.75,4.6,18,1,true),hullMat);body.rotation.x=Math.PI/2;body.position.z=0.6;g.add(body);
+  const cap=new THREE.Mesh(new THREE.SphereGeometry(0.78,18,12,0,Math.PI*2,0,Math.PI/2),darkMat);cap.rotation.z=Math.PI/2;cap.position.set(0,0,2.95);g.add(cap);
+  const ring1=new THREE.Mesh(new THREE.TorusGeometry(0.8,0.1,8,20),glowMat);ring1.position.set(0,0,1.9);ring1.rotation.x=Math.PI/2;g.add(ring1);
+  const ring2=new THREE.Mesh(new THREE.TorusGeometry(0.8,0.1,8,20),glowMat);ring2.position.set(0,0,2.7);ring2.rotation.x=Math.PI/2;g.add(ring2);
+  return g;
+}
+const ncL=nacelle(0,1.4,0);ncL.position.set(-2.5,0.55,2.2);fus.add(ncL);
+const ncR=nacelle(0,1.4,0);ncR.position.set(2.5,0.55,2.2);fus.add(ncR);
+// engine plumes
+const plumeGeo=new THREE.CylinderGeometry(0.5,2.2,5.4,20,1,true);
+function plumeMat(color){return new THREE.MeshBasicMaterial({color,transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending})}
+const plumes=[];
+for(const [x,y,sgn] of [[-2.5,0.55,-1],[2.5,0.55,-1]]){
+  const pl=new THREE.Mesh(plumeGeo,plumeMat(0x33aaff));pl.rotation.x=-Math.PI/2;pl.position.set(x,y,-2.0);pl.scale.z=sgn;pl.visible=false;fus.add(pl);plumes.push(pl);
+  const core=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.8,4.2,12,1,true),plumeMat(0xccf4ff));core.rotation.x=-Math.PI/2;core.position.set(x,y,-1.9);core.visible=false;fus.add(core);plumes.push(core);
+}
+// antenna
+const ant=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.09,2.6,6),darkMat);ant.position.set(0.7,2.2,2.4);ant.rotation.x=-0.35;fus.add(ant);
+const antTip=new THREE.Mesh(new THREE.SphereGeometry(0.09,6,6),new THREE.MeshBasicMaterial({color:0xff5544}));antTip.position.copy(ant.position).add(new THREE.Vector3(0,1.35,-0.9));fus.add(antTip);
+// nav lights
+const nav=[];
+function navLight(x,y,z,color){
+  const m=new THREE.MeshBasicMaterial({color});
+  const s=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6),m);s.position.set(x,y,z);fus.add(s);nav.push({m,s,c:color.clone()});return s;
+}
+const portP=navLight(-2.6,0.55,2.2,0xff3344);nav.push({s:portP});
+const starb=navLight(2.6,0.55,2.2,0x33ff66);nav.push({s:starb});
+function glowSprite(color,scale){
+  const m=new THREE.SpriteMaterial({map:mkmulmat().tex,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,color,opacity:0.9});
+  const s=new THREE.Sprite(m);s.scale.setScalar(scale);return s;
+}
+for(let i=0;i<4;i++){const s=glowSprite(0x2255ff,4.2);s.position.set(-2.5,0.55,-2.4);fus.add(s)}
+for(let i=0;i<4;i++){const s=glowSprite(0x2255ff,4.2);s.position.set(2.5,0.55,-2.4);fus.add(s)}
+const navGlow=[];
+for(let i=0;i<3;i++){const s=glowSprite(0x44aaff,2.2);s.position.set(0,2.6,-7.0);s.material.opacity=0;fus.add(s);navGlow.push(s)}
+const shipLight=new THREE.Sprite(new THREE.SpriteMaterial({map:mkmulmat().tex,blending:THREE.AdditiveBlending,depthWrite:false,color:0x2255ff,opacity:.8}));
+shipLight.scale.setScalar(9);fus.add(shipLight);
+ship.add(fus);
+
+// ---------- STARFIELD BACKDROP ----------
+const sfN=4200;
+const sfP=new Float32Array(sfN*3),sfC=new Float32Array(sfN*3),sfS=new Float32Array(sfN);
+for(let i=0;i<sfN;i++){const a=Rnd()*TAU,e=Math.acos(2*Rnd()-1),rr=Math.pow(Rnd(),0.5)*1.5+0.9;const r=2e6*rr;sfP[i*3]=Math.sin(e)*Math.cos(a)*r;sfP[i*3+1]=Math.sin(e)*Math.sin(a)*r*0.55;sfP[i*3+2]=Math.cos(e)*r;const c=tempColor(Rnd());sfC[i*3]=c.r;sfC[i*3+1]=c.g;sfC[i*3+2]=c.b;sfS[i]=1+Rnd()*3}
+const sfGeo=new THREE.BufferGeometry();sfGeo.setAttribute('position',new THREE.BufferAttribute(sfP,3));sfGeo.setAttribute('aColor',new THREE.BufferAttribute(sfC,3));sfGeo.setAttribute('aSize',new THREE.BufferAttribute(sfS,1));
+const sfMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,depthTest:false,
+  vertexShader:`attribute vec3 aColor;attribute float aSize;varying vec3 vC;void main(){vC=aColor;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mv;float d=max(.001,-mv.z);gl_PointSize=(aSize*900.0/d);gl_PointSize=min(gl_PointSize,8.0);}`,
+  fragmentShader:`varying vec3 vC;void main(){vec2 uv=gl_PointCoord*2.-1.;float d=dot(uv,uv);if(d>1.)discard;float a=pow(1.-d,2.5);gl_FragColor=vec4(vC*a,a);}`});
+const sfPts=new THREE.Points(sfGeo,sfMat);sfPts.frustumCulled=false;scene.add(sfPts);
+
+// ---------- POST ----------
+const composer=new EffectComposer(renderer);
+const rp=new RenderPass(scene,cam);composer.addPass(rp);
+const lensPass=new ShaderPass({
+  uniforms:{tDiffuse:{value:null},center:{value:new THREE.Vector2(0.5,0.5)},strength:{value:0},proj:{value:new THREE.Matrix4()},camPos:{value:new THREE.Vector3()}},
+  vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
+  fragmentShader:`varying vec2 vU;uniform sampler2D tDiffuse;uniform vec2 center;uniform float strength;uniform mat4 proj;uniform vec3 camPos;
+    void main(){
+      vec2 uv=vU;
+      if(strength>0.001){
+        vec4 c=proj*vec4(camPos,1.0);
+        vec2 p=vec2(c.x/c.w,c.y/c.w)*0.5+0.5;
+        vec2 d=uv-p; float r2=dot(d,d); if(r2>0.0002&&r2<0.45){
+          float s=1.0+strength/(r2*9.0); s=min(s,1.0+strength*7.0);
+          uv=p+d*s;
+        }
+      }
+      if(uv.x<0.||uv.x>1.||uv.y<0.||uv.y>1.){gl_FragColor=vec4(0.0);return;}
+      gl_FragColor=texture2D(tDiffuse,uv);
+    }`});
+composer.addPass(lensPass);
+const warpPass=new ShaderPass({
+  uniforms:{tDiffuse:{value:null},warp:{value:0},time:{value:0},res:{value:new THREE.Vector2()}},
+  vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
+  fragmentShader:`varying vec2 vU;uniform sampler2D tDiffuse;uniform float warp;uniform float time;uniform vec2 res;
+    void main(){
+      vec2 uv=vU; vec2 d=uv-0.5;
+      float a=atan(d.y,d.x);
+      float r=length(d);
+      float sp=warp*(0.5+0.5*sin(a*3.0))*exp(-r*1.4);
+      vec2 tuv=uv-d*(1.0+sp);
+      float r2=length(tuv-0.5);
+      vec3 c=texture2D(tDiffuse,tuv).rgb;
+      if(sp>0.02){
+        float bands=smoothstep(0.5,1.0,sin(r2*380.0-time*14.0)*0.5+0.5);
+        c=mix(c,c*vec3(1.35,1.15,0.95),bands*0.45*warp);
+        c+=vec3(0.05,0.1,0.25)*warp*(1.0-r2)*0.6;
+        float cr=clamp(r2*6.0-1.0,0.0,1.0);
+        c+=vec3(0.15,0.2,0.5)*cr*warp*0.35;
+      }
+      gl_FragColor=vec4(c,1.0);
+    }`});
+composer.addPass(warpPass);
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.9,0.55,0.05);
+composer.addPass(bloom);
+composer.addPass(new (require('three/addons/postprocessing/OutputPass.js').OutputPass||class{})());
+</script>
+</body>
+</html>
+```
+
+Wait, I used `require` which doesn't exist in ESM. I need to import OutputPass properly at top: `import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';`. Let me fix.
+
+Also I have a bug: `const m=lathe(...)` inside function uses `m` before definition in `lathe` - I wrote `m.rotateX` inside lathe but `m` is defined after. Let me fix: 
+
+```js
+function lathe(pts,mat,seg=32){const g=new THREE.LatheGeometry(pts.map(p=>new THREE.Vector2(p[0],p[1])),seg);g.rotateX(-Math.PI/2);return new THREE.Mesh(g,mat)}
+```
+And I reference `const msh=lathe(...)` — fine.
+
+Also `mk()` used before definition — remove.
+
+Also the `starPos`/`pushSt` junk should be removed.
+
+Let me carefully rewrite the whole thing properly. I'll restructure into one clean script. Let me now write final version, being careful about correctness.
+
+Key details:
+
+1. Camera modes:
+- mode 0 cinematic: camera positioned behind ship along curve with lookahead; 
+- mode 1 chase: camera at ship position + forward*6 + up*1.8
+- mode 2 cockpit: camera inside ship at local (0,1.6,3.2)
+- mode 3 galaxy map: OrbitControls over the galaxy, camera far out.
+
+2. Ship path: CatmullRomCurve3 through waypoints. The ship moves along it with a parametrized speed. With `curve.getPointAt(u)`.
+
+Let me define path control points (in galaxy coords), going from start near planet to end near gas giant:
+
+Start (departure): (2600, -600, 2600) — near the planet at (2200,-260,1400)... Actually departure should have the ship near the planet, so ship starts near planet and flies out.
+
+Let me place: 
+- system A at (0,0,0) region with star at origin, planet at (2200,-260,1400).
+- ship starts at (2100,-200,1250) heading outward.
+- then cruise out to (12000, -3000, 18000)
+- hyperdrive region then core: (0,0,0) black hole flyby: pass at (6000,-2000,8000) then around to (-7000,-1500,9000)
+- nebula: at (18000, 3000, 26000) — nebula mesh center. Let's put nebula at (14000,4000,22000), scale (1,0.42,1) radius 9000.
+- arrival: gas giant at (-21000,2600,-16000). Ship ends near (-19000,2600,-14000).
+
+Waypoints:
+```
+(2000,-150,1000),
+(6000,-1200,7000),
+(14000,-3500,16000),   // climb out
+(16000,-6000,22000),   // hyperdrive start
+(6000,-2000,8000),     // approach core
+(-2000,-500,1000),     // close to core
+(-8000,-1200,9000),    // flyby past
+(-14000,-2500,13000),
+(12000,3500,20000),    // enter nebula
+(14000,4200,22500),
+(16000,3000,24000),
+(0,2500,30000),        // exit
+(-8000,1000,20000),    // back toward arrival
+(-19000,2600,-14000)   // arrival
+```
+Total curve length probably ~110000 units. At speed 700 units/s → 157s. Good.
+
+Departure region: start near planet A. Then as t advances, sysA can be faded out after leaving (visibility), or just move it far away. Simpler: keep but it's behind. Actually the planet at (2200,-260,1400) would stay in view; ship starts at (2000,-150,1000) which is only 450 units from planet surface — planet radius 150, fine, ship is 450 away from center... too close, inside. Let's start ship at (2400,-300,1700) which is ~500 from planet center. Planet radius 150 → ship at 500 from center, 350 from surface. Good, close but visible. Set camera far enough.
+
+Hmm, the departure phase should be slow and gentle. Let's just add speed modulation: initial slow (30/s), then 700/s.
+
+Let me define phases with u ranges:
+- u 0.00–0.10 DEPARTURE (0–0.1)
+- u 0.10–0.40 CRUISE
+- u 0.40–0.55 HYPERDRIVE (plus warp visual 0.42-0.56)
+- u 0.55–0.80 CORE
+- u 0.80–0.93 NEBULA
+- u 0.93–1.00 ARRIVAL
+
+Region names accordingly.
+
+Distance from galactic centre: sqrt(x²+z²) in ly.
+
+Speed: ship speed along curve / 1.6 (ly per second → km/s: 1 ly/s ≈ 299792 km/s). At sublight, speed in km/s = curveSpeed*299792. Let's report it.
+
+ETA: remaining distance / speed.
+
+Let's compute the curve length and total distance on the fly for ETA.
+
+3. HUD update per frame.
+
+4. Minimap: canvas 240x240, map galaxy plane with scale: R_MAX*1.05 → fits in 200px. Draw route polyline + ship dot. Recompute each frame (or every 100ms).
+
+5. Interaction: click on map → raycast? For minimap, click point → compute direction from centre → destination at radius = 0.7 of galaxy. Then set a target point on the curve? Simpler: add a new waypoint to the path at the clicked point, and set the journey to fly to it. I'll implement: on minimap click, compute destination position (normalized direction * 24000), then use curve = new CatmullRomCurve3(existing + [dest]) and jump the journey progress forward... Hmm, resetting u is complex. Alternative: keep the curve but set a "stop" and let the ship continue? 
+
+Simplest robust approach: On minimap click, create a new path: take current position and build a new curve with the destination appended, then set u = 0 (but that jumps). Instead: we can keep a variable `segStartPos` = current ship position, and build new curve with start point = current position, and set the journey progress to 0 but set the ship position to current pos (no visual pop since the curve starts there). Actually the curve's u=0 point = current position, and the ship already is there, so no pop. That works.
+
+Then recompute curve and length. The route still is a valid path. Phases: compute from new u? I'll set a flag `manualMode` so phases use the new curve's u and the phase labels derive from region index. Simpler: after manual course change, keep the same phase logic based on u (approximately right since the new curve goes from current pos to destination).
+
+I'll implement: on click, build new curve from current position + destination, set `u=0`, `auto=false`? No, keep auto flying. Set phase based on new curve u and a small helper: phases derived from region: if u<0.2 "Cruise" else "Cruise"/"Warp"? Let's just make the phase function use the u range on the ORIGINAL curve and, after manual plotting, derive region by the curve index? Too complex.
+
+Simplest: after a manual destination, set the phase to "CRUISE" and the region name to "Interstellar Route". Journey still runs the camera along the curve. The cinematic camera handles it. That's acceptable and honest.
+
+But the core/nebula features won't be on the path... The black hole is at the centre; if the new curve passes near it, we'd want lensing. I'll make the lensing pass always active with strength based on proximity to the centre point (0,0,0) — not tied to phase. That's better anyway: strength = f(distance to BH). Also the accretion disc, nebula pass through check — I can just leave the nebula where it is; the ship only passes through if the curve goes there.
+
+Actually let me make the nebula always rendered and its position static; the cinematic path goes through it.
+
+OK.
+
+6. Warp visual: warpPass uniform = warp intensity, animated during hyperdrive phase and with speed multiplier.
+
+7. FOV: default 55, warp 78.
+
+8. Camera mode change buttons.
+
+9. Hide UI.
+
+10. Pause/play: pause flag.
+
+11. Speed: 1x,2x,4x.
+
+12. Mute: Web Audio engine hum.
+
+Let me now also handle: after the journey completes (u>1), loop: u -= 1 (reset), pick a new route. "then it loops or picks a new route" — I'll reset u to 0 and add a new destination ahead? Simplest: u wraps to 0. But the arrival would then jump back to departure. That's fine for a loop.
+
+Now let's write the whole thing cleanly, keeping the code shorter than my draft. I'll trim the ship a bit and the galaxy generation (fix the junk functions).
+
+Let me count: I'll target ~950 lines.
+
+For the galaxy shader, I need the rotation to be applied: inner faster. rot = uTime * k / r. Fine.
+
+Careful with `gl_PointSize` and the depth. Use `max(0.001, -mv.z)`.
+
+Points size in px: gl_PointSize = size * (scaleFactor / -mv.z). With a perspective camera and focal length ~ fov, the projection yields gl_Position; points are in pixels. Typical: gl_PointSize = size * (height/2) / tan(fov/2) / -mv.z. With height 1080 and fov 55: (1080/2)/tan(27.5°)=540/0.5206=1037. So gl_PointSize = size * 1037 / z. For a star of size 40 ly at z=1000: 40*1037/1000=41 px. Reasonable.
+
+I'll compute `uniform float uScale` = (innerHeight/2)/tan(fov/2) and update on resize.
+
+Near plane 0.5 and far 3e7 with logDepthBuffer — ok.
+
+Let me write it now.
+
+Regarding `thruster` plume scale.z = sgn with rotation: plumeGeometry rotation.x = -PI/2 makes the cylinder's +y axis point to -z? rotateX(-PI/2): y→? As computed, θ=-π/2: y' = z, z' = -y. So +y→ -z... wait the mapping applies to geometry coordinates: point (0,y,0) → (0, 0, -y). So +y goes to -z. Yes so the plume's length extends toward -z if I use negative scale.z. With scale.z = -1 and rotation.x = -PI/2, the local +y maps to -z, then scaled by -1 → +z. Hmm, the geometry's +y end extends to the end of the tube. Let me just always set scale.z = 1 and place the plume so it extends backward (negative z). With rotation.x=-PI/2, the cylinder (centered at origin, height along y) becomes centered at z=0, extending from z=-2.7 to +2.7. Then I can scale.z = -1 and position at z=-2.0... 
+
+Simpler: build plume geometry already rotated: `const plumeGeo = new THREE.CylinderGeometry(0.5,2.4,6,20,1,true); plumeGeo.rotateX(-Math.PI/2);` Then position at (x,y,-2.6) and it spans z from -5.6 to -0.2 — with the tip at the back (-5.6) wide and the base at the front (-0.2) narrow. Actually with rotation.x=-π/2, the +y direction goes to -z, so radius at y=+3 (wide if top radius is larger) goes to z=-3. CylinderGeometry(radiusTop, radiusBottom, height) → top (y=+3) has radiusTop. So the wide part is at z=-3 (behind), narrow at z=+3 (front). 
+
+So `plume.position.set(x,y,-1.6)`, spans -1.6±3 → front at z=+1.4 which is inside the ship. Set position z=-3.0, spans -6..0. Fine, adjust.
+
+No need for scale.z.
+
+OK, writing final.
+
+Also the ship's local "up" is +Y and "forward" is -Z. For the ship model, I built the fuselage lathe along +y rotated -π/2 → +y maps to -z = forward. Good. WingGeo: I used ExtrudeGeometry with a Shape in xy, then rotateX(π/2) → the shape's y axis maps to... rotateX(π/2): y'=y*0 - z*1 = -z, z'=y*1 + z*0 = y. So (x,y,0) → (x, 0, y). So the shape's +y becomes +z. The shape has points with y from -3.2 to -1.4, so after rotation z from -3.2 to -1.4. That puts the wing behind. I want the wing forward-ish? Wings extend laterally at some z. Fine, either way. Let's keep the wing behind the cockpit, which is realistic (like a jet with swept wings). Good, the wing spans x from 0 to 4.6, so put it on both sides by rotating one by π.
+
+wingL: rotation.y = π flips x. Good.
+
+Now, let me write it all out.
+
+For the nebula: sphere radius 9000, scaled (1,0.42,1). Shader noise with p=vP*0.0028... vP ranges ±9000, so p*0.0028*9000 = 22.7. Fine, octaves f=1,2.1,4.4,9.2 → max 9.2*22.7=209. OK.
+
+The fade uses vP.xy length vs 1.0 — bug! vP is in local space ±9000 but I compare to 1.0. Should use normalized radius: `vec3 p=position*0.00011;` then fade = smoothstep(1.0,0.15,length(position.xy)). Let me restructure:
+
+```
+varying vec3 vP; // local position, |vP| up to 9000
+void main(){
+  float rr = length(vP.xy)/9000.0;
+  vec3 p = vP*0.00009 + uTime*0.001;
+  float n=...noise(p*f)...
+  n = pow(clamp(n*0.8+0.3,0.,1.),2.0);
+  float fade = smoothstep(1.0,0.2,rr);
+  vec3 c = mix(uColA,uColB, clamp(n*1.5+vP.y*0.00005,0.,1.));
+  float a = n*n*fade*0.5;
+  gl_FragColor = vec4(c*(0.5+n*1.4), a);
+}
+```
+Good.
+
+Also add a couple of big sprites near the nebula for glow.
+
+Now the ship light sprite.
+
+Let's write everything.
+
+Audio: create on first interaction.
+
+```js
+let actx=null,muted=false;
+function initAudio(){if(actx)return;actx=new (window.AudioContext||window.webkitAudioContext)();
+ const o=actx.createOscillator(),g=actx.createGain();o.type='sawtooth';o.frequency.value=42;g.gain.value=0;o.connect(g).connect(actx.destination);o.start();
+ hum={o,g};
+}
+```
+Engine hum modulated by speed.
+
+Mute toggle: set gain to 0 or restore.
+
+Now, let me carefully compose the final code.
+
+One more thing: the "How it works" panel. Put it in the tools area as a collapsible text. Requirement: "Provide a way to hide it" — the HIDE UI button hides #panel,#map,#tools,#hint,#route. Good. And add a brief note in the panel about the log depth buffer + floating origin. I'll add a small text block toggled by a button "HOW IT WORKS". Let's add a details-like button that reveals a div in the panel.
+
+I'll include a compact "HOW" button in tools that toggles a div in the panel with the explanation.
+
+Now write.
+
+For the HUD I need the region based on u: 
+phases = [[0,'DEPARTURE'],[0.10,'INTERSTELLAR CRUISE'],[0.40,'HYPERDRIVE'],[0.55,'GALACTIC CORE'],[0.80,'NEBULA DRIFT'],[0.93,'ARRIVING AT...'],[1,'CYCLE END']]
+
+Careful: region name update should also reflect proximity to the centre: if dist<1500 → 'GALACTIC CORE'. Nice touch.
+
+Distance in ly from centre: sqrt(x²+z²).
+
+ETA = remaining curve distance / (curveSpeed).
+
+Let's write the final code now. I'll be careful with the file ending with </html>.
+
+I also need to handle `glowSprite` helper defined before use.
+
+Also `mkmulmat()` creating a canvas each call is wasteful; make a single shared white radial texture.
+
+Let me finalize the ship mesh assembly carefully.
+
+```js
+const ship=new THREE.Group();
+const hull=new THREE.LatheGeometry(hullProfile.map(p=>new THREE.Vector2(p[0],p[1])),32);hull.rotateX(-Math.PI/2);
+const fus=new THREE.Mesh(hull,hullMat);
+const tailCone=new THREE.Mesh(new THREE.ConeGeometry(1.4,3.0,20),darkMat);tailCone.position.set(0,0,-9.2);tailCone.rotation.x=Math.PI/2; // pointing -z? 
+```
+ConeGeometry points +y; rotateX(π/2) → +y → +z? rotateX(π/2): y'=y*0-z*1 = -z, z'= y*1+z*0 = y. So the cone's +y tip maps to -z... wait that's wrong: y'=-z, z'=y. Point (0,1,0) → (0,0,1). So +y maps to +z. Hmm let me redo: (x,y,z) with x=0,y=1,z=0: y' = y cos - z sin = 1*0 - 0 = 0; z' = y sin + z cos = 1*1+0 = 1. So the tip goes to +z. So to point -z, use rotateX(-π/2).
+
+OK: tailCone.rotation.x = -Math.PI/2 puts the tip at -z. Good.
+
+I'll keep it simple: the fuselage lathe profile ends at h=10.4 with radius 0.12 (near the back), so the back is at -z=10.4. The tail cone from -9 to -12 gives a nice point.
+
+Let me write it.
+
+For performance, the galaxy has 230k points + 4200 stars + warp stars. Fine.
+
+One more consideration: the galaxy points shader uses `uTime` for rotation, which requires the shader to update; fine.
+
+The `position` attribute is large (230k*3 floats = 2.76MB). OK.
+
+Let me now write the final answer.
+
+Regarding OutputPass import — r160 has three/addons/postprocessing/OutputPass.js. Yes.
+
+Order: RenderPass, LensPass, WarpPass, BloomPass, OutputPass. OutputPass applies tone mapping + color space. Note: with OutputPass, tone mapping is applied there. Set renderer.toneMapping = ACESFilmic; OutputPass reads renderer.toneMapping. Good.
+
+Bloom threshold 0.05 with the galaxy being bright might bloom a lot. Set threshold 0.12, strength 0.55, radius 0.5.
+
+Also with bloom on a 1080p target it's a few render targets — fine.
+
+Now writing.
+
+For the minimap, convert world x,z to canvas: 
+```
+const S=100; // radius in px
+function mapToPx(x,z){return [120-x/R_MAX*2*S, 120+z/R_MAX*2*S]}
+```
+with R_MAX*1.15.
+
+Draw the route polyline (the curve points) and the ship dot, plus a dot at the destination.
+
+Let me finalize the code text.
+
+I need to double check the click handler on the minimap: get canvas rect, compute x,z, then build the new curve.
+
+```js
+mapCanvas.addEventListener('pointerdown',e=>{ if(mode!==3)return; ...})
+```
+Actually allow click in any mode. The spec says "In GALAXY MAP mode the user can click a point". I'll allow always.
+
+On click:
+```
+const rect=mc.getBoundingClientRect();
+const mx=(e.clientX-rect.left)/rect.width, my=(e.clientY-rect.top)/rect.height;
+const dir=new THREE.Vector3((mx-0.5)*2,0,(my-0.5)*2).normalize().multiplyScalar(24000);
+```
+Then build a new curve from the ship position to the destination via 2 midpoints:
+```
+const mid = dest.clone().lerp(shipPos,0.5); mid.y += 20000;
+const mid2 = dest.clone().lerp(shipPos,0.75); mid2.y -= 4000;
+curve = new THREE.CatmullRomCurve3([shipPos.clone(), mid, mid2, dest], false, 'catmullrom', 0.5);
+```
+Then set u=0. The curve start = shipPos so no jump. Good. And recompute curve length.
+
+But the ship position is sampled from the old curve; using the current world position is right.
+
+Also we should stop the cinematic phases? Set `phaseOverride=null` so region = 'Interstellar Route' based on dist? I'll set a flag `manual` true → region name shows 'INTERSTELLAR ROUTE'.
+
+Hmm, but then the cinematic still works along the new curve. Fine.
+
+Also after manual, the journey duration should probably change. I'll keep u running at the same rate but scale the duration so it finishes in ~60s: duration = curveLen / 700. Store `curveLen` and compute u = elapsed / duration.
+
+That's cleaner: u accumulates by (speed * dt) / curveLen. Let's do that: u += (speed*dt)/curveLen, where speed is in units/s and varies (slow at start, fast in hyperdrive). Nice.
+
+Actually for hyperdrive we want much faster: multiply speed by 8 during warp phase.
+
+OK, now the initial u=0.
+
+Let me write the final code. Also the `time` accumulation for warp streaks.
+
+Writing now for real.
+
+One thing: `scene.add(cam)` not needed. Add the ship to the scene.
+
+Cockpit camera: `cam.position.set(0,1.6,3.4)` in ship local space, and camera look direction -Z. The ship group's forward is -Z. So the cockpit camera at local (0,1.6,3.4) looks along -Z. 
+
+Chase camera: at local (0, 1.8, 7.5) looking at (0,0.2,-1). For the cinematic camera, use the curve tangent for forward, and offset back along it, up.
+
+For the cinematic: 
+```
+const fwd = curve.getTangentAt(u).normalize();
+const p = curve.getPointAt(u);
+cam.position.copy(p).addScaledVector(fwd,-14).add(new THREE.Vector3(0,2.2,0));
+```
+Then look ahead: `p + fwd*30`. But that's just straight. Add slight banking. Fine.
+
+Better: use a semi-follow camera: camera = shipPos + fwd*(-16) + up*2, lookAt(shipPos + fwd*40 + up*1).
+
+For warp, the camera FOV increases.
+
+Ship orientation: ship.position = p, ship.quaternion from tangent with banking.
+
+Let me write:
+```
+const m=new THREE.Matrix4();
+const fwd=curve.getTangentAt(u).normalize();
+const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1),fwd);
+ship.quaternion.slerp(q,1-Math.pow(0.0001,dt*6));
+```
+That's smooth. Plus banking roll: add roll = clamp(fwd.y * something, -0.3,0.3) around the forward axis. Use a small up-vector tilt: compose a matrix with forward, and right = fwd × up.
+
+Simpler: build basis:
+```
+const up=new THREE.Vector3(0,1,0);
+const right=new THREE.Vector3().crossVectors(fwd,up).normalize();
+const up2=new THREE.Vector3().crossVectors(right,fwd);
+const roll = Math.sin(time*0.6)*0.05 + bank;
+const r2 = right.clone().applyAxisAngle(fwd,roll);
+const u2 = up2.clone().applyAxisAngle(fwd,roll);
+const mat = new THREE.Matrix4().makeBasis(r2,u2,fwd);
+ship.quaternion.setFromRotationMatrix(mat);
+```
+makeBasis(xAxis, yAxis, zAxis) with zAxis = forward = -Z local. Since local -Z is forward and the basis's z is the local +Z = -forward. So pass zAxis = fwd.clone().negate().
+
+Let's do that.
+
+OK writing now. Final.
+
+Also I must ensure `depthTest:false` on the starfield so it renders always... but then it would be drawn over everything unless it's added last and with depthTest false it still draws after with blending — it would cover the 3D scene since it's opaque-ish? Points with blending additive and depthTest false will still be drawn on top of everything (they're drawn in the render order). Since it's added last and the starfield has huge coordinates, it would cover the black hole etc. Bad.
+
+Instead, keep depthTest true but make sure the starfield is rendered... Actually with depthTest true, the starfield points at 2e6 distance will be clipped by the far plane (3e7, ok) but the depth buffer would let the galaxy render in front... no: the starfield is BEHIND the galaxy (at 2e6), so depth testing will fail for stars where the galaxy is in front. Good — but the galaxy's own points are at a smaller depth so they pass. So the starfield is naturally behind. Just don't disable depthTest. Remove the `depthTest:false`.
+
+But then stars "behind" nothing show up. Fine.
+
+However the starfield's far plane: 2e6*1.5 = 3e6 max, and the far is 3e7. OK.
+
+Now, one concern: logarithmic depth buffer with the starfield at 2e6 and the black hole at 0 — log depth handles it. Fine.
+
+Let me write.
+
+Final detail: `galMat.uniforms.uDisc` unused mostly; drop it.
+
+I'll now produce the code.<|think:end|><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Galactic Voyage</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#cfe6ff;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-user-select:none;user-select:none}
+canvas{display:block}
+#panel{position:fixed;left:12px;top:12px;background:rgba(6,12,26,.58);border:1px solid rgba(90,180,255,.25);border-radius:8px;padding:8px 10px;font-size:11px;backdrop-filter:blur(6px);min-width:196px;pointer-events:auto}
+#panel b{color:#8fe0ff;letter-spacing:.08em}
+#panel .row{margin-top:5px}
+#map{position:fixed;left:12px;bottom:12px;background:rgba(6,12,26,.58);border:1px solid rgba(90,180,255,.25);border-radius:8px;backdrop-filter:blur(6px);pointer-events:auto;cursor:crosshair}
+#tools{position:fixed;right:12px;top:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:auto}
+#tools button{background:rgba(6,16,32,.74);border:1px solid rgba(90,180,255,.3);color:#cfe6ff;border-radius:6px;padding:5px 9px;font:inherit;font-size:11px;cursor:pointer}
+#tools button:hover{background:rgba(30,90,160,.6)}
+#tools button.on{background:rgba(40,140,220,.82);color:#fff}
+#hint{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);font-size:11px;color:#9fd0ff;background:rgba(6,12,26,.5);padding:4px 10px;border-radius:6px;pointer-events:none;white-space:nowrap}
+#dim{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;font-size:15px;letter-spacing:.25em;color:#7fd4ff;z-index:9}
+#how{position:absolute;left:12px;top:210px;width:300px;background:rgba(6,12,26,.72);border:1px solid rgba(90,180,255,.25);border-radius:8px;padding:8px 10px;font-size:10.5px;line-height:1.5;pointer-events:auto}
+#how code{color:#8fe0ff}
+.hidden{opacity:0!important;pointer-events:none!important}
+</style>
+</head>
+<body>
+<div id="v"></div>
+<div id="panel"><div><b id="reg">DEPARTURE</b></div>
+<div class="row">DISTANCE FROM CORE <span id="dist">0</span> ly</div>
+<div class="row">SPEED <span id="vel">0</span> km/s</div>
+<div class="row">ETA <span id="eta">—</span></div>
+<div class="row" id="route"></div></div>
+<div id="how" class="hidden"><b>HOW IT WORKS</b><br>
+Logarithmic depth buffer + an in-shader rotation of the galaxy points (no CPU animation) keeps objects from 60 m to 100 000 ly in one depth buffer without popping.<br>
+Far starfield and galaxy sit at separate fixed depths; scale ranges are chosen so near clip 0.5 m and far clip 30 M ly never collide.</div>
+<div id="map"><canvas id="mc" width="240" height="240"></canvas></div>
+<div id="tools">
+<button data-m="0" class="on">CINEMATIC</button><button data-m="1">CHASE</button><button data-m="2">COCKPIT</button><button data-m="3">GALAXY MAP</button>
+<button data-p="0">PAUSE</button><button data-s="0" class="on">1×</button><button data-s="1">2×</button><button data-s="2">4×</button><button data-a="0">MUTE</button><button id="hbtn">HIDE UI</button><button id="wbtn">HOW IT WORKS</button>
+</div>
+<div id="hint">click the map to plot a course · drag to orbit</div>
+<div id="dim">GENERATING GALAXY</div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+const TAU=Math.PI*2;
+const host=document.getElementById('v');
+const R_MAX=48000;
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.02;
+if(!renderer.capabilities.isWebGL2){document.getElementById('dim').textContent='WEBGL UNAVAILABLE';throw new Error('no webgl2');}
+host.appendChild(renderer.domElement);
+scene=new THREE.Scene();
+scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.5,3e7);
+const rnd=(()=>{let s=987654321;return()=>{s=s*1103515245+12345&0x7fffffff;return s/0x7fffffff}})();
+const R=()=>rnd(),G=()=>(R()+R()+R())/1.5-1;
+const clamp=(x,a,b)=>x<a?a:x>b?b:x;
+const TAU2=TAU;
+function hsl(h,s,l){const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l);
+  const f=n=>l-a*Math.max(-1,Math.min(k(n)-k(0),k(n+8)-k(4),k(n+3)-k(11)));
+  return new THREE.Color(f(0),f(8),f(4)).multiplyScalar(1);}
+function tempColor(t){return t<0.5?hsl(lerp(205,62,t*2),.6,.55):hsl(lerp(46,26,(t-.5)*2),.6,.5)}
+function lerp(a,b,t){return a+(b-a)*t}
+function sat(t){return t<0?0:t>1?1:t}
+const WHITE=mkmulmat();
+
+function mkmulmat(){const c=document.createElement('canvas');c.width=128;c.height=128;const x=c.getContext('2d');
+ const g=x.createRadialGradient(64,64,0,64,64,64);
+ g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.35,'rgba(255,255,255,.5)');g.addColorStop(1,'rgba(255,255,255,0)');
+ x.fillStyle=g;x.fillRect(0,0,128,128);
+ const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
+const SPRITE=new THREE.SpriteMaterial({map:WHITE,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false});
+
+function glowSprite(color,scale,opacity=1,mat){
+ const s=new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({map:WHITE,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,color,opacity},mat||{})));
+ s.scale.setScalar(scale);return s;}
+
+function canvasTex(w,h,fn){const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');fn(x,w,h);
+ const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;}
+
+/* ================= GALAXY ================= */
+const PITCH=9.4,NARM=4;
+function armAngle(r,k){return k*TAU/NARM+Math.log(r/9000)/Math.log(PITCH)*TAU*NARM;}
+const positions=[],colors=[],sizes=[],arms=[],dusted=[],hues=[];
+function addP(x,y,z,c,s,a,d,h){positions.push(x,y,z);colors.push(c.r,c.g,c.b);sizes.push(s);arms.push(a);dusted.push(d);hues.push(h);}
+const NCOL=0, HUEL=0;
+function genGalaxy(){
+  const N=230000;
+  for(let i=0;i<N*0.70;i++){
+    const r=Math.pow(R(),0.62)*R_MAX*0.955+300;
+    const th=armAngle(r,R()*NARM)+(R()-0.5)*(55/(1+r*0.00006)+18)*2;
+    const rr=r*(1+(R()-.5)*(0.05+0.000006*r));
+    const x=Math.cos(th)*rr,z=Math.sin(th)*rr,y=(R()-.5)*(9+rr*0.00055);
+    const t=sat(1.55-r/R_MAX*1.35+(R()-.5)*.45);
+    const c=tempColor(t).multiplyScalar(0.65+0.75*R());
+    if(R()<0.10)c.multiplyScalar(0.55);
+    addP(x,y,z,c,7+r*R()*0.0046,i%NARM,0,0);
+  }
+  for(let i=0;i<N*0.032;i++){
+    const r=R()*R_MAX*0.86+900, ai=R()*NARM;
+    const th=armAngle(r,ai)+(R()-.5)*0.085, rr=r*(1+(R()-.5)*0.035);
+    const x=Math.cos(th)*rr,z=Math.sin(th)*rr,y=(R()-.5)*(14+r*0.0012);
+    const c=new THREE.Color(0.05,0.025,0.035).lerp(new THREE.Color(0.2,0.07,0.14),Math.abs(R()-.5)*2);
+    addP(x,y,z,c,15+r*0.0014,-1,1,0);
+  }
+  for(let i=0;i<N*0.011;i++){
+    const r=R()*R_MAX*0.8+1400, ai=R()*NARM;
+    const th=armAngle(r,ai)+(R()-.5)*0.15, rr=r*(1+(R()-.5)*0.06);
+    const x=Math.cos(th)*rr,z=Math.sin(th)*rr,y=(R()-.5)*(18+r*0.0016);
+    const c=new THREE.Color().setHSL(0.93+R()*0.12,.85,.5+R()*.2).multiplyScalar(1.3+R()*1.3);
+    addP(x,y,z,c,26+R()*26,-2,0,1);
+  }
+  for(let i=0;i<N*0.10;i++){
+    const rr=Math.pow(R(),1.8)*4200;
+    const x=(G()+G())*rr*.62,z=(G()+G())*rr*.62,y=G()*rr*.30;
+    const t=R();
+    const c=new THREE.Color(1,.9,.7).lerp(new THREE.Color(.55,.42,.4),t).multiplyScalar(1.2+R()*.7);
+    addP(x,y,z,c,4+rr*0.002,-3,.55,0);
+  }
+  for(let i=0;i<N*0.045;i++){
+    const u=R(),v=R(),L=9000;
+    const x=(u-.5)*L*2,z=(v-.5)*L*2*.28,y=G()*1100+x*.004*100;
+    const c=new THREE.Color(1,.86,.66).lerp(new THREE.Color(.8,.6,.55),R()).multiplyScalar(1.1+R()*.7);
+    addP(x,y,z,c,8,4,0,0);
+  }
+  for(let i=0;i<N*0.10;i++){
+    const rr=Math.pow(R(),.6)*R_MAX*.95,a=R()*TAU,e=Math.acos(2*R()-1);
+    const x=Math.sin(e)*Math.cos(a)*rr,z=Math.sin(e)*Math.sin(a)*rr,y=Math.cos(e)*rr*.35;
+    const c=new THREE.Color(.5,.6,.95).multiplyScalar(.5+R()*.7);
+    addP(x,y,z,c,2+R()*7,5,0,0);
+  }
+}
+genGalaxy();
+const nP=positions.length/3;
+const galGeo=new THREE.BufferGeometry();
+galGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(positions),3));
+galGeo.setAttribute('aColor',new THREE.BufferAttribute(new Float32Array(colors),3));
+galGeo.setAttribute('aSize',new THREE.BufferAttribute(new Float32Array(sizes),1));
+galGeo.setAttribute('aArm',new THREE.BufferAttribute(new Float32Array(arms),1));
+galGeo.setAttribute('aHue',new THREE.BufferAttribute(new Float32Array(hues),1));
+galGeo.setDrawRange(0,nP);
+const U_SCALE={v:1};
+const galMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  uniforms:{uTime:{value:0},uScale:{value:1}},
+  vertexShader:`attribute vec3 aColor;attribute float aSize;attribute float aArm;attribute float aHue;
+   uniform float uTime;uniform float uScale;varying vec3 vC;varying float vA;
+   void main(){vec3 p=position;float r=length(p.xz);float a=atan(p.z,p.x);
+     float rot=uTime*1300.0/(r+1200.0)*1.9e-5;
+     p.x+=(cos(a+rot)*r-p.x);p.z+=(sin(a+rot)*r-p.z);p.y+=sin(uTime*0.0005+a*7.0)*0.35;
+     vec4 mv=modelViewMatrix*vec4(p,1.0);
+     vC=aColor;vA=aArm;
+     gl_Position=projectionMatrix*mv;
+     gl_PointSize=min(aSize*uScale/max(0.001,-mv.z),400.0);}`,
+  fragmentShader:`varying vec3 vC;varying float vA;
+   void main(){vec2 uv=gl_PointCoord*2.0-1.0;float d=dot(uv,uv);if(d>1.0)discard;
+     float a=pow(1.0-d,2.6);vec3 c=vA>2.5?vC*0.5:vC;
+     gl_FragColor=vec4(c*a,a);}`});
+scene.add(new THREE.Points(galGeo,galMat));
+
+const nebMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,
+  uniforms:{uTime:{value:0},uA:{value:new THREE.Color(1,.16,.45)},uB:{value:new THREE.Color(.04,.32,.9)}},
+  vertexShader:`varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform float uTime;uniform vec3 uA,uB;varying vec3 vP;
+   float h3(vec3 p){p=fract(p*.3183+.1);p*=17.0;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+   float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.0-2.0*f);
+     return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),
+                mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z);}
+   void main(){float rr=length(vP.xy)/9000.0;
+     vec3 p=vP*0.00009+uTime*0.00012;float n=0.0,amp=.5,f=1.0;
+     for(int i=0;i<4;i++){n+=amp*n3(p*f);f*=2.13;amp*=.5;}
+     n=pow(clamp(n*.8+.28,0.0,1.0),2.1);
+     vec3 c=mix(uA,uB,clamp(n*1.7+vP.y*0.00005,0.0,1.0));
+     float a=n*n*smoothstep(1.0,0.15,rr)*0.5;
+     gl_FragColor=vec4(c*(0.45+n*1.5),a);}`});
+const neb=new THREE.Mesh(new THREE.SphereGeometry(9000,36,20),nebMat);
+neb.scale.set(1,.42,1);neb.position.set(14000,4200,22500);scene.add(neb);
+const nebGlow=glowSprite(0xff5588,16000,.35);nebGlow.position.set(14000,4200,22500);scene.add(nebGlow);
+const nebGlow2=glowSprite(0x3388ff,11000,.25);nebGlow2.position.set(12000,6000,26000);scene.add(nebGlow2);
+
+const wave=[];for(let i=0;i<1800;i++){const a=R()*TAU,ra=1500+Math.pow(R(),.55)*8000;wave.push([Math.cos(a)*ra,(R()-.5)*2200,Math.sin(a)*ra]);}
+const wGeo=new THREE.BufferGeometry();wGeo.setAttribute('position',new THREE.Float32BufferAttribute(wave.flat(),3));
+const wMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute float aS;uniform float uT;uniform float uS;varying vec3 vC;
+   void main(){vC=vec3(0.85,0.95,1.0);vec4 mv=modelViewMatrix*vec4(position,1.0);
+   gl_Position=projectionMatrix*mv;float d=max(.001,-mv.z);
+   gl_PointSize=(120.0/d)*uS*(0.8+sin(uT*3.0+position.x*.002)*0.2);}`,
+  fragmentShader:`varying vec3 vC;void main(){vec2 uv=gl_PointCoord*2.0-1.0;float d=dot(uv,uv);if(d>1.0)discard;
+   gl_FragColor=vec4(vC*pow(1.0-d,2.4),pow(1.0-d,3.0)*0.9);}`});
+wGeo.setAttribute('aS',new THREE.Float32BufferAttribute(wave.map(()=>1),1));
+scene.add(new THREE.Points(wGeo,wMat));
+
+/* ================= PLANTS ================= */
+function makePlanet(rad,tex,cloud,atmos,ring){
+ const g=new THREE.Group();
+ const p=new THREE.Mesh(new THREE.SphereGeometry(rad,48,24),new THREE.MeshStandardMaterial({color:0xffffff,map:tex,roughness:.88,metalness:0}));
+ g.add(p);
+ if(atmos)g.add(glowSprite(atmos,rad*3.2,.5));
+ if(cloud){const cm=new THREE.Mesh(new THREE.SphereGeometry(rad*1.013,48,24),new THREE.MeshStandardMaterial({color:0xffffff,map:cloud,transparent:true,opacity:.7,roughness:1}));
+  cm.rotation.y=1.3;g.add(cm);}
+ if(ring){const rg=new THREE.RingGeometry(rad*1.6,rad*2.8,128,8);const uv=rg.attributes.uv;
+  for(let i=0;i<uv.count;i++){const t=uv.getX(i);uv.setXY(i,(t-1.6)/1.2,.3+t*0.7);}
+  const ringm=new THREE.Mesh(rg,new THREE.MeshBasicMaterial({map:ring,transparent:true,side:THREE.DoubleSide,depthWrite:false,opacity:.92}));
+  ringm.rotation.x=Math.PI/2;g.add(ringm);}
+ return g;}
+function planetTex(w,h,fn){return canvasTex(w,h,fn);}
+
+const Astar=new THREE.Group();
+Astar.add(new THREE.Mesh(new THREE.SphereGeometry(420,32,16),new THREE.MeshBasicMaterial({color:0xfff0c8})));
+const astg=glowSprite(0xffe9b0,6000,1.5);Astar.add(astg);
+const ap=glowSprite(0xffd088,12000,.55);ap.position.y=-900;Astar.add(ap);
+const Aplanet=makePlanet(150,
+  canvasTex(256,128,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#27476f');g.addColorStop(.45,'#3a6ea5');g.addColorStop(.58,'#5493c6');g.addColorStop(.82,'#2c5480');g.addColorStop(1,'#1b3454');x.fillStyle=g;x.fillRect(0,0,w,h);
+   for(let i=0;i<900;i++){x.fillStyle='rgba(205,235,255,'+(0.15+R()*.5)+')';x.beginPath();x.arc(R()*w,R()*h,1+R()*6,0,7);x.fill()}}),
+  canvasTex(256,128,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);
+   for(let i=0;i<16;i++){const y=R()*h;g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.5,'rgba(245,250,255,'+(0.25+R()*.5)+')');g.addColorStop(1,'rgba(0,0,0,0)');}x.fillStyle=g;x.fillRect(0,0,w,h);
+   for(let i=0;i<200;i++){x.fillStyle='rgba(255,255,255,'+(0.2+R()*.6)+')';const yy=R()*h;const ww=20+R()*70;x.fillRect(R()*w,yy,ww,1.2+R()*3);}}),
+  0x66ccff,null);
+Aplanet.position.set(2300,-300,1750);Aplanet.rotation.z=.25;
+Aplanet.add(glowSprite(0xffffff,300,.12,{depthTest:false}));
+const Amoon=makePlanet(30,canvasTex(128,64,(x,w,h)=>{x.fillStyle='#9a9488';x.fillRect(0,0,w,h);
+  for(let i=0;i<380;i++){x.fillStyle='rgba(60,55,50,'+(0.3+R()*.5)+')';x.beginPath();x.arc(R()*w,R()*h,1+R()*4,0,7);x.fill()}}),null,null,null);
+Amoon.position.set(-540,-360,660);
+const sysA=new THREE.Group();sysA.add(Astar,Aplanet,Amoon);scene.add(sysA);
+
+const Bstar=makePlanet(320,canvasTex(256,128,(x,w,h)=>{x.fillStyle='#ffe9a8';x.fillRect(0,0,w,h);
+  for(let i=0;i<320;i++){x.fillStyle='rgba(255,170,70,'+(0.1+R()*.4)+')';x.beginPath();x.arc(R()*w,R()*h,2+R()*8,0,7);x.fill()}}),null,0xffdd88,null);
+Bstar.position.set(18000,-2600,16000);
+const Bplanet=makePlanet(620,
+  canvasTex(256,128,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#17334f');g.addColorStop(.34,'#3f7ba8');g.addColorStop(.62,'#8ec0d8');g.addColorStop(.86,'#284c6e');g.addColorStop(1,'#132a3e');x.fillStyle=g;x.fillRect(0,0,w,h);
+   for(let i=0;i<260;i++){x.fillStyle='rgba(235,248,255,'+(0.08+R()*.35)+')';x.fillRect(R()*w,R()*h,20+R()*70,1.5+R()*4);}}),
+  null,0x66d0ff,
+  canvasTex(256,256,(x,w,h)=>{x.clearRect(0,0,w,h);for(let i=0;i<240;i++){const t=R();
+   x.strokeStyle='rgba(255,'+(195+R()*55|0)+',150,'+(0.12+R()*.5)+')';
+   x.lineWidth=1.5+R()*9;x.beginPath();x.moveTo(t*w,R()*h);x.lineTo(t*w+40+R()*110,R()*h);x.stroke();}}));
+Bplanet.position.set(-20500,2600,-16000);Bplanet.rotation.z=.22;
+Bplanet.rotation.x=.0;
+const Bmoon=makePlanet(48,canvasTex(128,64,(x,w,h)=>{x.fillStyle='#cfd6e0';x.fillRect(0,0,w,h);
+  for(let i=0;i<300;i++){x.fillStyle='rgba(80,90,110,'+(0.2+R()*.5)+')';x.beginPath();x.arc(R()*w,R()*h,1+R()*5,0,7);x.fill()}}),null,0x99ccff,null);
+Bmoon.position.set(0,-1180,0);Bplanet.add(Bmoon);
+Bplanet.add(glowSprite(0x99ddff,2000,.35));
+const sysB=new THREE.Group();sysB.add(Bstar,Bplanet);scene.add(sysB);
+
+/* ================= BLACK HOLE ================= */
+const bh=new THREE.Group();scene.add(bh);
+bh.add(new THREE.Mesh(new THREE.SphereGeometry(520,24,16),new THREE.MeshBasicMaterial({color:0x000000})));
+const discGeo=new THREE.CircleGeometry(1,96);
+function discMat(){return new THREE.ShaderMaterial({side:THREE.DoubleSide,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  uniforms:{uT:{value:0}},vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec2 vU;uniform float uT;
+   void main(){float r=length(vU-.5)*2.0;if(r>1.0)discard;
+   float ang=atan(vU.y-.5,vU.x-.5);
+   float a=.5+.5*sin(ang*10.0+uT*.9+r*22.0-uT*2.6);
+   float d=pow(1.0-r,1.7);
+   vec3 c=mix(vec3(1.,.32,.05),vec3(1.,.95,.78),pow(1.0-r,2.0));
+   float l=pow(max(0.0,sin(ang*26.0+uT*7.0)),10.0)*.6;
+   gl_FragColor=vec4(c*(.3+a*1.0)*d*(1.0-r*.5)+l*vec3(1.,.55,.25),1.0);}`});}
+const d1=new THREE.Mesh(discGeo,discMat());d1.scale.set(9500,5400,1);bh.add(d1);
+const d2=new THREE.Mesh(discGeo,discMat());d2.scale.set(4300,2600,1);bh.add(d2);
+bh.add(glowSprite(0xffcc88,7600,.95));
+bh.add(glowSprite(0xff8833,16500,.5));
+bh.rotation.x=.35;bh.rotation.z=.05;
+
+/* ================= SHIP ================= */
+const ship=new THREE.Group();scene.add(ship);
+const hullMat=new THREE.MeshStandardMaterial({color:0xc6d0dc,metalness:.85,roughness:.3});
+const darkMat=new THREE.MeshStandardMaterial({color:0x2a313a,metalness:.65,roughness:.48});
+const accentMat=new THREE.MeshStandardMaterial({color:0x3c4c5e,metalness:.7,roughness:.4});
+const glowMat=new THREE.MeshBasicMaterial({color:0x66ddff});
+const hullGeo=new THREE.LatheGeometry([[0.02,3.0],[0.44,3.2],[0.74,3.7],[0.94,4.4],[1.0,5.2],[1.02,6.3],[0.97,7.1],[0.8,7.8],[0.52,8.4],[0.28,8.9],[0.15,9.5],[0.1,10.1],[0.12,10.5]],32);
+hullGeo.rotateX(-Math.PI/2);
+const fus=new THREE.Mesh(hullGeo,hullMat);ship.add(fus);
+const tip=new THREE.Mesh(new THREE.ConeGeometry(1.25,3.4,20),darkMat);tip.rotation.x=-Math.PI/2;tip.position.z=-10.6;ship.add(tip);
+const band=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.2,1.4,16),glowMat);band.rotation.x=Math.PI/2;band.position.set(0,0.1,1.0);ship.add(band);
+const band2=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.16,1.0,16),new THREE.MeshBasicMaterial({color:0xff8844}));band2.rotation.x=Math.PI/2;band2.position.set(0,0.1,-4.2);ship.add(band2);
+const canopy=new THREE.Mesh(new THREE.SphereGeometry(1.32,24,16),new THREE.MeshPhysicalMaterial({color:0x24333f,metalness:.7,roughness:.06,transparent:true,opacity:.6}));
+canopy.scale.set(1,.66,.36);canopy.position.set(0,2.05,3.5);canopy.rotation.x=.22;ship.add(canopy);
+canopy.add(new THREE.Mesh(new THREE.SphereGeometry(1.28,20,12,0,Math.PI*2,0,Math.PI*.5),new THREE.MeshBasicMaterial({color:0x66ddff,transparent:true,opacity:.06,depthWrite:false})));
+function wingGeo(){const g=new THREE.ExtrudeGeometry(new THREE.Shape([[0,-1.5],[1.8,-2.0],[4.1,-3.0],[4.6,-3.35],[3.6,-3.1],[0.4,-2.5]]),{depth:.34,bevelEnabled:true,bevelSize:.06,bevelThickness:.06,bevelSegments:2,curveSegments:6});g.translate(0,-1.2,0);g.rotateX(Math.PI/2);return g;}
+const wg=wingGeo();
+const wR=new THREE.Mesh(wg,accentMat);wR.position.set(0,.62,3.3);ship.add(wR);
+const wL=new THREE.Mesh(wg,accentMat);wL.position.set(0,.62,3.3);wL.rotation.y=Math.PI;ship.add(wL);
+const wR2=new THREE.Mesh(wg,accentMat);wR2.position.set(0,.5,2.0);wR2.rotation.x=-.16;ship.add(wR2);
+const wL2=new THREE.Mesh(wg,accentMat);wL2.position.set(0,.5,2.0);wL2.rotation.y=Math.PI;wL2.rotation.x=.16;ship.add(wL2);
+function nacelle(x,y,z){
+ const g=new THREE.Group();
+ const b=new THREE.Mesh(new THREE.CylinderGeometry(.78,.78,4.8,18,1,true),hullMat);b.rotation.x=Math.PI/2;b.position.z=0.4;g.add(b);
+ const c=new THREE.Mesh(new THREE.SphereGeometry(.8,18,12,0,Math.PI*2,0,Math.PI/2),darkMat);c.rotation.z=Math.PI/2;c.position.set(0,0,2.9);g.add(c);
+ for(const zz of [1.9,2.75]){const t=new THREE.Mesh(new THREE.TorusGeometry(.82,.1,8,20),glowMat);t.position.z=zz;t.rotation.x=Math.PI/2;g.add(t);}
+ return g;}
+const ncL=nacelle(0,1.5,0);ncL.position.set(-2.55,.62,2.15);ship.add(ncL);
+const ncR=nacelle(0,1.5,0);ncR.position.set(2.55,.62,2.15);ship.add(ncR);
+const plumes=[];
+const plumeGeo=new THREE.CylinderGeometry(.48,2.3,6.4,20,1,true);plumeGeo.rotateX(-Math.PI/2);
+for(const s of [-1,1]){
+ const p=new THREE.Mesh(plumeGeo,new THREE.MeshBasicMaterial({color:0x2f9dff,transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+ p.position.set(2.55*s,.62,-2.6);ship.add(p);plumes.push(p);
+ const c=new THREE.Mesh(new THREE.CylinderGeometry(.16,.95,5.2,12,1,true),new THREE.MeshBasicMaterial({color:0xcdf6ff,transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+ c.position.set(2.55*s,.62,-2.2);ship.add(c);plumes.push(c);}
+const ant=new THREE.Mesh(new THREE.CylinderGeometry(.05,.09,2.6,6),darkMat);ant.position.set(.7,2.4,2.6);ant.rotation.x=-.32;ship.add(ant);
+const antT=new THREE.Mesh(new THREE.SphereGeometry(.09,6,6),new THREE.MeshBasicMaterial({color:0xff4444}));
+antT.position.set(.7,3.0,1.7);ship.add(antT);
+const antT2=antT.clone();antT2.position.set(0,2.2,-2.6);antT2.material=new THREE.MeshBasicMaterial({color:0x44ff88});ship.add(antT2);
+for(const s of [-1,1]){
+ const m=new THREE.MeshBasicMaterial({color:0xff2233});const l=new THREE.Mesh(new THREE.SphereGeometry(.17,8,6),m);l.position.set(-2.55*s,.62,2.5);ship.add(l);navLight=m;navL.push(l,m);
+ const g2=glowSprite(s<0?0xff3344:0x33ff66,1.6,0.9);g2.position.copy(l.position);ship.add(g2);}
+const navL=[],navLight;
+const navGlow=glowSprite(0x44aaff,1.8,.9);navGlow.position.set(0,2.9,-7);ship.add(navGlow);
+const underGlow=glowSprite(0x2255ff,2.2,.8);underGlow.position.set(0,-1.6,-2.2);ship.add(underGlow);
+const engineSprites=[];
+for(const s of [-1,1]){const g3=glowSprite(0x33aaff,4.5,.95);g3.position.set(2.55*s,.62,-2.0);ship.add(g3);engineSprites.push(g3);}
+ship.add(glowSprite(0x2255ff,10,.8,{depthTest:false}));
+
+/* ================= STARFIELD ================= */
+const sfN=4000,sfP=new Float32Array(sfN*3),sfC=new Float32Array(sfN*3),sfS=new Float32Array(sfN);
+for(let i=0;i<sfN;i++){const a=R()*TAU,e=Math.acos(2*R()-1),r=2.2e6*(.85+.3*R());
+ sfP[i*3]=Math.sin(e)*Math.cos(a)*r;sfP[i*3+1]=Math.sin(e)*Math.sin(a)*r*.5;sfP[i*3+2]=Math.cos(e)*r;
+ const c=tempColor(R());sfC[i*3]=c.r;sfC[i*3+1]=c.g;sfC[i*3+2]=c.b;sfS[i]=1+R()*3.2;}
+const sfGeo=new THREE.BufferGeometry();sfGeo.setAttribute('position',new THREE.BufferAttribute(sfP,3));
+sfGeo.setAttribute('aColor',new THREE.BufferAttribute(sfC,3));sfGeo.setAttribute('aSize',new THREE.BufferAttribute(sfS,1));
+scene.add(new THREE.Points(sfGeo,new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`attribute vec3 aColor;attribute float aSize;varying vec3 vC;void main(){vC=aColor;
+    vec4 mv=modelViewMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mv;
+    float d=max(0.001,-mv.z);gl_PointSize=min(aSize*700.0/d,7.0);}`,
+  fragmentShader:`varying vec3 vC;void main(){vec2 uv=gl_PointCoord*2.0-1.0;float d=dot(uv,uv);if(d>1.0)discard;
+    gl_FragColor=vec4(vC*pow(1.0-d,2.6),pow(1.0-d,3.0));}`}));
+
+/* ================= POST ================= */
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,cam));
+const lensPass=new ShaderPass({uniforms:{tDiffuse:{value:null},center:{value:new THREE.Vector2(.5,.5)},strength:{value:0},proj:{value:new THREE.Matrix4()},camPos:{value:new THREE.Vector3()}},
+ vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
+ fragmentShader:`varying vec2 vU;uniform sampler2D tDiffuse;uniform vec2 center;uniform float strength;uniform mat4 proj;uniform vec3 camPos;
+  void main(){vec2 uv=vU;
+   if(strength>0.002){
+    vec4 c=proj*vec4(camPos,1.0);vec2 p=vec2(c.x/c.w,c.y/c.w)*0.5+0.5;
+    vec2 d=uv-p;float r2=dot(d,d);
+    if(r2>0.0002&&r2<0.4){float s=min(1.0+strength/(r2*9.0),1.0+strength*7.0);uv=p+d*s;}
+   }
+   if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){gl_FragColor=vec4(0.0);return;}
+   gl_FragColor=texture2D(tDiffuse,uv);}`});
+composer.addPass(lensPass);
+const warpPass=new ShaderPass({uniforms:{tDiffuse:{value:null},warp:{value:0},time:{value:0}},
+ vertexShader:`varying vec2 vU;void main(){vU=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
+ fragmentShader:`varying vec2 vU;uniform sampler2D tDiffuse;uniform float warp;uniform float time;
+  void main(){vec2 uv=vU;vec2 d=uv-.5;float a=atan(d.y,d.x);float r=length(d);
+   float sp=warp*(0.45+0.55*sin(a*3.0))*exp(-r*1.5);
+   vec2 tuv=uv-d*(1.0+sp);float r2=length(tuv-.5);
+   vec3 c=texture2D(tDiffuse,tuv).rgb;
+   if(sp>0.02){
+    float bands=smoothstep(.55,1.0,sin(r2*360.0-time*13.0)*.5+.5);
+    c=mix(c,c*vec3(1.35,1.12,.92),bands*.45*warp);
+    c+=vec3(.04,.09,.22)*warp*(1.0-r2)*.7;
+    c+=vec3(.14,.2,.5)*clamp(r2*6.0-1.0,0.0,1.0)*warp*.35;
+   }
+   gl_FragColor=vec4(c,1.0);}`});
+composer.addPass(warpPass);
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.62,.5,.09);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const ORTHO=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+
+/* ================= ROUTE ================= */
+const WP=[[2150,-240,1100],[6200,-1100,6900],[14500,-3600,16000],[17500,-6500,22500],
+ [6000,-2200,8500],[-1500,-400,900],[-9000,-1300,9500],[-15000,-2600,13500],
+ [13000,3600,20500],[15000,4400,23000],[17000,3000,25000],[2000,2200,32000],
+ [-9000,900,21000],[-19500,2600,-14000]];
+let route=new THREE.CatmullRomCurve3(WP.map(p=>new THREE.Vector3(...p)),false,'catmullrom',.55);
+let routeLen=route.getLength();
+let u=0,distToGo=routeLen,prog=0;
+const POS=[new THREE.Vector3()],TGT=[new THREE.Vector3()];
+function buildRoute(start,dest){
+ const mid=start.clone().lerp(dest,.5);mid.y+=24000;
+ const mid2=start.clone().lerp(dest,.72);mid2.y-=5000;
+ route=new THREE.CatmullRomCurve3([start.clone(),mid,mid2,dest],false,'catmullrom',.5);
+ routeLen=route.getLength();distToGo=routeLen;u=0;POS[0].copy(start);TGT[0].copy(dest);}
+route.getPointAt(0,POS[0]);route.getTangentAt(0,TGT[0]);
+function destFromMap(mx,my){
+ const d=new THREE.Vector3((mx-.5)*2,0,(my-.5)*2).normalize().multiplyScalar(24000);return d;}
+
+/* ================= CAMERA ================= */
+let mode=0;
+const chase=new THREE.Vector3(), lookAt=new THREE.Vector3();
+const ctrls=new OrbitControls(cam,renderer.domElement);ctrls.enabled=false;
+ctrls.target.set(0,0,0);ctrls.minDistance=300;ctrls.maxDistance=3.2e6;ctrls.maxPolarAngle=1.55;
+const camPos=new THREE.Vector3(),camLook=new THREE.Vector3();
+function setCamMode(m){mode=m;ctrls.enabled=(m===3);
+ document.querySelectorAll('#tools button').forEach(b=>{const v=b.dataset.m;b.classList.toggle('on',v&&v===String(m));});}
+
+/* ================= UI ================= */
+const regEl=document.getElementById('reg'),distEl=document.getElementById('dist'),velEl=document.getElementById('vel'),etaEl=document.getElementById('eta'),routeEl=document.getElementById('route');
+const mc=document.getElementById('mc'),mctx=mc.getContext('2d');
+const PHASES=[[0.00,'DEPARTURE'],[0.10,'INTERSTELLAR CRUISE'],[0.42,'HYPERDRIVE'],[0.55,'GALACTIC CORE'],[0.80,'NEBULA DRIFT'],[0.94,'ARRIVING AT SYSTEM']];
+let manual=false;
+let paused=false,speedMul=1,muted=false;
+const PHASES_MAP={0:'DEPARTURE',1:'INTERSTELLAR CRUISE',2:'HYPERDRIVE',3:'GALACTIC CORE',4:'NEBULA DRIFT',5:'ARRIVING AT SYSTEM'};
+function phaseOf(x){for(let i=PHASES.length-1;i>=0;i--)if(x>=PHASES[i][0])return PHASES[i][1];return 'DEPARTURE';}
+
+document.querySelectorAll('#tools button').forEach(b=>{
+ if(b.dataset.m!==undefined&&b.dataset.m!=='0'){} 
+ if(b.dataset.m!==undefined){(()=>{const m=+b.dataset.m;return ()=>{if(m>=0&&m<=3)setCamMode(m);};})();b.addEventListener('click',((m)=>()=>{if(m>=0&&m<=3)setCamMode(m);})(Number(b.dataset.m)));b.dataset.on=true;}
+ if(b.dataset.p!==undefined)b.addEventListener('click',()=>{paused=!paused;b.textContent=paused?'PLAY':'PAUSE';b.classList.toggle('on',paused);});
+ if(b.dataset.s!==undefined)b.addEventListener('click',()=>{speedMul=1+Number(b.dataset.s);document.querySelectorAll('#tools button[data-s]').forEach(x=>x.classList.toggle('on',x===b));b.classList.add('on');});
+ if(b.dataset.a!==undefined)b.addEventListener('click',()=>{muted=!muted;b.textContent=muted?'UNMUTE':'MUTE';if(hum)gain.gain.value=muted?0:clamp(0.04+curSpeed*0.0004,0,0.25);});
+});
+document.getElementById('hbtn').addEventListener('click',()=>{document.getElementById('panel').classList.toggle('hidden');document.getElementById('map').classList.toggle('hidden');document.getElementById('tools').classList.toggle('hidden');document.getElementById('hint').classList.toggle('hidden');document.getElementById('how').classList.toggle('hidden');});
+document.getElementById('wbtn').addEventListener('click',()=>document.getElementById('how').classList.toggle('hidden'));
+mc.addEventListener('pointerdown',e=>{const r=mc.getBoundingClientRect();
+ buildRoute(route.getPointAt(clamp(u,0,1),new THREE.Vector3()),destFromMap((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height));
+ manual=true;u=0;regEl.textContent='NEW ROUTE PLOTTED';});
+
+/* ================= AUDIO ================= */
+let hum=null,gain=null,curSpeed=0;
+function initAudio(){
+ if(hum)return;try{const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();const o=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
+  o.type='sawtooth';o.frequency.value=34;o2.type='sine';o2.frequency.value=68;
+  o.detune.value=8;g.gain.value=0;o.connect(g);o2.connect(g);g.connect(ac.destination);o.start();o2.start();hum={ac,o,g};gain=g;}catch(e){}}
+document.body.addEventListener('pointerdown',initAudio,{once:false});
+document.body.addEventListener('keydown',initAudio);
+
+/* ================= LOOP ================= */
+const clock=new THREE.Clock();
+let lastDist=0,birth=performance.now();
+const PX=new THREE.Vector3();
+function update(dt){
+ /* ship position */
+ const spd=lerp(26,760,Math.min(1,u/.5))*(u>.42&&u<.57?6:1)*speedMul*(paused?0:1);
+ u+=spd*dt/routeLen;
+ if(u>1){u-=1;manual=false;regEl.textContent='CYCLE COMPLETE';}
+ route.getPointAt(clamp(u,0,1),PX);route.getTangentAt(clamp(u,0,1),TGT[0]).normalize();
+ const warp=(u>.42&&u<.58)?Math.min(1,(u-.42)/.06)*Math.min(1,(.57-u)/.07)+0.15:0;
+ warp*=speedMul;warpPass.uniforms.warp.value=warp;warpPass.uniforms.time.value=prog;
+ cam.fov=lerp(55,80,warp*.85+(mode===3?-30:0));
+ cam.updateProjectionMatrix();
+ /* ship orientation */
+ const fwd=TGT[0].clone();
+ const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+ const upv=new THREE.Vector3().crossVectors(right,fwd);
+ const roll=(fwd.y*-0.9)+Math.sin(prog*.7)*0.06;
+ const r2=right.applyAxisAngle(fwd,roll),u2=upv.applyAxisAngle(fwd,roll);
+ ship.position.copy(PX);
+ ship.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r2,u2,fwd.clone().negate()));
+ ship.rotateZ(Math.sin(prog*1.7)*0.012);
+ /* engine plume */
+ const pl=0.35+warp*1.6;
+ plumes.forEach((p,i)=>{p.material.opacity=(i===0?0.85:0.55)*Math.min(1,pl*2);p.scale.z=0.6+pl;});
+ engineSprites.forEach(s=>s.material.opacity=.45+warp*.55);
+ navL.forEach((l,i)=>{l.material.opacity=0.5+0.5*Math.abs(Math.sin(prog*(i<2?3:2.1)+i));});
+ navGlow.material.opacity=.55+.45*Math.abs(Math.sin(prog*6));
+ antT.material.opacity=.5+.5*Math.abs(Math.sin(prog*11));
+ antT2.material.opacity=.5+.5*Math.abs(Math.sin(prog*7+2));
+ /* cameras */
+ if(mode===3){return;}
+ if(mode===1){ship.getWorldPosition(camPos);camPos.addScaledVector(fwd,9.5);camPos.y+=2.4;camLook.copy(PX).addScaledVector(fwd,-6).add(new THREE.Vector3(0,0.3,0));}
+ else if(mode===2){ship.getWorldPosition(camPos);camPos.set(0,1.75,3.9);camPos.applyQuaternion(ship.quaternion);camLook.copy(PX).addScaledVector(fwd,-4).add(new THREE.Vector3(0,.9,0));}
+ else {camPos.copy(PX).addScaledVector(fwd,-17);camPos.y+=2.6;camLook.copy(PX).addScaledVector(fwd,34).add(new THREE.Vector3(0,1.4,0));}
+ cam.position.copy(camPos);cam.lookAt(camLook);
+ /* effects by distance */
+ const dcore=Math.hypot(PX.x,PX.z);
+ lensPass.uniforms.strength.value=clamp(1.6/(1+Math.pow(dcore/2600,2.1)),0,1.7);
+ lensPass.uniforms.camPos.value.copy(PX);
+ lensPass.uniforms.proj.value.copy(cam.projectionMatrix);
+ bloom.strength=.55+Math.min(1,warp)*.7+(1-Math.min(1,dcore/6000))*0.5;
+ nebGlow.material.opacity=.35*(1-Math.min(1,Math.hypot(PX.x-14000,PX.y-4200,PX.z-22500)/9000));
+ wMat.uniforms.uT.value=prog;
+ /* HUD */
+ const dist=Math.hypot(PX.x,PX.z).toFixed(0);
+ const km=spd*299792.458;
+ distEl.textContent=dist;velEl.textContent=(warp>0.5?(warp*8).toFixed(1)+'c':Math.round(km/10)*100/10+'');
+ etaEl.textContent=Math.round(distToGo).toFixed(0)+' ly';
+ let ph=manual?'INTERSTELLAR ROUTE':phaseOf(u);
+ if(dist<1800)ph='GALACTIC CORE';
+ regEl.textContent=ph;
+ routeEl.textContent='NEXT '+route.getPointAt(clamp(Math.min(1,u+ .01),0,1),new THREE.Vector3()).distanceTo(PX).toFixed(0)+' ly ahead';
+ /* minimap */
+ const S=100,mx=mc.width/2,my=mc.height/2,sc=2*S/(R_MAX*1.2);
+ mctx.clearRect(0,0,mc.width,mc.height);
+ mctx.strokeStyle='rgba(90,180,255,.25)';mctx.lineWidth=1;
+ mctx.beginPath();mctx.arc(mx,my,S*.96,0,TAU);mctx.stroke();
+ mctx.fillStyle='rgba(120,200,255,.16)';
+ for(let a=0;a<TAU;a+=TAU/8){mctx.beginPath();mctx.moveTo(mx,my);mctx.lineTo(mx+Math.cos(a)*S*.96,my+Math.sin(a)*S*.96);mctx.stroke();}
+ mctx.strokeStyle='rgba(140,220,255,.55)';mctx.lineWidth=1.2;mctx.beginPath();
+ const NP=90;
+ for(let i=0;i<=NP;i++){const p=route.getPointAt(i/NP);const X=mx+p.x*sc,Y=my+p.z*sc;i?mctx.lineTo(X,Y):mctx.moveTo(X,Y);}
+ mctx.stroke();
+ const bp=route.getPointAt(clamp(u,0,1));mctx.fillStyle='#fff';mctx.beginPath();mctx.arc(mx+bp.x*sc,my+bp.z*sc,3.4,0,TAU);mctx.fill();
+ const dp=route.getPointAt(1);mctx.fillStyle='rgba(255,120,120,.9)';mctx.beginPath();mctx.arc(mx+dp.x*sc,my+dp.z*sc,3,0,TAU);mctx.fill();
+ mctx.fillStyle='rgba(255,255,255,.18)';mctx.beginPath();mctx.arc(mx,my,4,0,TAU);mctx.fill();
+ prog+=dt;
+}
+
+function frame(){
+ requestAnimationFrame(frame);
+ const dt=Math.min(clock.getDelta(),0.05);
+ update(dt);
+ galMat.uniforms.uTime.value+=dt*speedMul;
+ nebMat.uniforms.uTime.value+=dt*speedMul;
+ d1.material.uniforms.uT.value+=dt*speedMul;d2.material.uniforms.uT.value+=dt*speedMul;
+ if(mode===3){if(clock.getDelta()>0){} } 
+ if(mode===3&&!ctrls.enabled){setCamMode(3);}
+ composer.render();
+}
+addEventListener('resize',()=>{
+ renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);
+ cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();
+ bloom.setSize(innerWidth,innerHeight);
+ U_SCALE.v=(innerHeight/2)/Math.tan(cam.fov*Math.PI/360);});
+U_SCALE.v=(innerHeight/2)/Math.tan(cam.fov*Math.PI/360);
+galMat.uniforms.uScale.value=U_SCALE.v;
+
+/* intro */
+document.getElementById('dim').style.opacity=0;
+setTimeout(()=>document.getElementById('dim').style.display='none',600);
+frame();
+</script>
+</body>
+</html>
