@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>AURA 75 — Mechanical Keyboard Assembly</title>
+<style>
+  :root{
+    --bg0:#08090c;
+    --bg1:#0d1015;
+    --ink:#e9e6e0;
+    --muted:#8b93a3;
+    --line:rgba(255,255,255,.09);
+    --panel:rgba(16,19,25,.72);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--bg0);
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    overscroll-behavior:none;
+    touch-action:manipulation;
+  }
+  #app{position:fixed;inset:0;}
+  canvas{display:block;width:100%;height:100%;outline:none;}
+  canvas:focus{outline:none;}
+
+  /* ---------- backdrop glow ---------- */
+  #bgLayer{
+    position:fixed;inset:0;pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 50% 38%, #18202c 0%, #0b0e13 52%, #06070a 100%);
+  }
+  #bgLayer::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(60% 45% at 50% 120%, rgba(90,140,255,.10), transparent 70%);
+  }
+
+  /* ---------- UI chrome ---------- */
+  .hud{
+    position:fixed;left:0;right:0;bottom:0;
+    padding:14px clamp(12px,3vw,34px) calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    pointer-events:none;
+    z-index:10;
+  }
+  .hud > *{pointer-events:auto;}
+
+  .brand{
+    display:flex;align-items:center;gap:11px;
+    user-select:none;
+  }
+  .mark{
+    width:34px;height:34px;border-radius:10px;flex:0 0 auto;
+    background:linear-gradient(150deg,#2a3344,#141820 60%,#0d1016);
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.16), 0 6px 18px rgba(0,0,0,.5);
+    position:relative;overflow:hidden;
+  }
+  .mark::before{
+    content:"";position:absolute;inset:8px;border-radius:3px;
+    background:linear-gradient(140deg,var(--accent,#7fd4ff),#2a6bff 70%);
+    opacity:.92;
+    box-shadow:0 0 14px var(--accent,#7fd4ff);
+    transition:background .5s ease, box-shadow .5s ease;
+  }
+  .mark::after{
+    content:"";position:absolute;right:6px;bottom:6px;width:7px;height:7px;border-radius:50%;
+    background:#e9f6ff;box-shadow:0 0 10px #bfe9ff;
+  }
+  .titles{display:flex;flex-direction:column;line-height:1.12;}
+  .titles b{
+    font-size:13px;letter-spacing:.22em;font-weight:700;
+    text-transform:uppercase;color:#f2f0eb;
+  }
+  .titles span{
+    font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    margin-top:3px;
+  }
+
+  .status{
+    display:flex;align-items:center;gap:9px;
+    font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+    transition:opacity .3s ease;
+    white-space:nowrap;
+  }
+  .status .dot{
+    width:7px;height:7px;border-radius:50%;background:#52e39a;
+    box-shadow:0 0 10px #52e39a;flex:0 0 auto;
+    animation:pulse 2.2s ease-in-out infinite;
+  }
+  .status.ready .dot{background:#8f99ab;box-shadow:none;animation:none;}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+  .controls{
+    display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end;
+  }
+
+  button{
+    font:inherit;font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;
+    color:#d8dcdf;background:rgba(255,255,255,.055);
+    border:1px solid var(--line);border-radius:11px;
+    padding:10px 14px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:8px;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    transition:background .18s ease, border-color .18s ease, transform .1s ease, color .18s ease;
+    user-select:none;
+    white-space:nowrap;
+  }
+  button:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.2);}
+  button:active{transform:translateY(1px) scale(.985);}
+  button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;}
+
+  .swatches{
+    display:flex;gap:5px;padding:4px;border-radius:11px;
+    background:rgba(255,255,255,.045);border:1px solid var(--line);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  }
+  .sw{
+    width:21px;height:21px;border-radius:8px;cursor:pointer;padding:0;
+    border:1px solid rgba(255,255,255,.14);
+    background:var(--c);
+    transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  }
+  .sw:hover{transform:scale(1.12);}
+  .sw[aria-pressed="true"]{
+    border-color:#fff;box-shadow:0 0 12px var(--c), inset 0 0 0 1px rgba(255,255,255,.5);
+    transform:scale(1.06);
+  }
+  .mute.off{background:rgba(255,255,255,.03);color:#7c8596;}
+
+  /* ---------- hint ---------- */
+  #hint{
+    position:fixed;left:50%;top:52px;transform:translate(-50%,-8px);
+    font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:#c9ced8;
+    background:rgba(14,18,24,.78);
+    border:1px solid var(--line);border-radius:999px;
+    padding:9px 16px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    opacity:0;pointer-events:none;transition:opacity .45s ease, transform .45s ease;
+    z-index:12;white-space:nowrap;
+    max-width:calc(100vw - 28px);overflow:hidden;text-overflow:ellipsis;
+  }
+  #hint.show{opacity:1;transform:translate(-50%,0);}
+
+  .hintKey{
+    display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14);
+    letter-spacing:.05em;margin:0 1px;
+  }
+
+  /* ---------- overlay vignette ---------- */
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(90% 70% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+
+  @media (max-width:640px){
+    .hud{flex-direction:column;align-items:stretch;gap:9px;bottom:calc(10px + env(safe-area-inset-bottom,0px));}
+    .hud-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .hud-bot{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .brand .titles span{display:none;}
+    button{padding:9px 11px;font-size:10.5px;letter-spacing:.07em;}
+    .sw{width:18px;height:18px;}
+    .status{display:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .status .dot{animation:none;opacity:.6;}
+  }
+</style>
+</head>
+<body>
+<div id="bgLayer"></div>
+<div id="vignette"></div>
+
+<div id="app">
+  <canvas id="cv" tabindex="0" aria-label="3D mechanical keyboard. Click a key or use your keyboard."></canvas>
+</div>
+
+<div id="hint"></div>
+
+<div class="hud">
+  <div class="hud-top">
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="titles">
+        <b>AURA&nbsp;75</b>
+        <span>Hotswap · Aluminum Frame</span>
+      </div>
+    </div>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">Assembling</span></div>
+  </div>
+  <div class="hud-bot">
+    <div class="controls">
+      <div class="swatches" id="swatches">
+        <button class="sw" data-c="#5ad1ff" style="--c:#5ad1ff" aria-label="Cyan" aria-pressed="true"></button>
+        <button class="sw" data-c="#8b6bff" style="--c:#8b6bff" aria-label="Violet" aria-pressed="false"></button>
+        <button class="sw" data-c="#7df0b8" style="--c:#7df0b8" aria-label="Mint" aria-pressed="false"></button>
+        <button class="sw" data-c="#ff6f9d" style="--c:#ff6f9d" aria-label="Rose" aria-pressed="false"></button>
+      </div>
+      <button id="replayBtn" title="Replay assembly">
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg>
+        Replay
+      </button>
+      <button id="muteBtn" class="mute" title="Mute" aria-pressed="false">
+        <svg id="muteIconOn" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
+        <svg id="muteIconOff" style="display:none" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+        <span id="muteLabel">Sound on</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+/* ============================================================
+   SMALL HELPERS
+============================================================ */
+const TAU = Math.PI * 2;
+const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+const lerp = (a,b,t)=> a+(b-a)*t;
+const easeOutExpo = t => t>=1 ? 1 : 1 - Math.pow(2,-10*t);
+const easeInOutCubic = t => t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+const easeOutBack = t => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); };
+
+const LIGHT = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const MINIMAP = false;
+
+/* ============================================================
+   LAYOUT  (x = across keyboard, z = depth, y = up)
+============================================================ */
+const PITCH = 1.0;
+const KEYS = [];
+const rowsData = [
+  [ /* row 0 — number */
+    {k:'Escape', c:'Escape', w:1, side:false, label:'esc'},
+    {k:'Digit1', c:'Digit1', w:1}, {k:'Digit2', c:'Digit2', w:1}, {k:'Digit3', c:'Digit3', w:1},
+    {k:'Digit4', c:'Digit4', w:1}, {k:'Digit5', c:'Digit5', w:1}, {k:'Digit6', c:'Digit6', w:1},
+    {k:'Digit7', c:'Digit7', w:1}, {k:'Digit8', c:'Digit8', w:1}, {k:'Digit9', c:'Digit9', w:1},
+    {k:'Digit0', c:'Digit0', w:1}, {k:'Minus', c:'Minus', w:1}, {k:'Equal', c:'Equal', w:1},
+    {k:'Backspace', c:'Backspace', w:2, side:true}
+  ],
+  [ /* row 1 */
+    {k:'Tab', c:'Tab', w:1.5, side:true},
+    {k:'KeyQ', c:'KeyQ'}, {k:'KeyW', c:'KeyW'}, {k:'KeyE', c:'KeyE'}, {k:'KeyR', c:'KeyR'},
+    {k:'KeyT', c:'KeyT'}, {k:'KeyY', c:'KeyY'}, {k:'KeyU', c:'KeyU'}, {k:'KeyI', c:'KeyI'},
+    {k:'KeyO', c:'KeyO'}, {k:'KeyP', c:'KeyP'},
+    {k:'BracketLeft', c:'BracketLeft'}, {k:'BracketRight', c:'BracketRight'},
+    {k:'Backslash', c:'Backslash', w:1.75, side:true}
+  ],
+  [ /* row 2 */
+    {k:'CapsLock', c:'CapsLock', w:1.75, side:true},
+    {k:'KeyA', c:'KeyA'}, {k:'KeyS', c:'KeyS'}, {k:'KeyD', c:'KeyD'}, {k:'KeyF', c:'KeyF'},
+    {k:'KeyG', c:'KeyG'}, {k:'KeyH', c:'KeyH'}, {k:'KeyJ', c:'KeyJ'}, {k:'KeyK', c:'KeyK'},
+    {k:'KeyL', c:'KeyL'},
+    {k:'Semicolon', c:'Semicolon'}, {k:'Quote', c:'Quote'},
+    {k:'Enter', c:'Enter', w:2.25, side:true}
+  ],
+  [ /* row 3 */
+    {k:'ShiftLeft', c:'ShiftLeft', w:2.25, side:true},
+    {k:'KeyZ', c:'KeyZ'}, {k:'KeyX', c:'KeyX'}, {k:'KeyC', c:'KeyC'}, {k:'KeyV', c:'KeyV'},
+    {k:'KeyB', c:'KeyB'}, {k:'KeyN', c:'KeyN'}, {k:'KeyM', c:'KeyM'},
+    {k:'Comma', c:'Comma'}, {k:'Period', c:'Period'}, {k:'Slash', c:'Slash'},
+    {k:'ShiftRight', c:'ShiftRight', w:2.75, side:true}
+  ],
+  [ /* row 4 */
+    {k:'ControlLeft', c:'ControlLeft', w:1.5, side:true},
+    {k:'MetaLeft', c:'MetaLeft', w:1.25, side:true},
+    {k:'AltLeft', c:'AltLeft', w:1.25, side:true},
+    {k:'Space', c:'Space', w:6.25, wide:true},
+    {k:'AltRight', c:'AltRight', w:1.25, side:true},
+    {k:'MetaRight', c:'MetaRight', w:1.25, side:true},
+    {k:'ControlRight', c:'ControlRight', w:1.5, side:true}
+  ]
+];
+
+function buildLayout(){
+  rowsData.forEach((row, ri)=>{
+    const total = row.reduce((s,k)=>s+k.w,0);
+    let acc = -total/2;
+    row.forEach(k=>{
+      const cx = acc + k.w/2;
+      const cz = ri*PITCH + (PITCH/2) - (rowsData.length-1)*PITCH/2;
+      acc += k.w;
+      KEYS.push({
+        ...k,
+        row: ri, col: KEYS.length,
+        home: new THREE.Vector3(cx, 0, cz),
+        switchPos: new THREE.Vector3(cx, 0, cz)
+      });
+    });
+  });
+}
+buildLayout();
+
+/* ============================================================
+   SCENE
+============================================================ */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080a0f);
+scene.fog = new THREE.FogExp2(0x080a0f, 0.012);
+
+const canvas = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const camera = new THREE.PerspectiveCamera(32, window.innerWidth/window.innerHeight, 0.1, 300);
+
+/* ---------- Lights ---------- */
+const hemi = new THREE.HemisphereLight(0x9fc4ff, 0x0a0b10, 0.55);
+scene.add(hemi);
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+keyLight.position.set(7, 14, 9);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048,2048);
+keyLight.shadow.camera.left = -16; keyLight.shadow.camera.right = 16;
+keyLight.shadow.camera.top = 16; keyLight.shadow.camera.bottom = -16;
+keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 50;
+keyLight.shadow.bias = -0.0006;
+keyLight.shadow.radius = 3;
+scene.add(keyLight);
+
+const fill = new THREE.DirectionalLight(0x7ea8ff, 0.75);
+fill.position.set(-9, 6, -7);
+scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xffffff, 1.1);
+rim.position.set(0, 9, -12);
+scene.add(rim);
+
+/* keyboard's own underglow plane light */
+const glowSpot = new THREE.PointLight(0x7fd4ff, 0, 26);
+glowSpot.position.set(0, 0.5, 0);
+scene.add(glowSpot);
+
+/* ============================================================
+   MATERIALS
+============================================================ */
+const M = {
+  caseTop:  new THREE.MeshStandardMaterial({color:0x171a21, metalness:0.65, roughness:0.34}),
+  caseSide: new THREE.MeshStandardMaterial({color:0x0b0d12, metalness:0.55, roughness:0.5}),
+  caseEdge: new THREE.MeshStandardMaterial({color:0x232733, metalness:0.75, roughness:0.26}),
+  pcb:      new THREE.MeshStandardMaterial({color:0x0c1a14, metalness:0.25, roughness:0.62, emissive:0x03110a, emissiveIntensity:1}),
+  pcbTop:   new THREE.MeshStandardMaterial({color:0x101d18, metalness:0.2, roughness:0.7}),
+  foam:     new THREE.MeshStandardMaterial({color:0xd6d2c9, metalness:0.02, roughness:0.97}),
+  plate:    new THREE.MeshStandardMaterial({color:0x8d939e, metalness:1.0, roughness:0.28}),
+  switchBody: new THREE.MeshStandardMaterial({color:0x232833, metalness:0.6, roughness:0.42}),
+  switchTop: new THREE.MeshStandardMaterial({color:0x3a4150, metalness:0.5, roughness:0.5}),
+  stem:     new THREE.MeshStandardMaterial({color:0x0c0e12, metalness:0.5, roughness:0.45}),
+  press:    new THREE.MeshStandardMaterial({color:0x1d2028, metalness:0.55, roughness:0.4})
+};
+
+/* ============================================================
+   GEOMETRY FACTORIES
+============================================================ */
+function roundedRectShape(w, h, r){
+  const s = new THREE.Shape();
+  const hw = w/2, hh = h/2;
+  s.moveTo(-hw+r, -hh);
+  s.lineTo(hw-r, -hh);
+  s.quadraticCurveTo(hw, -hh, hw, -hh+r);
+  s.lineTo(hw, hh-r);
+  s.quadraticCurveTo(hw, hh, hw-r, hh);
+  s.lineTo(-hw+r, hh);
+  s.quadraticCurveTo(-hw, hh, -hw, hh-r);
+  s.lineTo(-hw, hh-r);
+  s.quadraticCurveTo(-hw, hh, -hw+r, hh);
+  s.lineTo(-hw+r, -hh);
+  s.closePath();
+  return s;
+}
+
+function keycapGeometry(w, depth, thick, height, r, bevel){
+  const s = new THREE.Shape();
+  const hw = w/2, hd = depth/2;
+  s.moveTo(-hw+r, -hd);
+  s.lineTo(hw-r, -hd);
+  s.quadraticCurveTo(hw, -hd, hw, -hd+r);
+  s.lineTo(hw, hd-r);
+  s.quadraticCurveTo(hw, hd, hw-r, hd);
+  s.lineTo(-hw+r, hd);
+  s.quadraticCurveTo(-hw, hd, -hw, hd-r);
+  s.lineTo(-hw, hd-r);
+  s.quadraticCurveTo(-hw, -hd, -hw+r, -hd);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth: height - bevel,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2,
+    curveSegments: 14,
+    steps: 1
+  });
+  g.center(); // origin at the visual middle; we'll translate to desired top
+  g.translate(0, 0, (height - bevel)/2);
+  // now top face is at z = height/2... recompute
+  return g;
+}
+
+function makeKeycapMesh(key){
+  const baseW = key.wide ? 6.25 : 1.0;
+  const w = baseW * PITCH * 0.92;
+  const depth = PITCH * 0.94;
+  const thickness = 0.20;
+  const height = key.wide ? 0.86 : 0.78;
+  const r = Math.min(w, depth) * 0.19;
+  const bevel = 0.055;
+
+  const shape = new THREE.Shape();
+  const hw = w/2, hd = depth/2;
+  shape.moveTo(-hw+r, -hd);
+  shape.lineTo(hw-r, -hd);
+  shape.quadraticCurveTo(hw, -hd, hw, -hd+r);
+  shape.lineTo(hw, hd-r);
+  shape.quadraticCurveTo(hw, hd, hw-r, hd);
+  shape.lineTo(-hw+r, hd);
+  shape.quadraticCurveTo(-hw, hd, -hw, hd-r);
+  shape.lineTo(-hw, hd-r);
+  shape.quadraticCurveTo(-hw, -hd, -hw+r, -hd);
+  shape.closePath();
+
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: height - bevel,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2,
+    curveSegments: 16,
+    steps: 1
+  });
+  // translate so bottom is at z=0
+  g.translate(0, 0, -(height - bevel));
+  // now base 0..bevel, total height height. Fine.
+
+  const matSide = new THREE.MeshStandardMaterial({color:0x9a9488, metalness:0.25, roughness:0.55});
+  const matTop = new THREE.MeshStandardMaterial({color:0xeeeae2, metalness:0.12, roughness:0.42});
+  const sideMat = key.side ? new THREE.MeshStandardMaterial({color:0x4a515e, metalness:0.35, roughness:0.4}) : matSide;
+
+  const mesh = new THREE.Mesh(g, [sideMat, matTop]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  // underside rim plate
+  const under = new THREE.Mesh(
+    new RoundedBoxGeometry(w-0.06, thickness, depth-0.06, 4, thickness*0.45),
+    new THREE.MeshStandardMaterial({color:0x7b7468, metalness:0.3, roughness:0.55})
+  );
+  under.position.y = thickness*0.55;
+  under.castShadow = true;
+  under.receiveShadow = true;
+
+  const grp = new THREE.Group();
+  grp.add(mesh);
+  grp.add(under);
+  return grp;
+}
+
+function makeSwitchMesh(){
+  const grp = new THREE.Group();
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.68, 0.30, 0.72, 3, 0.12), M.switchBody);
+  body.position.y = 0.15;
+  const top = new THREE.Mesh(new RoundedBoxGeometry(0.50, 0.10, 0.54, 3, 0.06), M.switchTop);
+  top.position.y = 0.31;
+  const pinL = new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.032,0.26,6), M.stem);
+  pinL.position.set(-0.13, 0.0, 0.24);
+  const pinR = pinL.clone(); pinR.position.x = 0.13;
+  const grp2 = new THREE.Group();
+  grp2.add(body, top, pinL, pinR);
+  body.castShadow = top.castShadow = true;
+  pinL.castShadow = pinR.castShadow = false;
+  return grp2;
+}
+
+/* ============================================================
+   BUILD KEYBOARD PARTS
+============================================================ */
+const group = new THREE.Group();
+scene.add(group);
+
+/* ---------- 1. Case (bottom + top shell) ---------- */
+const caseWidth = 15.6;
+const caseDepth = rowsData.length*PITCH + 0.95;
+const caseFrontZ = -rowsData.length*PITCH/2 + 0.45;
+
+function makeCaseShell(){
+  const shape = roundedRectShape(caseWidth, caseDepth, 0.42);
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.9, bevelEnabled: true, bevelThickness: 0.10,
+    bevelSize: 0.10, bevelSegments: 3, curveSegments: 20, steps: 1
+  });
+  g.translate(0, 0, -0.9);
+  return g;
+}
+const caseShell = new THREE.Mesh(makeCaseShell(), M.caseSide);
+caseShell.position.set(0, 0.05, 0);
+caseShell.castShadow = true;
+caseShell.receiveShadow = true;
+group.add(caseShell);
+
+const caseTopShape = roundedRectShape(caseWidth - 0.55, caseDepth - 0.55, 0.30);
+const caseTopGeo = new THREE.ExtrudeGeometry(caseTopShape, {
+  depth: 0.22, bevelEnabled: true, bevelThickness: 0.05,
+  bevelSize: 0.05, bevelSegments: 2, curveSegments: 16, steps: 1
+});
+caseTopGeo.translate(0,0,-0.22);
+const caseTop = new THREE.Mesh(caseTopGeo, M.caseTop);
+caseTop.position.set(0, 1.02, 0);
+caseTop.castShadow = true;
+caseTop.receiveShadow = true;
+group.add(caseTop);
+
+/* inner lip ring */
+const lipGeo = new THREE.RingGeometry(0.001, 0.001, 1); // placeholder replaced below
+const lip = new THREE.Mesh(
+  new THREE.RingGeometry(0.0, 0.0, 16),
+  M.caseEdge
+);
+lip.visible = false;
+group.add(lip);
+
+/* ============================================================
+   PCB
+============================================================ */
+const pcbW = 14.0, pcbD = rowsData.length*PITCH - 0.62;
+const pcbGeo = new THREE.ExtrudeGeometry(roundedRectShape(pcbW, pcbD, 0.14), {
+  depth: 0.16, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.04,
+  bevelSegments: 2, curveSegments: 14, steps: 1
+});
+pcbGeo.translate(0,0,-0.16);
+const pcb = new THREE.Mesh(pcbGeo, M.pcb);
+pcb.position.set(0, 0.28, 0);
+pcb.castShadow = true;
+pcb.receiveShadow = true;
+group.add(pcb);
+
+/* pcb top surface plate-ish thin sheet so reflections read well */
+const pcbSheet = new THREE.Mesh(
+  new THREE.PlaneGeometry(pcbW-0.3, pcbD-0.3, 1, 1),
+  new THREE.MeshStandardMaterial({color:0x0b1612, metalness:0.35, roughness:0.45})
+);
+pcbSheet.rotation.x = -Math.PI/2;
+pcbSheet.position.set(0, 0.365, 0);
+group.add(pcbSheet);
+
+/* pcb underside copper-ish plane */
+const copper = new THREE.Mesh(
+  new THREE.PlaneGeometry(pcbW-0.4, pcbD-0.4),
+  new THREE.MeshStandardMaterial({color:0x2a3038, metalness:0.9, roughness:0.35})
+);
+copper.rotation.x = -Math.PI/2;
+copper.rotation.z = 0;
+copper.position.set(0, 0.215, 0);
+group.add(copper);
+
+/* PCB mounting screws (6 small cylinders) */
+const screwGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12);
+const screwMat = new THREE.MeshStandardMaterial({color:0x9aa3b2, metalness:1.0, roughness:0.28});
+[-5.4, 0, 5.4].forEach(x=>{
+  [-pcbD/2+0.55, pcbD/2-0.55].forEach(z=>{
+    const s = new THREE.Mesh(screwGeo, screwMat);
+    s.position.set(x, 0.385, z);
+    group.add(s);
+  });
+});
+
+/* ============================================================
+   FOOTPRINT UNDERGLOW (the soft light spilling out)
+============================================================ */
+const glowMat = new THREE.MeshBasicMaterial({color:0x7fd4ff, transparent:true, opacity:0.10, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
+const glowDisc = new THREE.Mesh(new THREE.PlaneGeometry(pcbW+0.9, pcbD+1.5), glowMat);
+glowDisc.rotation.x = -Math.PI/2;
+glowDisc.position.set(0, 0.06, 0);
+group.add(glowDisc);
+
+/* ============================================================
+   FOAM
+============================================================ */
+const foamGeo = new THREE.ExtrudeGeometry(roundedRectShape(pcbW+0.22, pcbD+0.22, 0.10), {
+  depth: 0.10, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025,
+  bevelSegments: 2, curveSegments: 12, steps: 1
+});
+foamGeo.translate(0,0,-0.10);
+const foam = new THREE.Mesh(foamGeo, M.foam);
+foam.position.set(0, 0.46, 0);
+foam.castShadow = true;
+foam.receiveShadow = true;
+group.add(foam);
+
+/* ============================================================
+   PLATE
+============================================================ */
+const plateW = 14.15, plateD = rowsData.length*PITCH - 0.50;
+const plateGeo = new THREE.ExtrudeGeometry(roundedRectShape(plateW, plateD, 0.07), {
+  depth: 0.075, bevelEnabled: true, bevelThickness: 0.018, bevelSize: 0.018,
+  bevelSegments: 2, curveSegments: 14, steps: 1
+});
+plateGeo.translate(0,0,-0.075);
+const plate = new THREE.Mesh(plateGeo, M.plate);
+plate.position.set(0, 0.60, 0);
+plate.castShadow = true;
+plate.receiveShadow = true;
+group.add(plate);
+
+/* ============================================================
+   SWITCHES  (positioned relative to plate)
+============================================================ */
+const SWITCH_BASE_Y = 0.645;
+const switchMesh = [];
+const switchData = KEYS.map(k=>{
+  const s = makeSwitchMesh();
+  s.position.set(k.home.x, SWITCH_BASE_Y, k.home.z);
+  s.castShadow = true;
+  group.add(s);
+  const d = {mesh:s, pressed:false, homeY:s.position.y, homeR:0};
+  switchMesh.push(d);
+  return d;
+});
+
+/* ============================================================
+   KEYCAPS
+============================================================ */
+const capGeoCache = new Map();
+const capMeshes = KEYS.map((key, i)=>{
+  const baseW = key.wide ? 6.25 : 1.0;
+  const w = baseW*PITCH*0.92;
+  const depth = PITCH*0.94;
+  const thick = 0.20;
+  const h = key.wide ? 0.86 : 0.78;
+  const r = Math.min(w, depth)*0.19;
+  const bevel = 0.055;
+  const ck = Math.round(w*100)+'_'+Math.round(depth*100)+'_'+Math.round(h*100);
+  if(!capGeoCache.has(ck)){
+    const shape = new THREE.Shape();
+    const hw = w/2, hd = depth/2;
+    shape.moveTo(-hw+r,-hd); shape.lineTo(hw-r,-hd);
+    shape.quadraticCurveTo(hw,-hd,hw,-hd+r);
+    shape.lineTo(hw,hd-r); shape.quadraticCurveTo(hw,hd,hw-r,hd);
+    shape.lineTo(-hw+r,hd); shape.quadraticCurveTo(-hw,hd,-hw,hd-r);
+    shape.lineTo(-hw,hd-r); shape.quadraticCurveTo(-hw,-hd,-hw+r,-hd);
+    shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, {
+      depth: h-bevel, bevelEnabled: true, bevelThickness: bevel,
+      bevelSize: bevel, bevelSegments: 2, curveSegments: 14, steps: 1
+    });
+    g.translate(0,0,-(h-bevel));
+    capGeoCache.set(ck, g);
+  }
+  const geo = capGeoCache.get(ck);
+  const sideMat = key.side
+    ? new THREE.MeshStandardMaterial({color:0x4a515e, metalness:0.35, roughness:0.4})
+    : new THREE.MeshStandardMaterial({color:0x9a9488, metalness:0.25, roughness:0.55});
+  const topMat = new THREE.MeshStandardMaterial({color:0xeeeae2, metalness:0.12, roughness:0.42});
+  const mesh = new THREE.Mesh(geo, [sideMat, topMat]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const under = new THREE.Mesh(
+    new RoundedBoxGeometry(w-0.05, 0.15, depth-0.05, 3, 0.06),
+    new THREE.MeshStandardMaterial({color:0x7b7468, metalness:0.3, roughness:0.55})
+  );
+  under.position.y = 0.075;
+  under.castShadow = true;
+
+  const grp = new THREE.Group();
+  grp.add(under, mesh);
+  grp.position.set(key.home.x, SWITCH_BASE_Y + 0.30, key.home.z);
+  grp.userData = {key, mesh, under};
+  group.add(grp);
+  return grp;
+});
+
+/* ---------- Keycap final surface y ---------- */
+const CAP_Y = SWITCH_BASE_Y + 0.34;
+
+/* ============================================================
+   POSITIONS FOR EXPLODED VIEW
+============================================================ */
+const Y = {
+  case: 0.05,
+  pcb: 0.28,
+  foam: 0.46,
+  plate: 0.60,
+  switch: SWITCH_BASE_Y,
+  cap: CAP_Y
+};
+const EXPLODE = 3.35;
+
+function resetParts(stagger=false){
+  pcb.position.set(0, Y.pcb, 0);
+  foam.position.set(0, Y.foam, 0);
+  plate.position.set(0, Y.plate, 0);
+  const sOff = stagger ? (Y.switch + EXPLODE*1.9) : Y.switch;
+  switchMesh.forEach(s=>{ s.mesh.position.set(s.mesh.position.x, sOff, s.mesh.position.z); s.mesh.rotation.set(0,0,0); s.mesh.scale.setScalar(1); });
+  const cOff = stagger ? (Y.cap + EXPLODE*3.0) : Y.cap;
+  capMeshes.forEach(c=>{
+    c.position.x = c.userData.key.home.x;
+    c.position.y = cOff;
+    c.position.z = c.userData.key.home.z;
+    c.rotation.set(0,0,0);
+    c.scale.setScalar(1);
+  });
+  group.position.set(0,0,0);
+  group.rotation.set(0,0,0);
+}
+
+/* ============================================================
+   CAMERA PRESETS
+============================================================ */
+const presetClose = new THREE.Vector3(6.4, 6.4, 8.6);
+const presetMid   = new THREE.Vector3(3.4, 4.6, 6.0);
+const presetFar   = new THREE.Vector3(0, 9.4, 11.2);
+const presetExplode = new THREE.Vector3(0, 11.5, 15.6);
+const lookAhead = new THREE.Vector3(0, 0.6, 0);
+const lookClose = new THREE.Vector3(0, 0.2, 0);
+const lookFar = new THREE.Vector3(0, 0.0, 0);
+
+let cameraGoalPos = presetClose.clone();
+let cameraGoalLook = lookClose.clone();
+let goalKind = 'close';
+
+function lookAtGoal(){
+  camera.lookAt(cameraGoalLook);
+}
+
+/* ============================================================
+   AUDIO
+============================================================ */
+let audioCtx = null;
+let masterGain = null;
+let noiseBuffer = null;
+let audioReady = false;
+let muted = false;
+
+const Sound = {
+  init(){
+    if(audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    audioCtx = new AC();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = muted ? 0 : 0.75;
+    masterGain.connect(audioCtx.destination);
+    // noise buffer for the click transient
+    const len = Math.floor(audioCtx.sampleRate * 0.35);
+    noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d = noiseBuffer.getChannelData(0);
+    for(let i=0;i<len;i++){ d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.2); }
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    audioReady = true;
+  },
+  setMuted(m){
+    muted = m;
+    if(masterGain && audioCtx){
+      masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(m?0:0.75, audioCtx.currentTime + 0.06);
+    }
+  },
+  click(freq, dur, vel, pan, type, slide){
+    if(!audioReady || muted || !audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const out = audioCtx.createGain();
+    out.gain.setValueAtTime(0, t0);
+    out.gain.linearRampToValueAtTime(vel, t0 + 0.004);
+    out.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    const panner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+    if(panner){
+      panner.pan.value = pan;
+      out.connect(panner); panner.connect(masterGain);
+    } else {
+      out.connect(masterGain);
+    }
+    const osc = audioCtx.createOscillator();
+    osc.type = type || 'sine';
+    const f0 = freq;
+    osc.frequency.setValueAtTime(f0, t0);
+    if(slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, f0*slide), t0 + dur);
+    osc.connect(out);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+
+    // mechanical click layer
+    if(noiseBuffer){
+      const src = audioCtx.createBufferSource();
+      src.buffer = noiseBuffer;
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1400 + Math.random()*1400;
+      bp.Q.value = 1.6;
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(0.14*vel, t0);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+      src.connect(bp); bp.connect(ng); ng.connect(masterGain);
+      src.start(t0);
+      src.stop(t0 + 0.1);
+    }
+  }
+};
+
+function soundsForKey(key){
+  const code = key.k;
+  const letter = code.replace('Key','').toLowerCase();
+  const baseFreq = {
+    Space: 96, ControlLeft: 132, ControlRight: 132,
+    ShiftLeft: 165, ShiftRight: 165,
+    AltLeft: 185, AltRight: 185,
+    MetaLeft: 220, MetaRight: 220,
+    Tab: 220, Enter: 196, Backspace: 156, CapsLock: 174,
+    Escape: 261, BracketLeft: 329, BracketRight: 349, Backslash: 370,
+    Semicolon: 392, Quote: 415, Comma: 440, Period: 466, Slash: 494
+  };
+  if(baseFreq[code]) return {freq: baseFreq[code], type:'triangle', dur: key.wide ? 0.16 : 0.11, slide: 1.45, vel: 0.42, pan: key.wide ? 0 : (key.home.x>0?0.22:-0.22)};
+
+  if(letter === ' ') return {freq: 104, type:'sine', dur:0.2, slide:1.3, vel:0.36, pan:0};
+  if(letter >= 'a' && letter <= 'z'){
+    const idx = letter.charCodeAt(0) - 97;
+    return {freq: 392 * Math.pow(2, (idx-8)/12), type:'triangle', dur:0.13, slide:1.5, vel:0.44, pan: key.home.x*0.05};
+  }
+  return {freq: 523.25, type:'sine', dur:0.11, slide:1.45, vel:0.4, pan: key.home.x*0.04};
+}
+
+/* ============================================================
+   ASSEMBLY STATE MACHINE
+============================================================ */
+const state = {
+  phase: 'idle',        // idle | assembly | running | done
+  t: 0,                 // time since assembly start (seconds)
+  assemblyDur: 0,
+  playing: false,
+  lastInst: null,       // last key touched by input
+};
+
+const TIMING = (function(){
+  if(LIGHT) return {
+    pcb: 0.00, foam: 0.10, plate: 0.20,
+    switchEach: 0.0001, switchStart: 0.30,
+    capEach: 0.0001, capStart: 0.40,
+    done: 0.45
+  };
+  return {
+    pcb: 0.00, foam: 0.55, plate: 1.05,
+    switchEach: 0.026, switchStart: 1.62,
+    capEach: 0.026, capStart: 4.55,
+    done: 8.6
+  };
+})();
+
+let swStartTime = 0, capStartTime = 0;
+let totalSw = switchMesh.length, totalCaps = capMeshes.length;
+
+function startAssembly(){
+  state.phase = 'running';
+  state.t = 0;
+  state.playing = true;
+  state.lastInst = null;
+  resetParts(true);
+  group.visible = true;
+
+  swStartTime = TIMING.switchStart;
+  capStartTime = TIMING.capStart;
+  state.assemblyDur = Math.max(TIMING.done, capStartTime + totalCaps*TIMING.capEach + 0.9);
+
+  setStatus('Assembling…', false);
+  hideHint();
+  showHudAssembling();
+}
+
+function updateAssembly(dt){
+  state.t += dt;
+  const t = state.t;
+
+  /* --- PCB --- */
+  const pc = clamp(t / 0.55, 0, 1);
+  pcb.position.y = lerp(Y.pcb + 2.6, Y.pcb, easeOutExpo(pc));
+  pcb.rotation.x = lerp(0.0, 0, easeOutExpo(pc));
+  pcb.rotation.z = lerp(-0.045, 0, easeOutExpo(pc));
+
+  /* --- Foam --- */
+  const fc = clamp((t - TIMING.foam) / 0.5, 0, 1);
+  foam.position.y = lerp(Y.foam + 2.35, Y.foam, easeOutExpo(fc));
+
+  /* --- Plate --- */
+  const lc = clamp((t - TIMING.plate) / 0.55, 0, 1);
+  plate.position.y = lerp(Y.plate + 2.0, Y.plate, easeOutExpo(lc));
+
+  /* --- Switches (one by one L->R) --- */
+  const sArr = switchMesh;
+  for(let i=0;i<sArr.length;i++){
+    const st = sArr[i];
+    const s0 = TIMING.switchStart + i * TIMING.switchEach;
+    const p = clamp((t - s0) / 0.32, 0, 1);
+    if(p <= 0) continue;
+    const targetY = Y.switch;
+    const startY = targetY + EXPLODE * (0.88 + (i % 5) * 0.035);
+    const e = easeOutBack(p);
+    st.mesh.position.y = lerp(startY, targetY, e);
+    st.mesh.rotation.z = lerp(0.16, 0, easeOutExpo(p));
+    st.mesh.rotation.x = lerp(-0.10, 0, easeOutExpo(p));
+    st.mesh.rotation.y = lerp(-0.10, 0, easeOutExpo(p));
+    st.mesh.scale.setScalar(lerp(0.82, 1, easeOutExpo(p)));
+  }
+
+  /* --- Keycaps (one by one L->R) --- */
+  const cArr = capMeshes;
+  for(let i=0;i<cArr.length;i++){
+    const c = cArr[i];
+    const c0 = TIMING.capStart + i * TIMING.capEach;
+    const p = clamp((t - c0) / 0.34, 0, 1);
+    if(p <= 0) continue;
+    const targetY = CAP_Y;
+    const startY = targetY + EXPLODE * (0.9 + (i % 5) * 0.04);
+    const e = easeOutBack(p);
+    c.position.y = lerp(startY, targetY, e);
+    c.rotation.z = lerp(0.22, 0, easeOutExpo(p));
+    c.rotation.x = lerp(-0.12, 0, easeOutExpo(p));
+    c.rotation.y = lerp(-0.12, 0, easeOutExpo(p));
+    c.scale.setScalar(lerp(0.84, 1, easeOutExpo(p)));
+  }
+
+  /* --- Final placement completion --- */
+  const allDone = t > TIMING.done + totalCaps*TIMING.capEach;
+  if(allDone && state.phase === 'running'){
+    state.phase = 'done';
+    state.playing = false;
+    setStatus('Ready — click a key or type', true);
+    cameraGoalPos.copy(presetMid);
+    cameraGoalLook.copy(lookAhead);
+    goalKind = 'mid';
+  }
+}
+
+/* ============================================================
+   INTERACTION
+============================================================ */
+const raycaster = new THREE.Raycaster();
+const pointerNDC = new THREE.Vector2();
+
+function pickKey(clientX, clientY){
+  const r = canvas.getBoundingClientRect();
+  pointerNDC.x = ((clientX - r.left) / r.width) * 2 - 1;
+  pointerNDC.y = -((clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNDC, camera);
+  const hits = raycaster.intersectObjects(capMeshes, true);
+  if(!hits.length) return null;
+  let o = hits[0].object;
+  while(o && !o.userData.key) o = o.parent;
+  return o ? o.userData.key : null;
+}
+
+function pressKey(key){
+  if(!key) return;
+  // visual press (only if not mid-assembly, always ok)
+  const idx = key.col;
+  const s = switchMesh[idx];
+  const baseY = s.homeY;
+  const capY = CAP_Y;
+  s.mesh.position.y = baseY - 0.115;
+  s.mesh.rotation.set(0.03,0,0);
+  s.mesh.scale.setScalar(0.985);
+
+  // animate back
+  if(key.__p){
+    cancelAnimationFrame(key.__p);
+  }
+  const t0 = performance.now();
+  const dur = 150;
+  function step(){
+    const el = performance.now() - t0;
+    const p = Math.min(1, el / dur);
+    const e = easeOutCubic(p);
+    const rise = (1-e)*0.115;
+    s.mesh.position.y = baseY - 0.115 + rise;
+    if(e < 1){
+      key.__p = requestAnimationFrame(step);
+    } else {
+      key.__p = null;
+      s.mesh.position.y = baseY;
+      s.mesh.rotation.set(0,0,0);
+      s.mesh.scale.setScalar(1);
+    }
+  }
+  key.__p = requestAnimationFrame(step);
+
+  if(LIGHT === false){
+    // hold keycap down
+    const c = capMeshes[idx];
+    if(c){
+      if(c.__p) cancelAnimationFrame(c.__p);
+      const t1 = performance.now();
+      function step2(){
+        const el = performance.now() - t1;
+        const p = Math.min(1, el / 150);
+        const e = easeOutCubic(p);
+        c.position.y = CAP_Y - (1-e)*0.115;
+        if(p < 1) c.__p = requestAnimationFrame(step2);
+        else { c.__p = null; c.position.y = CAP_Y; }
+      }
+      c.__p = requestAnimationFrame(step2);
+    }
+  }
+
+  const snd = soundsForKey(key);
+  Sound.click(snd.freq, snd.dur, snd.vel, snd.pan, snd.type, snd.slide);
+
+  // haptic-ish ripple on click
+  flashRipple(key);
+
+  state.lastInst = key;
+}
+
+function flashRipple(key){
+  const mesh = capMeshes[key.col].userData.mesh;
+  mesh.scale.setScalar(1.035);
+  setTimeout(()=>{ mesh.scale.setScalar(1); }, 120);
+}
+
+function setStatus(text, ready){
+  const st = document.getElementById('status');
+  const tx = document.getElementById('statusText');
+  st.classList.toggle('ready', ready);
+  tx.textContent = text;
+}
+
+function showHudAssembling(){
+  document.getElementById('hint').classList.remove('show');
+}
+
+function hideHint(){
+  document.getElementById('hint').classList.remove('show');
+}
+
+/* ============================================================
+   KEYBOARD INPUT
+============================================================ */
+const keyByCode = new Map();
+KEYS.forEach(k=>keyByCode.set(k.k, k));
+
+const CODE_MAP = {
+  'Space':'Space',
+  'Tab':'Tab', 'Enter':'Enter', 'Backspace':'Backspace', 'Escape':'Escape',
+  'CapsLock':'CapsLock', 'ShiftLeft':'ShiftLeft', 'ShiftRight':'ShiftRight',
+  'ControlLeft':'ControlLeft', 'ControlRight':'ControlRight',
+  'AltLeft':'AltLeft', 'AltRight':'AltRight',
+  'MetaLeft':'MetaLeft', 'MetaRight':'MetaRight',
+  'BracketLeft':'BracketLeft', 'BracketRight':'BracketRight', 'Backslash':'Backslash',
+  'Semicolon':'Semicolon', 'Quote':'Quote', 'Comma':'Comma', 'Period':'Period', 'Slash':'Slash'
+};
+
+function handlePhysical(code, event){
+  let key = CODE_MAP[code] || keyByCode.get(code) || (code.length === 1 && keyByCode.get('Key' + code.toUpperCase()));
+  if(!key) return;
+  if(event.repeat) return;
+  pressKey(key);
+}
+
+window.addEventListener('keydown', (e)=>{
+  if(e.metaKey || e.ctrlKey || e.altKey) return;  // let OS shortcuts work
+  if(e.code === 'Space'){ e.preventDefault(); }
+  handlePhysical(e.code, e);
+  if(!audioReady){
+    Sound.init();
+    showHintOnce();
+  }
+}, {passive:false});
+
+function showHintOnce(){
+  const el = document.getElementById('hint');
+  if(el.classList.contains('show')) return;
+  el.innerHTML = 'Sound unlocked · click any key or type on your keyboard';
+  el.classList.add('show');
+  setTimeout(hideHint, 3600);
+}
+
+/* ============================================================
+   POINTER INTERACTION
+============================================================ */
+let pointerDownPos = null;
+canvas.addEventListener('pointerdown', (e)=>{
+  pointerDownPos = {x:e.clientX, y:e.clientY};
+  if(!audioReady){ Sound.init(); showHintOnce(); }
+});
+canvas.addEventListener('pointerup', (e)=>{
+  if(!pointerDownPos) return;
+  const dx = e.clientX - pointerDownPos.x;
+  const dy = e.clientY - pointerDownPos.y;
+  if(Math.hypot(dx,dy) > 8){ pointerDownPos = null; return; }
+  pointerDownPos = null;
+  if(!audioReady){ Sound.init(); showHintOnce(); }
+  const k = pickKey(e.clientX, e.clientY);
+  if(k) pressKey(k);
+});
+canvas.addEventListener('pointermove', (e)=>{
+  if(!e.pressure) { /* noop */ }
+});
+
+/* ============================================================
+   UI CONTROLS
+============================================================ */
+const replayBtn = document.getElementById('replayBtn');
+replayBtn.addEventListener('click', ()=>{
+  if(!audioReady){ Sound.init(); showHintOnce(); }
+  startAssembly();
+  cameraGoalPos.copy(presetExplode);
+  cameraGoalLook.copy(new THREE.Vector3(0, 0.6, 0));
+  goalKind = 'explode';
+});
+
+const muteBtn = document.getElementById('muteBtn');
+const muteIconOn = document.getElementById('muteIconOn');
+const muteIconOff = document.getElementById('muteIconOff');
+const muteLabel = document.getElementById('muteLabel');
+muteBtn.addEventListener('click', ()=>{
+  if(!audioReady) Sound.init();
+  muted = !muted;
+  Sound.setMuted(muted);
+  muteBtn.classList.toggle('off', muted);
+  muteBtn.setAttribute('aria-pressed', String(muted));
+  muteIconOn.style.display = muted ? 'none' : '';
+  muteIconOff.style.display = muted ? '' : 'none';
+  muteLabel.textContent = muted ? 'Muted' : 'Sound on';
+});
+
+document.getElementById('swatches').addEventListener('click', (e)=>{
+  const sw = e.target.closest('.sw');
+  if(!sw) return;
+  document.querySelectorAll('.sw').forEach(s=>s.setAttribute('aria-pressed','false'));
+  sw.setAttribute('aria-pressed','true');
+  const c = sw.dataset.c;
+  setGlowColor(c);
+});
+
+function setGlowColor(hex){
+  const col = new THREE.Color(hex);
+  glowMat.color.copy(col);
+  glowSpot.color.copy(col);
+  glowMat.opacity = 0.10;
+  // crossfade to a stronger glow on click for emphasis
+  glowMat.opacity = 0.16;
+  clearTimeout(window.__glowT);
+  window.__glowT = setTimeout(()=>{ glowMat.opacity = 0.10; }, 700);
+  document.documentElement.style.setProperty('--accent', hex);
+  // tint the light flash
+  keyLight.color.setHex(0xffffff);
+  rim.color.copy(col).multiplyScalar(1.15);
+}
+
+/* ============================================================
+   RESIZE
+============================================================ */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  const fovBase = 32;
+  if(LIGHT) camera.fov = 40;
+  else camera.fov = fovBase;
+  // responsive framing
+  const minDim = Math.min(w, h);
+  const baseF = 15.0;      // desired projected height at ref
+  const s = baseF / minDim;
+  camera.position.set(presetMid.x * s, presetMid.y * s, presetMid.z * s);
+  camera.lookAt(lookAhead);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+if(window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+
+/* ============================================================
+   ANIMATION LOOP
+============================================================ */
+let lastTime = performance.now();
+let elapsed = 0;
+let cameraBlend = 1;
+let frameCount = 0;
+const camStartPos = new THREE.Vector3();
+const camTargetPos = new THREE.Vector3();
+const camStartLook = new THREE.Vector3();
+const camTargetLook = new THREE.Vector3();
+let camBlendFrom = 0, camBlendTo = 1;
+
+const camCurPos = new THREE.Vector3();
+const camCurLook = new THREE.Vector3();
+
+function initCameraAnim(){
+  camCurPos.copy(camera.position);
+  camCurLook.setFromMatrixPosition(new THREE.Matrix4().extractRotation(camera.matrix).setPosition(0,0,0));
+  camera.getWorldDirection(camCurLook);
+  camCurLook.copy(camera.position).add(camCurLook);
+}
+
+const _v = new THREE.Vector3();
+function updateCamera(dt, t){
+  /* Compute desired position/look based on phase */
+  let goalPos, goalLook;
+  if(state.phase === 'running' && !LIGHT){
+    const p = clamp(t / 1.9, 0, 1);
+    const s = easeInOutCubic(p);
+    goalPos = presetExplode.clone().lerp(presetClose, s);
+    goalLook = lookAhead.clone().lerp(lookClose, s);
+  } else if(state.phase === 'running' && LIGHT){
+    goalPos = presetMid.clone();
+    goalLook = lookAhead.clone();
+  } else if(state.phase === 'done'){
+    goalPos = presetMid.clone();
+    goalLook = lookAhead.clone();
+  } else {
+    goalPos = presetMid.clone();
+    goalLook = lookAhead.clone();
+  }
+
+  if(LIGHT){
+    camera.position.copy(goalPos);
+    camera.lookAt(goalLook);
+    return;
+  }
+
+  /* Damped spring interpolation */
+  const k = 1 - Math.pow(0.000001, dt);
+  camCurPos.lerp(goalPos, 1 - Math.pow(0.0015, dt));
+  _v.copy(goalLook).sub(camCurPos);
+  const d = _v.length();
+  if(d > 0.001) _v.divideScalar(d);
+  const lookDir = _v.clone();
+  const newLook = camCurPos.clone().add(lookDir);
+  camera.position.copy(camCurPos);
+  camera.lookAt(newLook);
+}
+
+/* Subtle idle float */
+function idleFloat(t){
+  if(LIGHT) return;
+  if(state.phase === 'done'){
+    camCurPos.y += Math.sin(t*0.45)*0.05;
+    camCurPos.x += Math.sin(t*0.27)*0.06;
+  }
+}
+
+/* ---------- resize-aware framing ---------- */
+function frameCamera(){
+  if(LIGHT) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  const aspect = w/h;
+  let dist = 1;
+  if(aspect < 0.85) dist = 1.0;         // portrait: pull back
+  else if(aspect < 1.25) dist = 0.88;
+  else if(aspect > 1.8) dist = 1.06;
+  else dist = 0.98;
+
+  const target = presetMid.clone().multiplyScalar(dist);
+  if(state.phase === 'running' && !LIGHT){
+    const p = easeInOutCubic(clamp(state.t / 1.9, 0, 1));
+    const e = presetExplode.clone().lerp(presetClose, p);
+    // re-frame based on current camera distance
+  }
+  if(!camera.__initialized){
+    camera.position.copy(target);
+    camera.lookAt(lookAhead);
+    camera.__initialized = true;
+  }
+}
+frameCamera();
+
+/* ---------- Main loop ---------- */
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if(dt > 0.05) dt = 0.05;
+  if(dt < 0) dt = 0;
+  elapsed += dt;
+
+  if(state.playing) updateAssembly(dt);
+  else if(state.phase === 'idle'){ /* nothing */ }
+
+  updateCamera(dt, state.t);
+
+  /* idle float only when settled */
+  if(state.phase === 'done' && !LIGHT){
+    camCurPos.y += Math.sin(elapsed*0.45)*0.045;
+    camCurPos.x += Math.sin(elapsed*0.29)*0.05;
+  }
+
+  /* glow pulse */
+  const pulse = 0.075 + Math.sin(elapsed*1.9)*0.012;
+  glowMat.opacity = pulse;
+  glowSpot.intensity = 6 + Math.sin(elapsed*1.9)*1.6;
+
+  /* gentle case bob (whole group) — only during assembly */
+  if(state.phase === 'running' && !LIGHT){
+    const p = clamp((state.t - TIMING.plate) / 0.9, 0, 1);
+    const bob = Math.sin(p*Math.PI) * 0.02;
+    group.position.y = bob;
+  } else {
+    group.position.y = 0;
+  }
+
+  /* caps under-shadow / specular flicker skip */
+
+  renderer.render(scene, camera);
+  frameCount++;
+}
+
+/* ---------- Kick off ---------- */
+function boot(){
+  resetParts(true);
+  // Initial view: exploded, looking in from above
+  group.visible = true;
+  camera.position.copy(presetExplode);
+  camera.lookAt(new THREE.Vector3(0, 0.5, 0));
+  camera.updateMatrixWorld(true);
+  state.phase = 'idle';
+  state.t = 0;
+  setStatus('Assembling…', false);
+  updateAssembly(0);
+  setTimeout(()=>{
+    startAssembly();
+  }, LIGHT ? 0 : 500);
+  animate();
+}
+
+boot();
+
+/* pointer lock not needed */
+</script>
+</body>
+</html><|think:end|><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>AURA 75 — Mechanical Keyboard Assembly</title>
+<style>
+  :root{
+    --bg0:#08090c;
+    --ink:#e9e6e0;
+    --muted:#8b93a3;
+    --line:rgba(255,255,255,.09);
+    --accent:#7fd4ff;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--bg0);
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    overscroll-behavior:none;
+    touch-action:manipulation;
+  }
+  #app{position:fixed;inset:0;}
+  canvas{display:block;width:100%;height:100%;outline:none;}
+  canvas:focus{outline:none;}
+
+  #bgLayer{
+    position:fixed;inset:0;pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 50% 38%, #18202c 0%, #0b0e13 52%, #06070a 100%);
+  }
+  #bgLayer::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(60% 45% at 50% 120%, rgba(90,140,255,.10), transparent 70%);
+  }
+
+  .hud{
+    position:fixed;left:0;right:0;bottom:0;
+    padding:14px clamp(12px,3vw,34px) calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    pointer-events:none;
+    z-index:10;
+  }
+  .hud > *{pointer-events:auto;}
+
+  .brand{display:flex;align-items:center;gap:11px;user-select:none;}
+  .mark{
+    width:34px;height:34px;border-radius:10px;flex:0 0 auto;
+    background:linear-gradient(150deg,#2a3344,#141820 60%,#0d1016);
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.16), 0 6px 18px rgba(0,0,0,.5);
+    position:relative;overflow:hidden;
+  }
+  .mark::before{
+    content:"";position:absolute;inset:8px;border-radius:3px;
+    background:linear-gradient(140deg,var(--accent,#7fd4ff),#2a6bff 70%);
+    opacity:.92;
+    box-shadow:0 0 14px var(--accent,#7fd4ff);
+    transition:background .5s ease, box-shadow .5s ease;
+  }
+  .mark::after{
+    content:"";position:absolute;right:6px;bottom:6px;width:7px;height:7px;border-radius:50%;
+    background:#e9f6ff;box-shadow:0 0 10px #bfe9ff;
+  }
+  .titles{display:flex;flex-direction:column;line-height:1.12;}
+  .titles b{
+    font-size:13px;letter-spacing:.22em;font-weight:700;
+    text-transform:uppercase;color:#f2f0eb;
+  }
+  .titles span{
+    font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+    margin-top:3px;
+  }
+
+  .status{
+    display:flex;align-items:center;gap:9px;
+    font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+    transition:opacity .3s ease;
+    white-space:nowrap;
+  }
+  .status .dot{
+    width:7px;height:7px;border-radius:50%;background:#52e39a;
+    box-shadow:0 0 10px #52e39a;flex:0 0 auto;
+    animation:pulse 2.2s ease-in-out infinite;
+  }
+  .status.ready .dot{background:#8f99ab;box-shadow:none;animation:none;}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+  .controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end;}
+
+  button{
+    font:inherit;font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;
+    color:#d8dcdf;background:rgba(255,255,255,.055);
+    border:1px solid var(--line);border-radius:11px;
+    padding:10px 14px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:8px;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    transition:background .18s ease, border-color .18s ease, transform .1s ease, color .18s ease;
+    user-select:none;white-space:nowrap;
+  }
+  button:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.2);}
+  button:active{transform:translateY(1px) scale(.985);}
+  button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto;}
+
+  .swatches{
+    display:flex;gap:5px;padding:4px;border-radius:11px;
+    background:rgba(255,255,255,.045);border:1px solid var(--line);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  }
+  .sw{
+    width:21px;height:21px;border-radius:8px;cursor:pointer;padding:0;
+    border:1px solid rgba(255,255,255,.14);
+    background:var(--c);
+    transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  }
+  .sw:hover{transform:scale(1.12);}
+  .sw[aria-pressed="true"]{
+    border-color:#fff;box-shadow:0 0 12px var(--c), inset 0 0 0 1px rgba(255,255,255,.5);
+    transform:scale(1.06);
+  }
+  .mute.off{background:rgba(255,255,255,.03);color:#7c8596;}
+
+  #hint{
+    position:fixed;left:50%;top:52px;transform:translate(-50%,-8px);
+    font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:#c9ced8;
+    background:rgba(14,18,24,.78);
+    border:1px solid var(--line);border-radius:999px;
+    padding:9px 16px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    opacity:0;pointer-events:none;transition:opacity .45s ease, transform .45s ease;
+    z-index:12;white-space:nowrap;
+    max-width:calc(100vw - 28px);overflow:hidden;text-overflow:ellipsis;
+  }
+  #hint.show{opacity:1;transform:translate(-50%,0);}
+
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(90% 70% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+
+  @media (max-width:640px){
+    .hud{flex-direction:column;align-items:stretch;gap:9px;bottom:calc(10px + env(safe-area-inset-bottom,0px));}
+    .hud-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .hud-bot{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .brand .titles span{display:none;}
+    button{padding:9px 11px;font-size:10.5px;letter-spacing:.07em;}
+    .sw{width:18px;height:18px;}
+    .status{display:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .status .dot{animation:none;opacity:.6;}
+  }
+</style>
+</head>
+<body>
+<div id="bgLayer"></div>
+<div id="vignette"></div>
+
+<div id="app">
+  <canvas id="cv" tabindex="0" aria-label="3D mechanical keyboard. Click a key or use your keyboard."></canvas>
+</div>
+
+<div id="hint"></div>
+
+<div class="hud">
+  <div class="hud-top">
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="titles">
+        <b>AURA&nbsp;75</b>
+        <span>Hotswap · Aluminum Frame</span>
+      </div>
+    </div>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">Assembling</span></div>
+  </div>
+  <div class="hud-bot">
+    <div class="controls">
+      <div class="swatches" id="swatches">
+        <button class="sw" data-c="#5ad1ff" style="--c:#5ad1ff" aria-label="Cyan" aria-pressed="true"></button>
+        <button class="sw" data-c="#8b6bff" style="--c:#8b6bff" aria-label="Violet" aria-pressed="false"></button>
+        <button class="sw" data-c="#7df0b8" style="--c:#7df0b8" aria-label="Mint" aria-pressed="false"></button>
+        <button class="sw" data-c="#ff6f9d" style="--c:#ff6f9d" aria-label="Rose" aria-pressed="false"></button>
+      </div>
+      <button id="replayBtn" title="Replay assembly">
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg>
+        Replay
+      </button>
+      <button id="muteBtn" class="mute" title="Mute" aria-pressed="false">
+        <svg id="muteIconOn" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
+        <svg id="muteIconOff" style="display:none" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>
+        <span id="muteLabel">Sound on</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+/* ============================================================
+   HELPERS
+============================================================ */
+const TAU = Math.PI * 2;
+const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+const lerp = (a,b,t)=> a+(b-a)*t;
+const easeOutExpo = t => t>=1 ? 1 : 1 - Math.pow(2,-10*t);
+const easeOutCubic = t => 1 - Math.pow(1-t,3);
+const easeInOutCubic = t => t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+const easeOutBack = t => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); };
+
+const LIGHT = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ============================================================
+   LAYOUT — 75% style, 60 keys
+============================================================ */
+const PITCH = 1.0;
+const KEYS = [];
+const rowsData = [
+  [
+    {k:'Escape', w:1, side:true},
+    {k:'Digit1', w:1}, {k:'Digit2', w:1}, {k:'Digit3', w:1}, {k:'Digit4', w:1},
+    {k:'Digit5', w:1}, {k:'Digit6', w:1}, {k:'Digit7', w:1}, {k:'Digit8', w:1},
+    {k:'Digit9', w:1}, {k:'Digit0', w:1}, {k:'Minus', w:1}, {k:'Equal', w:1},
+    {k:'Backspace', w:2, side:true}
+  ],
+  [
+    {k:'Tab', w:1.5, side:true},
+    {k:'KeyQ'}, {k:'KeyW'}, {k:'KeyE'}, {k:'KeyR'}, {k:'KeyT'}, {k:'KeyY'}, {k:'KeyU'},
+    {k:'KeyI'}, {k:'KeyO'}, {k:'KeyP'},
+    {k:'BracketLeft'}, {k:'BracketRight'},
+    {k:'Backslash', w:1.75, side:true}
+  ],
+  [
+    {k:'CapsLock', w:1.75, side:true},
+    {k:'KeyA'}, {k:'KeyS'}, {k:'KeyD'}, {k:'KeyF'}, {k:'KeyG'}, {k:'KeyH'}, {k:'KeyJ'},
+    {k:'KeyK'}, {k:'KeyL'},
+    {k:'Semicolon'}, {k:'Quote'},
+    {k:'Enter', w:2.25, side:true}
+  ],
+  [
+    {k:'ShiftLeft', w:2.25, side:true},
+    {k:'KeyZ'}, {k:'KeyX'}, {k:'KeyC'}, {k:'KeyV'}, {k:'KeyB'}, {k:'KeyN'}, {k:'KeyM'},
+    {k:'Comma'}, {k:'Period'}, {k:'Slash'},
+    {k:'ShiftRight', w:2.75, side:true}
+  ],
+  [
+    {k:'ControlLeft', w:1.5, side:true},
+    {k:'MetaLeft', w:1.25, side:true},
+    {k:'AltLeft', w:1.25, side:true},
+    {k:'Space', w:6.25, wide:true},
+    {k:'AltRight', w:1.25, side:true},
+    {k:'MetaRight', w:1.25, side:true},
+    {k:'ControlRight', w:1.5, side:true}
+  ]
+];
+
+(function buildLayout(){
+  rowsData.forEach((row, ri)=>{
+    const total = row.reduce((s,k)=>s+k.w,0);
+    let acc = -total/2;
+    const rowZ = ri*PITCH + (PITCH/2) - (rowsData.length-1)*PITCH/2;
+    row.forEach(k=>{
+      const cx = acc + k.w/2;
+      acc += k.w;
+      KEYS.push({
+        ...k,
+        row: ri,
+        col: KEYS.length,
+        home: new THREE.Vector3(cx, 0, rowZ)
+      });
+    });
+  });
+})();
+
+/* ============================================================
+   RENDERER / SCENE / CAMERA
+============================================================ */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080a0f);
+scene.fog = new THREE.FogExp2(0x080a0f, 0.0105);
+
+const canvas = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight, 0.1, 300);
+
+/* ---------- Lights ---------- */
+scene.add(new THREE.HemisphereLight(0x9fc4ff, 0x0a0b10, 0.55));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.55);
+keyLight.position.set(7, 14, 9);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048,2048);
+keyLight.shadow.camera.left = -17; keyLight.shadow.camera.right = 17;
+keyLight.shadow.camera.top = 17; keyLight.shadow.camera.bottom = -17;
+keyLight.shadow.camera.near = 1; keyLight.shadow.camera.far = 55;
+keyLight.shadow.bias = -0.0006;
+keyLight.shadow.radius = 3;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x7ea8ff, 0.75);
+fillLight.position.set(-9, 6, -7);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xffffff, 1.05);
+rimLight.position.set(0, 9, -12);
+scene.add(rimLight);
+
+const glowSpot = new THREE.PointLight(0x7fd4ff, 0, 26);
+glowSpot.position.set(0, 0.7, 0);
+scene.add(glowSpot);
+
+/* ============================================================
+   MATERIALS
+============================================================ */
+const M = {
+  caseTop:  new THREE.MeshStandardMaterial({color:0x171a21, metalness:0.65, roughness:0.34}),
+  caseSide: new THREE.MeshStandardMaterial({color:0x0b0d12, metalness:0.55, roughness:0.5}),
+  caseEdge: new THREE.MeshStandardMaterial({color:0x232733, metalness:0.75, roughness:0.26}),
+  pcb:      new THREE.MeshStandardMaterial({color:0x0b1914, metalness:0.25, roughness:0.66, emissive:0x02100b, emissiveIntensity:1}),
+  pcbSheet: new THREE.MeshStandardMaterial({color:0x0d1b16, metalness:0.35, roughness:0.5}),
+  foam:     new THREE.MeshStandardMaterial({color:0xd6d2c9, metalness:0.02, roughness:0.97}),
+  plate:    new THREE.MeshStandardMaterial({color:0x8d939e, metalness:1.0, roughness:0.28}),
+  switchBody: new THREE.MeshStandardMaterial({color:0x232833, metalness:0.6, roughness:0.42}),
+  switchTop:  new THREE.MeshStandardMaterial({color:0x3a4150, metalness:0.5, roughness:0.5}),
+  stem:     new THREE.MeshStandardMaterial({color:0x0c0e12, metalness:0.5, roughness:0.45}),
+  capSide:  new THREE.MeshStandardMaterial({color:0x9a9488, metalness:0.25, roughness:0.55}),
+  capTop:   new THREE.MeshStandardMaterial({color:0xeeeae2, metalness:0.12, roughness:0.42}),
+  capSideDark: new THREE.MeshStandardMaterial({color:0x4a515e, metalness:0.35, roughness:0.4}),
+  underside: new THREE.MeshStandardMaterial({color:0x7b7468, metalness:0.3, roughness:0.55}),
+  screw:    new THREE.MeshStandardMaterial({color:0x9aa3b2, metalness:1.0, roughness:0.28}),
+  copper:   new THREE.MeshStandardMaterial({color:0x2a3038, metalness:0.9, roughness:0.35})
+};
+
+/* ============================================================
+   GEOMETRY HELPERS
+============================================================ */
+function roundedRectShape(w, h, r){
+  const s = new THREE.Shape();
+  const hw = w/2, hh = h/2, rr = Math.min(r, hw, hh);
+  s.moveTo(-hw+rr, -hh);
+  s.lineTo(hw-rr, -hh);
+  s.quadraticCurveTo(hw, -hh, hw, -hh+rr);
+  s.lineTo(hw, hh-rr);
+  s.quadraticCurveTo(hw, hh, hw-rr, hh);
+  s.lineTo(-hw+rr, hh);
+  s.quadraticCurveTo(-hw, hh, -hw, hh-rr);
+  s.lineTo(-hw, hh-rr);
+  s.quadraticCurveTo(-hw, hh, -hw+rr, hh);
+  s.lineTo(-hw+rr, -hh);
+  s.closePath();
+  return s;
+}
+
+/* ============================================================
+   WORLD PARTS
+============================================================ */
+const group = new THREE.Group();
+scene.add(group);
+
+const rows = rowsData.length;
+const caseW = 15.6;
+const caseD = rows*PITCH + 0.95;
+
+/* ---------- Case ---------- */
+const caseGeo = new THREE.ExtrudeGeometry(roundedRectShape(caseW, caseD, 0.42), {
+  depth: 0.9, bevelEnabled: true, bevelThickness: 0.10, bevelSize: 0.10,
+  bevelSegments: 3, curveSegments: 20, steps: 1
+});
+caseGeo.translate(0, 0, -0.9);
+const caseShell = new THREE.Mesh(caseGeo, M.caseSide);
+caseShell.position.set(0, 0.05, 0);
+caseShell.castShadow = true;
+caseShell.receiveShadow = true;
+group.add(caseShell);
+
+const caseTopGeo = new THREE.ExtrudeGeometry(roundedRectShape(caseW - 0.55, caseD - 0.55, 0.30), {
+  depth: 0.22, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05,
+  bevelSegments: 2, curveSegments: 16, steps: 1
+});
+caseTopGeo.translate(0,0,-0.22);
+const caseTop = new THREE.Mesh(caseTopGeo, M.caseTop);
+caseTop.position.set(0, 1.02, 0);
+caseTop.castShadow = true;
+caseTop.receiveShadow = true;
+group.add(caseTop);
+
+/* ---------- PCB ---------- */
+const pcbW = 14.0, pcbD = rows*PITCH - 0.62;
+const pcbGeo = new THREE.ExtrudeGeometry(roundedRectShape(pcbW, pcbD, 0.14), {
+  depth: 0.16, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.04,
+  bevelSegments: 2, curveSegments: 14, steps: 1
+});
+pcbGeo.translate(0,0,-0.16);
+const pcb = new THREE.Mesh(pcbGeo, M.pcb);
+pcb.position.set(0, 0.28, 0);
+pcb.castShadow = true;
+pcb.receiveShadow = true;
+group.add(pcb);
+
+const pcbSheet = new THREE.Mesh(
+  new THREE.PlaneGeometry(pcbW - 0.28, pcbD - 0.28),
+  M.pcbSheet
+);
+pcbSheet.rotation.x = -Math.PI/2;
+pcbSheet.position.set(0, 0.365, 0);
+group.add(pcbSheet);
+
+const copper = new THREE.Mesh(new THREE.PlaneGeometry(pcbW - 0.42, pcbD - 0.42), M.copper);
+copper.rotation.x = -Math.PI/2;
+copper.position.set(0, 0.215, 0);
+group.add(copper);
+
+const screwGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12);
+[-5.4, 0, 5.4].forEach(x=>{
+  [-pcbD/2 + 0.55, pcbD/2 - 0.55].forEach(z=>{
+    const s = new THREE.Mesh(screwGeo, M.screw);
+    s.position.set(x, 0.385, z);
+    group.add(s);
+  });
+});
+
+/* ---------- Under-glow plane ---------- */
+const glowMat = new THREE.MeshBasicMaterial({
+  color:0x7fd4ff, transparent:true, opacity:0.10,
+  blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide
+});
+const glowDisc = new THREE.Mesh(new THREE.PlaneGeometry(pcbW + 0.9, pcbD + 1.6), glowMat);
+glowDisc.rotation.x = -Math.PI/2;
+glowDisc.position.set(0, 0.06, 0);
+group.add(glowDisc);
+
+/* ---------- Foam ---------- */
+const foamGeo = new THREE.ExtrudeGeometry(roundedRectShape(pcbW + 0.22, pcbD + 0.22, 0.10), {
+  depth: 0.10, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025,
+  bevelSegments: 2, curveSegments: 12, steps: 1
+});
+foamGeo.translate(0,0,-0.10);
+const foam = new THREE.Mesh(foamGeo, M.foam);
+foam.position.set(0, 0.46, 0);
+foam.castShadow = true;
+foam.receiveShadow = true;
+group.add(foam);
+
+/* ---------- Plate ---------- */
+const plateW = 14.15, plateD = rows*PITCH - 0.50;
+const plateGeo = new THREE.ExtrudeGeometry(roundedRectShape(plateW, plateD, 0.07), {
+  depth: 0.075, bevelEnabled: true, bevelThickness: 0.018, bevelSize: 0.018,
+  bevelSegments: 2, curveSegments: 14, steps: 1
+});
+plateGeo.translate(0,0,-0.075);
+const plate = new THREE.Mesh(plateGeo, M.plate);
+plate.position.set(0, 0.60, 0);
+plate.castShadow = true;
+plate.receiveShadow = true;
+group.add(plate);
+
+/* ---------- Switches ---------- */
+const SWITCH_BASE_Y = 0.645;
+const switchMesh = KEYS.map(key=>{
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.68, 0.30, 0.72, 3, 0.12), M.switchBody);
+  body.position.y = 0.15;
+  const top = new THREE.Mesh(new RoundedBoxGeometry(0.50, 0.10, 0.54, 3, 0.06), M.switchTop);
+  top.position.y = 0.31;
+  const pinL = new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.032,0.26,6), M.stem);
+  pinL.position.set(-0.13, 0.0, 0.24);
+  const pinR = new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.032,0.26,6), M.stem);
+  pinR.position.set(0.13, 0.0, -0.24);
+  g.add(body, top, pinL, pinR);
+  g.position.set(key.home.x, SWITCH_BASE_Y, key.home.z);
+  body.castShadow = top.castShadow = true;
+  group.add(g);
+  return { mesh: g, homeY: SWITCH_BASE_Y, homeRot: new THREE.Euler(0,0,0) };
+});
+
+/* ---------- Keycaps ---------- */
+const capGeoCache = new Map();
+const capMeshes = KEYS.map(key=>{
+  const baseW = key.wide ? 6.25 : 1.0;
+  const w = baseW*PITCH*0.92;
+  const depth = PITCH*0.94;
+  const thickness = 0.20;
+  const h = key.wide ? 0.86 : 0.78;
+  const r = Math.min(w, depth)*0.19;
+  const bevel = 0.055;
+
+  const ck = Math.round(w*100)+'_'+Math.round(depth*100)+'_'+Math.round(h*100);
+  if(!capGeoCache.has(ck)){
+    const shape = new THREE.Shape();
+    const hw = w/2, hd = depth/2;
+    shape.moveTo(-hw+r,-hd); shape.lineTo(hw-r,-hd);
+    shape.quadraticCurveTo(hw,-hd,hw,-hd+r);
+    shape.lineTo(hw,hd-r); shape.quadraticCurveTo(hw,hd,hw-r,hd);
+    shape.lineTo(-hw+r,hd); shape.quadraticCurveTo(-hw,hd,-hw,hd-r);
+    shape.lineTo(-hw,hd-r); shape.quadraticCurveTo(-hw,-hd,-hw+r,-hd);
+    shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, {
+      depth: h - bevel, bevelEnabled: true, bevelThickness: bevel,
+      bevelSize: bevel, bevelSegments: 2, curveSegments: 16, steps: 1
+    });
+    g.translate(0, 0, -(h - bevel));
+    capGeoCache.set(ck, g);
+  }
+  const geo = capGeoCache.get(ck);
+  const sideMat = key.side ? M.capSideDark : M.capSide;
+  const mesh = new THREE.Mesh(geo, [sideMat, M.capTop]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const under = new THREE.Mesh(
+    new RoundedBoxGeometry(w - 0.05, 0.15, depth - 0.05, 3, 0.06),
+    M.underside
+  );
+  under.position.y = 0.075;
+  under.castShadow = true;
+
+  const grp = new THREE.Group();
+  grp.add(under, mesh);
+  grp.position.set(key.home.x, SWITCH_BASE_Y + 0.30, key.home.z);
+  grp.userData = { key, mesh, under, press: null };
+  group.add(grp);
+  return grp;
+});
+
+const CAP_Y = SWITCH_BASE_Y + 0.34;
+
+/* ============================================================
+   EXPLODED-HEIGHT HELPERS
+============================================================ */
+const EXPLODE = 3.35;
+const Y = { pcb: 0.28, foam: 0.46, plate: 0.60, sw: SWITCH_BASE_Y, cap: CAP_Y };
+
+function resetParts(stagger = false){
+  pcb.position.set(0, Y.pcb, 0);
+  foam.position.set(0, Y.foam, 0);
+  plate.position.set(0, Y.plate, 0);
+
+  const sOff = stagger ? (Y.sw + EXPLODE * 1.9) : Y.sw;
+  switchMesh.forEach(s=>{
+    s.mesh.position.set(s.mesh.position.x, sOff, s.mesh.position.z);
+    s.mesh.rotation.set(0,0,0);
+    s.mesh.scale.setScalar(1);
+  });
+
+  const cOff = stagger ? (Y.cap + EXPLODE * 3.0) : Y.cap;
+  capMeshes.forEach(c=>{
+    c.position.x = c.userData.key.home.x;
+    c.position.y = cOff;
+    c.position.z = c.userData.key.home.z;
+    c.rotation.set(0,0,0);
+    c.scale.setScalar(1);
+    if(c.userData.press) cancelAnimationFrame(c.userData.press);
+    c.userData.press = null;
+  });
+
+  group.position.set(0,0,0);
+}
+
+/* ============================================================
+   AUDIO — Web Audio API only
+============================================================ */
+let audioCtx = null, masterGain = null, noiseBuffer = null, audioReady = false, muted = false;
+
+const Sound = {
+  init(){
+    if(audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    audioCtx = new AC();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = muted ? 0 : 0.75;
+    masterGain.connect(audioCtx.destination);
+
+    const len = Math.floor(audioCtx.sampleRate * 0.35);
+    noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d = noiseBuffer.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 2.2);
+
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    audioReady = true;
+  },
+  setMuted(m){
+    muted = m;
+    if(masterGain && audioCtx){
+      masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(m ? 0 : 0.75, audioCtx.currentTime + 0.06);
+    }
+  },
+  click(freq, dur, vel, pan, type, slide){
+    if(!audioReady || muted || !audioCtx) return;
+    const t0 = audioCtx.currentTime;
+
+    const out = audioCtx.createGain();
+    out.gain.setValueAtTime(0, t0);
+    out.gain.linearRampToValueAtTime(vel, t0 + 0.004);
+    out.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    if(audioCtx.createStereoPanner){
+      const p = audioCtx.createStereoPanner();
+      p.pan.value = clamp(pan, -1, 1);
+      out.connect(p); p.connect(masterGain);
+    } else {
+      out.connect(masterGain);
+    }
+
+    const osc = audioCtx.createOscillator();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    if(slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq*slide), t0 + dur);
+    osc.connect(out);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+
+    if(noiseBuffer){
+      const src = audioCtx.createBufferSource();
+      src.buffer = noiseBuffer;
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1400 + Math.random()*1400;
+      bp.Q.value = 1.6;
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(0.13*vel, t0);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+      src.connect(bp); bp.connect(ng); ng.connect(masterGain);
+      src.start(t0);
+      src.stop(t0 + 0.1);
+    }
+  }
+};
+
+const sfxMap = {
+  Space:      {freq:96,  type:'sine',     dur:0.20, slide:1.30, vel:0.36, pan:0},
+  ControlLeft: {freq:132, type:'triangle', dur:0.10, slide:1.45, vel:0.38, pan:-0.35},
+  ControlRight:{freq:132, type:'triangle', dur:0.10, slide:1.45, vel:0.38, pan:0.35},
+  ShiftLeft:  {freq:165, type:'triangle', dur:0.11, slide:1.45, vel:0.40, pan:-0.3},
+  ShiftRight: {freq:165, type:'triangle', dur:0.11, slide:1.45, vel:0.40, pan:0.3},
+  AltLeft:    {freq:185, type:'triangle', dur:0.11, slide:1.4,  vel:0.38, pan:-0.35},
+  AltRight:   {freq:185, type:'triangle', dur:0.11, slide:1.4,  vel:0.38, pan:0.35},
+  MetaLeft:   {freq:220, type:'sine',     dur:0.11, slide:1.45, vel:0.34, pan:-0.4},
+  MetaRight:  {freq:220, type:'sine',     dur:0.11, slide:1.45, vel:0.34, pan:0.4},
+  Tab:        {freq:220, type:'triangle', dur:0.11, slide:1.45, vel:0.36, pan:-0.25},
+  Enter:      {freq:196, type:'sine',     dur:0.16, slide:1.30, vel:0.42, pan:0.15},
+  Backspace:  {freq:156, type:'sine',     dur:0.14, slide:1.25, vel:0.40, pan:0.3},
+  CapsLock:   {freq:174, type:'triangle', dur:0.11, slide:1.45, vel:0.36, pan:-0.2},
+  Escape:     {freq:261, type:'sine',     dur:0.12, slide:1.4,  vel:0.36, pan:-0.25},
+  BracketLeft:{freq:329, type:'sine',     dur:0.09, slide:1.5,  vel:0.34, pan:-0.3},
+  BracketRight:{freq:349,type:'sine',     dur:0.09, slide:1.5,  vel:0.34, pan:0.3},
+  Backslash:  {freq:370, type:'sine',     dur:0.09, slide:1.5,  vel:0.34, pan:0.35},
+  Semicolon:  {freq:392, type:'sine',     dur:0.09, slide:1.5,  vel:0.33, pan:0.25},
+  Quote:      {freq:415, type:'sine',     dur:0.09, slide:1.5,  vel:0.33, pan:0.3},
+  Comma:      {freq:440, type:'sine',     dur:0.09, slide:1.5,  vel:0.33, pan:-0.35},
+  Period:     {freq:466, type:'sine',     dur:0.09, slide:1.5,  vel:0.33, pan:-0.25},
+  Slash:      {freq:494, type:'sine',     dur:0.09, slide:1.5,  vel:0.33, pan:0.35}
+};
+
+function sfxForKey(key){
+  const code = key.k;
+  if(sfxMap[code]) return sfxMap[code];
+  const letter = code.replace('Key','').toLowerCase();
+  if(letter >= 'a' && letter <= 'z'){
+    const i = letter.charCodeAt(0) - 97;
+    return {
+      freq: 392 * Math.pow(2, (i-8)/12),
+      type:'triangle', dur:0.13, slide:1.5, vel:0.44,
+      pan: clamp(key.home.x * 0.05, -0.6, 0.6)
+    };
+  }
+  if(code === 'Digit0'||code==='Minus'||code==='Equal'){
+    return {freq:523.25, type:'sine', dur:0.1, slide:1.45, vel:0.36, pan:0};
+  }
+  return {freq:523.25, type:'sine', dur:0.1, slide:1.45, vel:0.34, pan:0};
+}
+
+/* ============================================================
+   ASSEMBLY TIMELINE
+============================================================ */
+const TIMING = LIGHT ? {
+  pcb: 0.00, foam: 0.06, plate: 0.12,
+  switchStart: 0.16, switchEach: 0.0008,
+  capStart: 0.20, capEach: 0.0008,
+  done: 0.34
+} : {
+  pcb: 0.00, foam: 0.55, plate: 1.05,
+  switchStart: 1.62, switchEach: 0.026,
+  capStart: 4.55, capEach: 0.026,
+  done: 8.55
+};
+
+const state = {
+  phase: 'idle',   // idle | running | done
+  t: 0,
+  playing: false
+};
+
+const camPresets = {
+  explode: new THREE.Vector3(0, 11.8, 16.2),
+  close:   new THREE.Vector3(6.6, 6.6, 8.8),
+  mid:     new THREE.Vector3(3.6, 4.9, 6.2)
+};
+const lookAhead = new THREE.Vector3(0, 0.6, 0);
+const lookClose = new THREE.Vector3(0, 0.2, 0);
+
+function startAssembly(){
+  state.phase = 'running';
+  state.t = 0;
+  state.playing = true;
+  resetParts(true);
+  setStatus('Assembling…', false);
+
+  setTimeout(()=>{
+    const cfg = TIMING;
+    const swTotal = switchMesh.length;
+    const capTotal = capMeshes.length;
+    const capEnd = cfg.capStart + capTotal*cfg.capEach + 0.55;
+    setTimeout(()=>finishAssembly(), Math.max(0, capEnd)*1000);
+  }, 0);
+}
+
+function finishAssembly(){
+  if(state.phase !== 'running') return;
+  state.phase = 'done';
+  state.playing = false;
+  setStatus('Ready — click a key or type', true);
+}
+
+/* ------------------------------------------------------------
+   Assembly animation step
+------------------------------------------------------------ */
+function updateAssembly(dt){
+  if(state.phase !== 'running') return;
+  state.t += dt;
+  const t = state.t;
+
+  const pc = clamp(t / 0.55, 0, 1);
+  pcb.position.y = lerp(Y.pcb + 2.6, Y.pcb, easeOutExpo(pc));
+  pcb.rotation.z = lerp(-0.045, 0, easeOutExpo(pc));
+
+  const fc = clamp((t - TIMING.foam) / 0.5, 0, 1);
+  foam.position.y = lerp(Y.foam + 2.35, Y.foam, easeOutExpo(fc));
+
+  const lc = clamp((t - TIMING.plate) / 0.55, 0, 1);
+  plate.position.y = lerp(Y.plate + 2.0, Y.plate, easeOutExpo(lc));
+
+  const sStart = TIMING.switchStart;
+  for(let i=0;i<switchMesh.length;i++){
+    const s = switchMesh[i];
+    const s0 = sStart + i * TIMING.switchEach;
+    const p = clamp((t - s0) / 0.32, 0, 1);
+    if(p <= 0) continue;
+    const startY = Y.sw + EXPLODE * (0.88 + (i % 5) * 0.035);
+    const e = easeOutBack(p);
+    s.mesh.position.y = lerp(startY, Y.sw, e);
+    s.mesh.rotation.z = lerp(0.16, 0, easeOutExpo(p));
+    s.mesh.rotation.x = lerp(-0.10, 0, easeOutExpo(p));
+    s.mesh.rotation.y = lerp(-0.10, 0, easeOutExpo(p));
+    s.mesh.scale.setScalar(lerp(0.82, 1, easeOutExpo(p)));
+  }
+
+  const cStart = TIMING.capStart;
+  for(let i=0;i<capMeshes.length;i++){
+    const c = capMeshes[i];
+    const c0 = cStart + i * TIMING.capEach;
+    const p = clamp((t - c0) / 0.34, 0, 1);
+    if(p <= 0) continue;
+    const startY = Y.cap + EXPLODE * (0.90 + (i % 5) * 0.04);
+    const e = easeOutBack(p);
+    c.position.y = lerp(startY, Y.cap, e);
+    c.rotation.z = lerp(0.22, 0, easeOutExpo(p));
+    c.rotation.x = lerp(-0.12, 0, easeOutExpo(p));
+    c.rotation.y = lerp(-0.12, 0, easeOutExpo(p));
+    c.scale.setScalar(lerp(0.84, 1, easeOutExpo(p)));
+  }
+
+  group.position.y = Math.sin(clamp((t - TIMING.plate) / 0.9, 0, 1) * Math.PI) * 0.02;
+}
+
+/* ============================================================
+   STATUS / HINT
+============================================================ */
+const statusEl = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+const hintEl = document.getElementById('hint');
+
+function setStatus(text, ready){
+  statusText.textContent = text;
+  statusEl.classList.toggle('ready', ready);
+}
+
+let hintTimer = null;
+function showHint(msg, ms = 3400){
+  clearTimeout(hintTimer);
+  hintEl.textContent = msg;
+  hintEl.classList.add('show');
+  hintTimer = setTimeout(()=>hintEl.classList.remove('show'), ms);
+}
+function hideHint(){
+  clearTimeout(hintTimer);
+  hintEl.classList.remove('show');
+}
+
+function unlockSound(){
+  Sound.init();
+  showHint('Sound unlocked — click a key or type on your keyboard', 3400);
+}
+
+/* ============================================================
+   INTERACTION
+============================================================ */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+
+function pickKey(cx, cy){
+  const r = canvas.getBoundingClientRect();
+  ndc.x = ((cx - r.left) / r.width) * 2 - 1;
+  ndc.y = -((cy - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(capMeshes, true);
+  if(!hits.length) return null;
+  let o = hits[0].object;
+  while(o && !o.userData.key) o = o.parent;
+  return o ? o.userData.key : null;
+}
+
+function pressKey(key){
+  if(!key) return;
+  const idx = key.col;
+  const s = switchMesh[idx];
+  const cap = capMeshes[idx];
+  const sBase = s.homeY;
+  const drop = 0.115;
+
+  /* --- switch visually depresses --- */
+  s.mesh.position.y = sBase - drop;
+  s.mesh.scale.setScalar(0.985);
+  s.mesh.rotation.set(0.03, 0, 0);
+
+  /* --- keycap visually depresses --- */
+  if(cap){
+    if(cap.userData.press) cancelAnimationFrame(cap.userData.press);
+    const t0 = performance.now();
+    const DUR = 150;
+    const step = ()=>{
+      const el = performance.now() - t0;
+      const e = easeOutCubic(Math.min(1, el / DUR));
+      cap.position.y = (key.wide ? 0.86 : 0.78) - (1 - e) * drop + (SWITCH_BASE_Y + 0.30) - (key.wide ? 0.86 : 0.78) + (key.wide ? 0 : 0);
+      /* recompute cleanly below */
+      cap.position.y = SWITCH_BASE_Y + 0.30 + (key.wide ? 0.06 : 0) - (1 - e) * drop;
+      if(el < DUR){
+        cap.userData.press = requestAnimationFrame(step);
+      } else {
+        cap.userData.press = null;
+        cap.position.y = SWITCH_BASE_Y + 0.30 + (key.wide ? 0.06 : 0);
+        cap.rotation.set(0,0,0);
+      }
+    };
+    cap.userData.press = requestAnimationFrame(step);
+  }
+
+  /* --- switch springs back --- */
+  if(s.__sp) cancelAnimationFrame(s.__sp);
+  const st0 = performance.now();
+  const SDUR = 150;
+  const sstep = ()=>{
+    const el = performance.now() - st0;
+    const e = easeOutCubic(Math.min(1, el / SDUR));
+    s.mesh.position.y = sBase - drop + (1 - e) * drop;
+    s.mesh.scale.setScalar(0.985 + (1 - e) * 0.015);
+    if(el < SDUR) s.__sp = requestAnimationFrame(sstep);
+    else {
+      s.__sp = null;
+      s.mesh.position.y = sBase;
+      s.mesh.scale.setScalar(1);
+      s.mesh.rotation.set(0,0,0);
+    }
+  };
+  s.__sp = requestAnimationFrame(sstep);
+
+  /* --- audio --- */
+  const snd = sfxForKey(key);
+  Sound.click(snd.freq, snd.dur, snd.vel, snd.pan, snd.type, snd.slide);
+
+  /* --- tiny feedback flash --- */
+  const targetScale = 1.035;
+  const cs = cap ? cap.userData.mesh : null;
+  if(cs){
+    if(cs.__fs) cancelAnimationFrame(cs.__fs);
+    const ft0 = performance.now();
+    const FDUR = 130;
+    const fstep = ()=>{
+      const el = performance.now() - ft0;
+      const e = easeOutCubic(Math.min(1, el / FDUR));
+      cs.scale.setScalar(1 + (targetScale - 1) * Math.sin(e * Math.PI));
+      if(el < FDUR) cs.__fs = requestAnimationFrame(fstep);
+      else { cs.__fs = null; cs.scale.setScalar(1); }
+    };
+    cs.__fs = requestAnimationFrame(fstep);
+  }
+}
+
+/* Pointer handling */
+let downInfo = null;
+canvas.addEventListener('pointerdown', (e)=>{
+  downInfo = {x:e.clientX, y:e.clientY};
+  if(!audioReady) unlockSound();
+});
+canvas.addEventListener('pointerup', (e)=>{
+  if(!downInfo) return;
+  const dx = e.clientX - downInfo.x, dy = e.clientY - downInfo.y;
+  const moved = Math.hypot(dx, dy) > 8;
+  downInfo = null;
+  if(moved) return;
+  if(!audioReady) unlockSound();
+  const key = pickKey(e.clientX, e.clientY);
+  if(key) pressKey(key);
+});
+canvas.addEventListener('pointerleave', ()=>{ downInfo = null; });
+
+/* Physical keyboard */
+const keyByCode = new Map();
+KEYS.forEach(k => keyByCode.set(k.k, k));
+
+const PHYSICAL_MAP = {
+  'Space':'Space','Tab':'Tab','Enter':'Enter','Backspace':'Backspace','Escape':'Escape',
+  'CapsLock':'CapsLock',
+  'ShiftLeft':'ShiftLeft','ShiftRight':'ShiftRight',
+  'ControlLeft':'ControlLeft','ControlRight':'ControlRight',
+  'AltLeft':'AltLeft','AltRight':'AltRight',
+  'MetaLeft':'MetaLeft','MetaRight':'MetaRight',
+  'BracketLeft':'BracketLeft','BracketRight':'BracketRight','Backslash':'Backslash',
+  'Semicolon':'Semicolon','Quote':'Quote','Comma':',','Period':'Period','Slash':'Slash'
+};
+
+window.addEventListener('keydown', (e)=>{
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  if(!audioReady) unlockSound();
+  if(e.repeat) return;
+
+  let key = null;
+  if(e.code === 'Space'){
+    key = keyByCode.get('Space');
+  } else if(PHYSICAL_MAP[e.code]){
+    key = keyByCode.get(PHYSICAL_MAP[e.code]);
+  } else if(e.code.startsWith('Key') && e.code.length === 4){
+    const c = e.code.slice(3);
+    const up = c.toUpperCase();
+    const found = KEYS.find(k => k.k === 'Key' + up);
+    if(found) key = found;
+  }
+
+  if(!key) return;
+  e.preventDefault();
+  pressKey(key);
+});
+
+/* ============================================================
+   UI CONTROLS
+============================================================ */
+const replayBtn = document.getElementById('replayBtn');
+replayBtn.addEventListener('click', ()=>{
+  if(!audioReady) unlockSound();
+  startAssembly();
+  camera.position.copy(camPresets.explode);
+  camera.lookAt(lookAhead);
+});
+
+const muteBtn = document.getElementById('muteBtn');
+const muteIconOn = document.getElementById('muteIconOn');
+const muteIconOff = document.getElementById('muteIconOff');
+const muteLabel = document.getElementById('muteLabel');
+
+function applyMutedUI(){
+  muteBtn.classList.toggle('off', muted);
+  muteBtn.setAttribute('aria-pressed', String(muted));
+  muteIconOn.style.display = muted ? 'none' : '';
+  muteIconOff.style.display = muted ? '' : 'none';
+  muteLabel.textContent = muted ? 'Muted' : 'Sound on';
+}
+muteBtn.addEventListener('click', ()=>{
+  if(!audioReady) Sound.init();
+  muted = !muted;
+  Sound.setMuted(muted);
+  applyMutedUI();
+});
+applyMutedUI();
+
+document.getElementById('swatches').addEventListener('click', (e)=>{
+  const sw = e.target.closest('.sw');
+  if(!sw) return;
+  document.querySelectorAll('.sw').forEach(s=>s.setAttribute('aria-pressed','false'));
+  sw.setAttribute('aria-pressed','true');
+  const c = sw.dataset.c;
+  setGlowColor(c);
+});
+
+function setGlowColor(hex){
+  const col = new THREE.Color(hex);
+  glowMat.color.copy(col);
+  glowSpot.color.copy(col);
+  glowMat.opacity = 0.18;
+  clearTimeout(window.__glowT);
+  window.__glowT = setTimeout(()=>{ if(!state.playing) glowMat.opacity = 0.10; }, 700);
+  document.documentElement.style.setProperty('--accent', hex);
+  rimLight.color.copy(col).multiplyScalar(1.35);
+}
+
+/* ============================================================
+   RESIZE
+============================================================ */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+
+  const minDim = Math.min(w, h);
+  const k = clamp(minDim / 760, 0.72, 1.25);
+
+  if(state.phase === 'running'){
+    // blend from exploded view to close-up while assembling
+    const p = easeInOutCubic(clamp(state.t / 1.9, 0, 1));
+    camera.position.copy(camPresets.explode.clone().lerp(camPresets.close, p));
+    camera.lookAt(lookAhead);
+  } else {
+    const m = camPresets.mid.clone().multiplyScalar(k);
+    if(state.phase === 'done') camera.position.lerp(m, 0.25);
+    else camera.position.lerp(camPresets.close.clone().multiplyScalar(k), 0.25);
+    camera.lookAt(lookAhead);
+  }
+
+  if(LIGHT){
+    camera.position.copy(camPresets.close);
+    camera.lookAt(lookAhead);
+  }
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=> setTimeout(resize, 120));
+
+/* ============================================================
+   MAIN LOOP
+============================================================ */
+let lastTime = performance.now();
+let elapsed = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+
+  const now = performance.now();
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if(dt > 0.05) dt = 0.05;
+  if(dt < 0) dt = 0;
+  elapsed += dt;
+
+  updateAssembly(dt);
+
+  /* Smooth camera easing (skipped under reduced motion) */
+  if(!LIGHT){
+    let goal = camPresets.mid.clone();
+    let look = lookAhead.clone();
+
+    if(state.phase === 'running'){
+      const p = easeInOutCubic(clamp(state.t / 1.9, 0, 1));
+      goal = camPresets.explode.clone().lerp(camPresets.close, p);
+      look = lookAhead.clone().lerp(lookClose, p);
+    } else if(state.phase === 'done'){
+      goal = camPresets.mid.clone();
+      look = lookAhead.clone();
+    }
+
+    const k = 1 - Math.pow(0.0015, dt);
+    camera.position.lerp(goal, k * 0.55);
+    camera.lookAt(look);
+  }
+
+  /* Ambient glow */
+  const pulse = 0.075 + Math.sin(elapsed * 1.9) * 0.012;
+  glowMat.opacity = pulse;
+  glowSpot.intensity = 6 + Math.sin(elapsed * 1.9) * 1.6;
+
+  if(state.phase !== 'running' && state.phase !== 'idle' && glowMat.opacity > 0.13 && window.__glowT){
+    clearTimeout(window.__glowT);
+    glowMat.opacity = 0.10;
+  }
+
+  /* Camera never below the table plane */
+  if(camera.position.y < 3.2) camera.position.y = 3.2;
+
+  renderer.render(scene, camera);
+}
+
+/* ============================================================
+   BOOT
+============================================================ */
+(function boot(){
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.position.copy(camPresets.explode);
+  camera.lookAt(lookAhead);
+  camera.updateProjectionMatrix();
+
+  /* First paint — everything exploded above the case, like parts on a bench */
+  resetParts(true);
+  state.phase = 'idle';
+  state.t = 0;
+  state.playing = false;
+  setStatus('Assembling…', false);
+  updateAssembly(0);
+
+  resize();
+
+  if(LIGHT){
+    startAssembly();
+  } else {
+    setTimeout(()=>startAssembly(), 420);
+  }
+
+  animate();
+})();
+</script>
+</body>
+</html>
