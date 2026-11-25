@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MSC Virtuosa</title>
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      background: #000; 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      user-select: none;
+    }
+    canvas {
+      display: block;
+    }
+    #ui {
+      position: absolute; 
+      top: 50%; 
+      left: 50%; 
+      transform: translate(-50%, -50%);
+      background: rgba(10, 20, 30, 0.85); 
+      color: white; 
+      padding: 30px 40px; 
+      border-radius: 12px;
+      text-align: center; 
+      cursor: pointer; 
+      border: 2px solid #0aa; 
+      max-width: 450px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      transition: opacity 0.3s;
+    }
+    h1 { 
+      margin-top: 0; 
+      color: #4dd0e1; 
+      font-size: 32px;
+      letter-spacing: 2px;
+    }
+    p { 
+      font-size: 15px; 
+      line-height: 1.6; 
+      margin: 10px 0;
+    }
+    .key {
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-family: monospace;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="ui">
+    <h1>MSC VIRTUOSA</h1>
+    <p>Experience the sheer scale of this mega cruise ship.</p>
+    <p><b>Click here</b> to start walking on the decks.</p>
+    <p><span class="key">W A S D</span> to move, <b>Mouse</b> to look.</p>
+    <p><span class="key">ESC</span> to release mouse.</p>
+    <p><span class="key">V</span> - Toggle Orbit / Walk mode</p>
+    <p><span class="key">R</span> - Toggle Rain</p>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    let scene, camera, renderer, clock;
+    let pointerControls, orbitControls;
+    let sunLight, hemiLight, ambientLight, stars, rain;
+    let waterMat, rainGeom;
+    let timeOfDay = 25; // Start at morning
+    let walkMode = true;
+    let inOrbitMode = false;
+    let isRaining = false;
+    const keys = {};
+    const walkableMeshes = [];
+
+    const daySky = new THREE.Color(0x87ceeb);
+    const nightSky = new THREE.Color(0x020411);
+    const sunsetSky = new THREE.Color(0xff7a44);
+
+    const decks = [
+      { y: 0, w: 44, l: 330, z: 0, frontR: 20, backR: 20, h: 6, color: 0xeeeeee },
+      { y: 6, w: 44, l: 300, z: -10, frontR: 15, backR: 10, h: 3, color: 0xdddddd },
+      { y: 9, w: 38, l: 260, z: -20, frontR: 15, backR: 5, h: 3, color: 0xffffff },
+      { y: 12, w: 38, l: 240, z: -25, frontR: 15, backR: 5, h: 3, color: 0xffffff },
+      { y: 15, w: 36, l: 220, z: -30, frontR: 14, backR: 5, h: 3, color: 0xffffff },
+      { y: 18, w: 36, l: 210, z: -35, frontR: 14, backR: 5, h: 3, color: 0xffffff },
+      { y: 21, w: 34, l: 190, z: -40, frontR: 12, backR: 5, h: 3, color: 0xffffff },
+      { y: 24, w: 30, l: 150, z: -50, frontR: 10, backR: 5, h: 3, color: 0xffffff },
+      { y: 27, w: 26, l: 120, z: -55, frontR: 8, backR: 5, h: 3, color: 0xffffff },
+      { y: 30, w: 18, l: 80, z: -60, frontR: 6, backR: 4, h: 3, color: 0xffffff }
+    ];
+
+    function createShipSuperstructureShape(w, l, z, frontR, backR) {
+      const shape = new THREE.Shape();
+      const yCenter = -z;
+      const xMin = -w/2, xMax = w/2;
+      const yMin = yCenter - l/2; 
+      const yMax = yCenter + l/2; 
+      
+      shape.moveTo(xMin + backR, yMax);
+      shape.lineTo(xMax - backR, yMax);
+      shape.quadraticCurveTo(xMax, yMax, xMax, yMax - backR);
+      shape.lineTo(xMax, yMin + frontR);
+      shape.quadraticCurveTo(xMax, yMin, xMax - frontR, yMin);
+      shape.lineTo(xMin + frontR, yMin);
+      shape.quadraticCurveTo(xMin, yMin, xMin, yMin + frontR);
+      shape.lineTo(xMin, yMax - backR);
+      shape.quadraticCurveTo(xMin, yMax, xMin + backR, yMax);
+      return shape;
+    }
+
+    function addRailing(shape, y) {
+      const pts = shape.getPoints(100);
+      const positions = [];
+      for(let i=0; i<pts.length; i++){
+        const p1 = pts[i];
+        const p2 = pts[(i+1)%pts.length];
+        const wx1 = p1.x, wz1 = -p1.y;
+        const wx2 = p2.x, wz2 = -p2.y;
+        positions.push(wx1, y, wz1, wx2, y, wz2, wx1, y+1.2, wz1);
+        positions.push(wx2, y, wz2, wx2, y+1.2, wz2, wx1, y+1.2, wz1);
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xaaccff, transparent: true, opacity: 0.3, side: THREE.DoubleSide, metalness: 0.1, roughness: 0.1
+      });
+      scene.add(new THREE.Mesh(geom, mat));
+    }
+
+    function createShipHull() {
+      const outline = [
+        new THREE.Vector2(2, 160), new THREE.Vector2(0, 165), new THREE.Vector2(-2, 160),
+        new THREE.Vector2(-8, 150), new THREE.Vector2(-18, 100), new THREE.Vector2(-22, 50),
+        new THREE.Vector2(-22, -50), new THREE.Vector2(-18, -120), new THREE.Vector2(-10, -155),
+        new THREE.Vector2(0, -165), new THREE.Vector2(10, -155), new THREE.Vector2(18, -120),
+        new THREE.Vector2(22, -50), new THREE.Vector2(22, 50), new THREE.Vector2(18, 100),
+        new THREE.Vector2(8, 150)
+      ];
+      const curve = new THREE.SplineCurve(outline);
+      const points = curve.getPoints(100);
+      
+      const levels = [
+        {y: -12, sx: 0.2, sz: 0.9},
+        {y: -8, sx: 0.6, sz: 0.95},
+        {y: -4, sx: 0.9, sz: 0.98},
+        {y: 0, sx: 1.0, sz: 1.0}
+      ];
+      
+      const positions = [], indices = [];
+      for(const level of levels) {
+        for(const pt of points) positions.push(pt.x * level.sx, level.y, pt.y * level.sz);
+      }
+      for(let l=0; l<levels.length-1; l++) {
+        for(let i=0; i<points.length; i++) {
+          const next = (i+1)%points.length;
+          const a = l*points.length + i, b = l*points.length + next;
+          const c = (l+1)*points.length + i, d = (l+1)*points.length + next;
+          indices.push(a, b, d, a, d, c);
+        }
+      }
+      const topCenter = positions.length/3;
+      positions.push(0, 0, 0);
+      const topOffset = (levels.length-1)*points.length;
+      for(let i=0; i<points.length; i++) {
+        indices.push(topCenter, topOffset+(i+1)%points.length, topOffset+i);
+      }
+      const botCenter = positions.length/3;
+      positions.push(0, -12, 0);
+      for(let i=0; i<points.length; i++) {
+        indices.push(botCenter, i, (i+1)%points.length);
+      }
+      
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+      
+      const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({color: 0x113355, side: THREE.DoubleSide, roughness: 0.5}));
+      scene.add(mesh);
+    }
+
+    function createTextTexture(text) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,512,128);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 60px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 256, 64);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function createLogoTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,256,256);
+      ctx.fillStyle = '#0044aa';
+      ctx.fillRect(110, 30, 36, 196);
+      ctx.fillRect(30, 110, 196, 36);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function buildSuperstructure() {
+      for (const deck of decks) {
+        const shapeTop = createShipSuperstructureShape(deck.w, deck.l, deck.z, deck.frontR, deck.backR);
+        
+        const walkGeom = new THREE.ExtrudeGeometry(shapeTop, {depth: deck.h, bevelEnabled: false});
+        walkGeom.rotateX(-Math.PI/2);
+        const walkMesh = new THREE.Mesh(walkGeom, new THREE.MeshBasicMaterial({visible: false}));
+        walkMesh.position.y = deck.y;
+        scene.add(walkMesh);
+        walkableMeshes.push(walkMesh);
+
+        if (deck.y >= 9) {
+          const shapeBot = createShipSuperstructureShape(deck.w, deck.l, deck.z, deck.frontR, deck.backR);
+          const geomBot = new THREE.ExtrudeGeometry(shapeBot, {depth: 1, bevelEnabled: false});
+          geomBot.rotateX(-Math.PI/2);
+          const meshBot = new THREE.Mesh(geomBot, new THREE.MeshStandardMaterial({color: deck.color}));
+          meshBot.position.y = deck.y;
+          scene.add(meshBot);
+
+          const shapeWin = createShipSuperstructureShape(deck.w - 0.4, deck.l - 0.4, deck.z, deck.frontR - 0.2, deck.backR - 0.2);
+          const geomWin = new THREE.ExtrudeGeometry(shapeWin, {depth: 1, bevelEnabled: false});
+          geomWin.rotateX(-Math.PI/2);
+          const meshWin = new THREE.Mesh(geomWin, new THREE.MeshStandardMaterial({color: 0x051020, metalness: 0.8, roughness: 0.2}));
+          meshWin.position.y = deck.y + 1;
+          scene.add(meshWin);
+
+          const geomTop = new THREE.ExtrudeGeometry(shapeTop, {depth: deck.h - 2, bevelEnabled: false});
+          geomTop.rotateX(-Math.PI/2);
+          const meshTop = new THREE.Mesh(geomTop, new THREE.MeshStandardMaterial({color: deck.color}));
+          meshTop.position.y = deck.y + 2;
+          scene.add(meshTop);
+        } else {
+          const geom = new THREE.ExtrudeGeometry(shapeTop, {depth: deck.h, bevelEnabled: false});
+          geom.rotateX(-Math.PI/2);
+          const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({color: deck.color}));
+          mesh.position.y = deck.y;
+          scene.add(mesh);
+        }
+        
+        addRailing(shapeTop, deck.y + deck.h);
+      }
+    }
+
+    function addDetails() {
+      const dummy = new THREE.Object3D();
+
+      // Balconies
+      const dividerGeom = new THREE.BoxGeometry(0.1, 1.2, 0.1);
+      const dividerMat = new THREE.MeshStandardMaterial({color: 0xdddddd});
+      const instancedMesh = new THREE.InstancedMesh(dividerGeom, dividerMat, 1000);
+      let count = 0;
+      for (const deck of decks) {
+        if (deck.y >= 9 && deck.y <= 18) {
+          const xEdge = deck.w/2 - 0.5; 
+          const zMin = deck.z - deck.l/2 + deck.backR + 2;
+          const zMax = deck.z + deck.l/2 - deck.frontR - 2;
+          for (let z = zMin; z < zMax; z += 2.5) {
+            dummy.position.set(xEdge, deck.y + deck.h + 0.6, z);
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(count++, dummy.matrix);
+            dummy.position.set(-xEdge, deck.y + deck.h + 0.6, z);
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(count++, dummy.matrix);
+          }
+        }
+      }
+      instancedMesh.count = count;
+      scene.add(instancedMesh);
+
+      // Lifeboats
+      const boatGeom = new THREE.CapsuleGeometry(1.5, 6, 4, 8);
+      boatGeom.rotateX(Math.PI/2);
+      const boats = new THREE.InstancedMesh(boatGeom, new THREE.MeshStandardMaterial({color: 0xff5500}), 40);
+      let boatCount = 0;
+      for(let z=-120; z<=100; z+=15){
+        for(let side of [-1, 1]){
+          dummy.position.set(side * 21, 7.5, z); 
+          dummy.rotation.set(0, 0, 0);
+          dummy.updateMatrix();
+          boats.setMatrixAt(boatCount++, dummy.matrix);
+        }
+      }
+      boats.count = boatCount;
+      scene.add(boats);
+
+      // Pool deck details
+      const pool = new THREE.Mesh(new THREE.BoxGeometry(10, 2, 20), new THREE.MeshStandardMaterial({color: 0x00aaff, transparent: true, opacity: 0.8}));
+      pool.position.set(0, 25, -60);
+      scene.add(pool);
+
+      const aquaPark = new THREE.Mesh(new THREE.BoxGeometry(20, 5, 30), new THREE.MeshStandardMaterial({color: 0xdddddd}));
+      aquaPark.position.set(0, 26.5, -40);
+      scene.add(aquaPark);
+
+      const tubeGeom = new THREE.TorusGeometry(2, 0.5, 8, 16);
+      for(let i=0; i<3; i++){
+        const tube = new THREE.Mesh(tubeGeom, new THREE.MeshStandardMaterial({color: 0xff4444}));
+        tube.position.set((i-1)*5, 30, -40);
+        tube.rotation.y = Math.PI/2;
+        scene.add(tube);
+      }
+
+      const slideCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 34, -110),
+        new THREE.Vector3(5, 32, -120),
+        new THREE.Vector3(10, 26, -100),
+        new THREE.Vector3(10, 24, -80)
+      ]);
+      scene.add(new THREE.Mesh(new THREE.TubeGeometry(slideCurve, 64, 1.2, 8, false), new THREE.MeshStandardMaterial({color: 0xffffff})));
+
+      const chairs = new THREE.InstancedMesh(new THREE.BoxGeometry(0.8, 0.2, 2), new THREE.MeshStandardMaterial({color: 0xeeeeee}), 300);
+      let chairCount = 0;
+      for(let x=-12; x<=12; x+=2){
+        for(let z=-100; z<=-20; z+=3){
+          if (Math.abs(x) < 6 && z < -50 && z > -70) continue; 
+          dummy.position.set(x, 24.1, z);
+          dummy.rotation.set(0, (Math.random()-0.5)*0.5, 0);
+          dummy.updateMatrix();
+          chairs.setMatrixAt(chairCount++, dummy.matrix);
+        }
+      }
+      chairs.count = chairCount;
+      scene.add(chairs);
+
+      // Funnel
+      const funnel = new THREE.Mesh(new THREE.CylinderGeometry(4, 6, 12, 32), new THREE.MeshStandardMaterial({color: 0xeeeeee}));
+      funnel.position.set(0, 36, -80);
+      scene.add(funnel);
+
+      const logoTex = createLogoTexture();
+      const logoMat = new THREE.MeshBasicMaterial({map: logoTex, transparent: true});
+      const logoGeom = new THREE.PlaneGeometry(6, 6);
+      const logo1 = new THREE.Mesh(logoGeom, logoMat);
+      logo1.position.set(0, 36, -74.5);
+      scene.add(logo1);
+      const logo2 = new THREE.Mesh(logoGeom, logoMat);
+      logo2.rotation.y = Math.PI;
+      logo2.position.set(0, 36, -85.5);
+      scene.add(logo2);
+
+      // Name
+      const nameTex = createTextTexture("MSC VIRTUOSA");
+      const nameMat = new THREE.MeshBasicMaterial({map: nameTex, transparent: true});
+      const nameGeom = new THREE.PlaneGeometry(20, 4);
+      const nameMesh1 = new THREE.Mesh(nameGeom, nameMat);
+      nameMesh1.position.set(22.1, 7.5, 0);
+      nameMesh1.rotation.y = Math.PI/2;
+      scene.add(nameMesh1);
+      const nameMesh2 = new THREE.Mesh(nameGeom, nameMat);
+      nameMesh2.position.set(-22.1, 7.5, 0);
+      nameMesh2.rotation.y = -Math.PI/2;
+      scene.add(nameMesh2);
+    }
+
+    function addOcean() {
+      const waterGeom = new THREE.PlaneGeometry(10000, 10000, 256, 256);
+      waterGeom.rotateX(-Math.PI/2);
+      waterMat = new THREE.MeshStandardMaterial({
+        color: 0x0a2a4a, roughness: 0.2, metalness: 0.8, transparent: true, opacity: 0.95
+      });
+      waterMat.onBeforeCompile = (shader) => {
+        shader.uniforms.time = { value: 0 };
+        waterMat.userData.shader = shader;
+        shader.vertexShader = `uniform float time;\n${shader.vertexShader}`.replace(
+          `#include <begin_vertex>`,
+          `#include <begin_vertex>
+           float wave = sin(transformed.x * 0.05 + time) * 0.8 + cos(transformed.z * 0.05 + time * 0.7) * 0.8;
+           transformed.y += wave;`
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          `#include <normal_fragment_begin>`,
+          `#include <normal_fragment_begin>
+           normal = normalize( normal + vec3(sin(vViewPosition.x * 0.05 + time)*0.1, 0.0, cos(vViewPosition.z * 0.05 + time)*0.1) );`
+        );
+      };
+      scene.add(new THREE.Mesh(waterGeom, waterMat));
+
+      const raycastGeom = new THREE.PlaneGeometry(10000, 10000);
+      raycastGeom.rotateX(-Math.PI/2);
+      const raycastMesh = new THREE.Mesh(raycastGeom, new THREE.MeshBasicMaterial({visible: false}));
+      raycastMesh.position.y = -4;
+      scene.add(raycastMesh);
+      walkableMeshes.push(raycastMesh);
+    }
+
+    function addSkyAndLights() {
+      ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+      scene.add(ambientLight);
+
+      hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x004488, 0.6);
+      scene.add(hemiLight);
+
+      sunLight = new THREE.DirectionalLight(0xffffff, 2);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.left = -300;
+      sunLight.shadow.camera.right = 300;
+      sunLight.shadow.camera.top = 300;
+      sunLight.shadow.camera.bottom = -300;
+      sunLight.shadow.camera.near = 0.5;
+      sunLight.shadow.camera.far = 3000;
+      scene.add(sunLight);
+
+      const starGeom = new THREE.BufferGeometry();
+      const starPos = [];
+      for(let i=0; i<3000; i++) starPos.push((Math.random()-0.5)*10000, Math.random()*5000, (Math.random()-0.5)*10000);
+      starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+      stars = new THREE.Points(starGeom, new THREE.PointsMaterial({color: 0xffffff, size: 10, transparent: true, opacity: 0}));
+      scene.add(stars);
+
+      rainGeom = new THREE.BufferGeometry();
+      const rainPos = [];
+      for(let i=0; i<10000; i++) rainPos.push((Math.random()-0.5)*400, Math.random()*200, (Math.random()-0.5)*400);
+      rainGeom.setAttribute('position', new THREE.Float32BufferAttribute(rainPos, 3));
+      rain = new THREE.Points(rainGeom, new THREE.PointsMaterial({color: 0xaaccff, size: 0.5, transparent: true, opacity: 0.6}));
+      rain.visible = false;
+      scene.add(rain);
+    }
+
+    function initControls() {
+      const ui = document.getElementById('ui');
+      pointerControls = new PointerLockControls(camera, document.body);
+      orbitControls = new OrbitControls(camera, renderer.domElement);
+      orbitControls.enabled = false;
+      orbitControls.target.set(0, 10, 0);
+      
+      ui.addEventListener('click', () => {
+        if(walkMode) pointerControls.lock();
+      });
+      
+      pointerControls.addEventListener('unlock', () => {
+        if (!inOrbitMode) ui.style.display = 'block';
+        for(let key in keys) keys[key] = false;
+      });
+      
+      pointerControls.addEventListener('lock', () => {
+        ui.style.display = 'none';
+      });
+      
+      window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if(e.code === 'KeyV') {
+          walkMode = !walkMode;
+          if (walkMode) {
+            inOrbitMode = false;
+            orbitControls.enabled = false;
+            pointerControls.lock();
+            camera.position.set(0, 25, 0);
+            camera.rotation.set(0, Math.PI, 0);
+          } else {
+            inOrbitMode = true;
+            pointerControls.unlock();
+            ui.style.display = 'none';
+            orbitControls.enabled = true;
+            camera.position.set(200, 100, 200);
+            orbitControls.target.set(0, 10, 0);
+            orbitControls.update();
+          }
+        }
+        if(e.code === 'KeyR') {
+          isRaining = !isRaining;
+          rain.visible = isRaining;
+        }
+      });
+      
+      window.addEventListener('keyup', (e) => keys[e.code] = false);
+    }
+
+    function updateWalk(delta) {
+      const speed = 15; 
+      let moveForward = 0, moveRight = 0;
+      if (keys['KeyW']) moveForward = 1;
+      if (keys['KeyS']) moveForward = -1;
+      if (keys['KeyA']) moveRight = -1;
+      if (keys['KeyD']) moveRight = 1;
+      
+      if (moveForward !== 0 || moveRight !== 0) {
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        direction.y = 0;
+        if (direction.lengthSq() > 0.001) direction.normalize();
+        const rightDir = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0,1,0)).normalize();
+        camera.position.addScaledVector(direction, moveForward * speed * delta);
+        camera.position.addScaledVector(rightDir, moveRight * speed * delta);
+      }
+      
+      const raycaster = new THREE.Raycaster();
+      raycaster.set(new THREE.Vector3(camera.position.x, camera.position.y + 5, camera.position.z), new THREE.Vector3(0, -1, 0));
+      const intersects = raycaster.intersectObjects(walkableMeshes);
+      
+      if (intersects.length > 0) {
+        const targetY = intersects[0].point.y + 1.7;
+        camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.1);
+        if (camera.position.y < targetY - 5) camera.position.y = targetY;
+      } else {
+        camera.position.y -= 20 * delta;
+      }
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x87ceeb, 0.0005);
+      
+      camera = new THREE.PerspectiveCamera(85, window.innerWidth/window.innerHeight, 0.1, 10000);
+      camera.position.set(0, 25, 0);
+      camera.rotation.set(0, Math.PI, 0);
+      
+      renderer = new THREE.WebGLRenderer({antialias: true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+      
+      clock = new THREE.Clock();
+      
+      createShipHull();
+      buildSuperstructure();
+      addDetails();
+      addOcean();
+      addSkyAndLights();
+      initControls();
+      
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+      
+      animate();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.1);
+      timeOfDay += delta * 2;
+      
+      const sunAngle = (timeOfDay / 100) * Math.PI * 2;
+      const sunY = Math.sin(sunAngle) * 1000;
+      const sunX = Math.cos(sunAngle) * 1000;
+      sunLight.position.set(sunX, sunY, 500);
+      
+      const sunIntensityFactor = Math.max(0, Math.sin(sunAngle));
+      let skyColor = nightSky.clone().lerp(daySky, sunIntensityFactor);
+      const sunsetFactor = Math.max(0, 1 - Math.abs(Math.sin(sunAngle)) * 3);
+      skyColor.lerp(sunsetSky, sunsetFactor * 0.5);
+      
+      scene.background = skyColor;
+      scene.fog.color = skyColor;
+      
+      sunLight.intensity = sunIntensityFactor * 2;
+      hemiLight.intensity = 0.2 + sunIntensityFactor * 0.6;
+      stars.material.opacity = Math.max(0, 1 - sunIntensityFactor * 5);
+      
+      if (waterMat.userData.shader) waterMat.userData.shader.uniforms.time.value += delta;
+      
+      if (rain.visible) {
+        const pos = rainGeom.attributes.position;
+        for(let i=0; i<pos.count; i++){
+          let y = pos.getY(i) - delta * 150;
+          if (y < -10) y = 200;
+          pos.setY(i, y);
+        }
+        pos.needsUpdate = true;
+        sunLight.intensity *= 0.3;
+        hemiLight.intensity *= 0.5;
+        scene.fog.color.lerp(new THREE.Color(0x445566), 0.1);
+      }
+      
+      if (walkMode && pointerControls.isLocked) {
+        updateWalk(delta);
+      } else if (!walkMode) {
+        orbitControls.update();
+      }
+      
+      renderer.render(scene, camera);
+    }
+
+    init();
+  </script>
+</body>
+</html>
