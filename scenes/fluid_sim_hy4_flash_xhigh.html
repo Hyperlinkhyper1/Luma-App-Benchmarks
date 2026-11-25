@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Fluid Simulation Benchmark</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: monospace; }
+        canvas { display: block; }
+        #loading {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #111; color: #fff; display: flex; align-items: center; justify-content: center;
+            z-index: 1000; font-size: 20px; flex-direction: column;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #0cf;
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        #ui {
+            position: absolute; top: 10px; left: 10px; width: 260px;
+            background: rgba(0, 0, 0, 0.75); color: #eee; padding: 15px;
+            border-radius: 8px; font-size: 12px; z-index: 100; backdrop-filter: blur(4px);
+            border: 1px solid #333;
+        }
+        #ui h3 { margin: 0 0 10px 0; font-size: 14px; color: #0cf; text-align: center; }
+        #ui label { display: block; margin-top: 8px; font-size: 11px; }
+        #ui input[type="range"] { width: 100%; margin: 4px 0; }
+        #ui select, #ui button { 
+            width: 100%; padding: 5px; background: #222; color: #eee; 
+            border: 1px solid #444; border-radius: 4px; cursor: pointer; margin-top: 5px;
+        }
+        #ui select:hover, #ui button:hover { background: #333; border-color: #666; }
+        .stats { margin-top: 15px; padding-top: 10px; border-top: 1px solid #444; line-height: 1.5; }
+        .stats span { color: #0cf; float: right; }
+        .row { display: flex; justify-content: space-between; }
+        .hidden { display: none !important; }
+        #hint {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            color: rgba(255,255,255,0.5); font-size: 12px; pointer-events: none;
+        }
+    </style>
+    <script type="importmap">
+    {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+    </script>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Initializing GPU Fluid Simulation...</div>
+    </div>
+
+    <div id="ui">
+        <h3>FLUID SIM BENCHMARK</h3>
+        <div class="row"><span>Method:</span> <span id="methodName" style="color:#0cf">GPU FLIP</span></div>
+        <button id="hideUI">Hide UI</button>
+
+        <label>Scenario:
+            <select id="scenario">
+                <option value="0">DAM BREAK</option>
+                <option value="1">DOUBLE DAM</option>
+                <option value="2">DROP</option>
+                <option value="3">FAUCET</option>
+                <option value="4">WAVE MACHINE</option>
+            </select>
+        </label>
+        
+        <label>Particles: <span id="pCountVal">20000</span>
+            <input type="range" id="pCount" min="5000" max="65536" step="1000" value="20000">
+        </label>
+        <label>Viscosity: <span id="viscVal">0.05</span>
+            <input type="range" id="visc" min="0" max="1" step="0.01" value="0.05">
+        </label>
+        <label>Gravity: <span id="gravVal">9.81</span>
+            <input type="range" id="grav" min="0" max="30" step="0.1" value="9.81">
+        </label>
+        <label>Time Step: <span id="dtVal">0.015</span>
+            <input type="range" id="dt" min="0.005" max="0.03" step="0.001" value="0.015">
+        </label>
+
+        <div style="display:flex; gap:5px; margin-top:10px;">
+            <button id="pauseBtn">Pause</button>
+            <button id="stepBtn">Step</button>
+            <button id="resetBtn">Reset</button>
+        </div>
+        <button id="dropBtn" style="margin-top:5px; background:#084; border-color:#0a6;">DROP OBJECT</button>
+        
+        <label style="margin-top:10px;"><input type="checkbox" id="showParticles" style="width:auto;"> Show Raw Particles</label>
+
+        <div class="stats">
+            <div class="row">FPS: <span id="fps">0</span></div>
+            <div class="row">Sim Time: <span id="simTime">0 ms</span></div>
+            <div class="row">Active Particles: <span id="statParticles">20000</span></div>
+            <div class="row">Density Error: <span id="densityErr">0.0%</span></div>
+        </div>
+    </div>
+    
+    <div id="hint">Left Click: Stir Water | Arrow Keys: Tilt Tank | Right Click/Mouse Wheel: Camera</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        // --- GLOBAL VARIABLES ---
+        let renderer, sceneBackground, sceneWater, sceneForeground, camera, controls;
+        let useGPU = false;
+        let activeParticles = 20000;
+        const MAX_PARTICLES = 65536;
+        const GRID_N = 32;
+        const TANK_MIN = new THREE.Vector3(-5, -5, -5);
+        const TANK_MAX = new THREE.Vector3(5, 5, 5);
+        const CELL_SIZE = 10.0 / GRID_N;
+
+        let scenario = 0;
+        let params = { viscosity: 0.05, gravity: 9.81, dt: 0.015, paused: false, stepOnce: false };
+        
+        let spherePos = new THREE.Vector3(1000, 1000, 1000);
+        let sphereRadius = 1.2;
+        let isDragging = false;
+        let tiltAngle = 0;
+        
+        let dropObjActive = false;
+        let dropObjPos = new THREE.Vector3();
+        let dropObjVel = new THREE.Vector3();
+
+        let frameCount = 0, lastTime = performance.now(), fps = 0;
+        
+        // UI ELEMENTS
+        const elLoading = document.getElementById('loading');
+        const elLoadingText = document.getElementById('loading-text');
+        const elFPS = document.getElementById('fps');
+        const elSimTime = document.getElementById('simTime');
+        const elDensityErr = document.getElementById('densityErr');
+
+        // --- INIT ---
+        async function init() {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl2', { antialias: true, powerPreference: 'high-performance' });
+            if (!gl) {
+                elLoadingText.innerText = "WebGL2 is not available on this device.";
+                return;
+            }
+            const extColorFloat = gl.getExtension('EXT_color_buffer_float');
+            const extFloatBlend = gl.getExtension('EXT_float_blend');
+            useGPU = extColorFloat && extFloatBlend;
+
+            renderer = new THREE.WebGLRenderer({ canvas, context: gl, antialias: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x111111, 1);
+            document.body.appendChild(renderer.domElement);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+            camera.position.set(12, 8, 15);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0, 0);
+            controls.enableDamping = true;
+
+            sceneBackground = new THREE.Scene();
+            sceneWater = new THREE.Scene();
+            sceneForeground = new THREE.Scene();
+
+            const env = new RoomEnvironment();
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            sceneBackground.environment = pmrem.fromScene(env).texture;
+
+            setupScenes();
+            if (useGPU) initGPU();
+            else initCPU();
+
+            setupEvents();
+            resetSim();
+
+            requestAnimationFrame(animate);
+        }
+
+        function setupScenes() {
+            // Table
+            const table = new THREE.Mesh(
+                new THREE.BoxGeometry(30, 1, 30),
+                new THREE.MeshStandardMaterial({ color: 0x332211, roughness: 0.8, metalness: 0.1 })
+            );
+            table.position.y = -5.5;
+            table.receiveShadow = true;
+            sceneBackground.add(table);
+
+            // Glass Tank
+            const tank = new THREE.Mesh(
+                new THREE.BoxGeometry(10, 10, 10),
+                new THREE.MeshPhysicalMaterial({
+                    color: 0xffffff, transmission: 1.0, opacity: 1.0, metalness: 0, roughness: 0.05, ior: 1.5, side: THREE.DoubleSide
+                })
+            );
+            sceneBackground.add(tank);
+
+            // Tank Edges
+            const edges = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(10, 10, 10)),
+                new THREE.LineBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.5 })
+            );
+            sceneForeground.add(edges);
+
+            // Lights
+            const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            dirLight.position.set(5, 10, 5);
+            sceneBackground.add(dirLight);
+            sceneBackground.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+            // Stirring Sphere Visual
+            const sphereGeo = new THREE.SphereGeometry(sphereRadius, 32, 32);
+            const sphereMat = new THREE.MeshPhysicalMaterial({ color: 0xff5522, metalness: 0.5, roughness: 0.2 });
+            window.stirSphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+            window.stirSphereMesh.visible = false;
+            sceneForeground.add(window.stirSphereMesh);
+
+            window.dropObjMesh = new THREE.Mesh(sphereGeo, new THREE.MeshPhysicalMaterial({ color: 0xffcc00, metalness: 0.8, roughness: 0.2 }));
+            window.dropObjMesh.visible = false;
+            sceneForeground.add(window.dropObjMesh);
+        }
+
+        // --- GPU FLIP IMPLEMENTATION ---
+        let gpu = {};
+        function createRT(w, h) {
+            return new THREE.WebGLRenderTarget(w, h, {
+                minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+                format: THREE.RGBAFormat, type: THREE.FloatType,
+                depthBuffer: false, stencilBuffer: false
+            });
+        }
+
+        const COMMON_GLSL = `
+            vec2 coordToUV(vec3 coord) {
+                coord = clamp(coord, 0.0, 31.0);
+                float z = coord.z;
+                float sliceX = mod(z, 8.0);
+                float sliceY = floor(z / 8.0);
+                vec2 pixel = vec2(coord.x, coord.y) + vec2(sliceX, sliceY) * 32.0;
+                return pixel / vec2(256.0, 128.0);
+            }
+            vec3 uvToCoord(vec2 uv) {
+                vec2 pixel = uv * vec2(256.0, 128.0);
+                float sliceX = floor(pixel.x / 32.0);
+                float sliceY = floor(pixel.y / 32.0);
+                float z = sliceY * 8.0 + sliceX;
+                vec2 local = pixel - vec2(sliceX, sliceY) * 32.0;
+                return vec3(local, z);
+            }
+        `;
+
+        const FS_VERT = `
+            out vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 1.0);
+            }
+        `;
+
+        function initGPU() {
+            document.getElementById('methodName').innerText = "GPU FLIP (20k+)";
+
+            gpu.posRT = [createRT(256,256), createRT(256,256)];
+            gpu.velRT = [createRT(256,256), createRT(256,256)];
+            gpu.gVel0 = createRT(256,128);
+            gpu.gVel1 = createRT(256,128);
+            gpu.gVel2 = createRT(256,128);
+            gpu.gDiv = createRT(256,128);
+            gpu.gP = [createRT(256,128), createRT(256,128)];
+            gpu.bgRT = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+
+            // Fullscreen quad helper
+            gpu.fsScene = new THREE.Scene();
+            gpu.fsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            gpu.fsMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null);
+            gpu.fsScene.add(gpu.fsMesh);
+
+            // P2G Setup
+            const p2gGeom = new THREE.InstancedBufferGeometry();
+            p2gGeom.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0], 3));
+            p2gGeom.instanceCount = activeParticles * 8;
+            gpu.p2gGeom = p2gGeom;
+            gpu.p2gScene = new THREE.Scene();
+            const p2gMat = new THREE.ShaderMaterial({
+                glslVersion: THREE.GLSL3,
+                uniforms: { posTex: {value:null}, velTex: {value:null}, tankMin: {value:TANK_MIN}, cellSize: {value:CELL_SIZE} },
+                vertexShader: `
+                    uniform sampler2D posTex; uniform sampler2D velTex;
+                    uniform vec3 tankMin; uniform float cellSize;
+                    out vec4 vData;
+                    ${COMMON_GLSL}
+                    void main() {
+                        int pIdx = gl_InstanceID / 8;
+                        int corner = gl_InstanceID % 8;
+                        ivec2 texel = ivec2(pIdx % 256, pIdx / 256);
+                        vec3 pos = texelFetch(posTex, texel, 0).xyz;
+                        vec3 vel = texelFetch(velTex, texel, 0).xyz;
+                        
+                        vec3 gPos = (pos - tankMin) / cellSize;
+                        vec3 base = floor(gPos);
+                        vec3 f = fract(gPos);
+                        
+                        float fx = (corner & 1) != 0 ? f.x : 1.0 - f.x;
+                        float fy = (corner & 2) != 0 ? f.y : 1.0 - f.y;
+                        float fz = (corner & 4) != 0 ? f.z : 1.0 - f.z;
+                        
+                        vec3 c = base + vec3((corner & 1) != 0 ? 1.0 : 0.0, (corner & 2) != 0 ? 1.0 : 0.0, (corner & 4) != 0 ? 1.0 : 0.0);
+                        float w = fx * fy * fz;
+                        
+                        vec2 uv = coordToUV(c);
+                        gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+                        gl_PointSize = 1.0;
+                        vData = vec4(vel * w, w);
+                    }
+                `,
+                fragmentShader: `
+                    precision highp float;
+                    in vec4 vData; out vec4 fragColor;
+                    void main() { fragColor = vData; }
+                `,
+                blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false
+            });
+            gpu.p2gScene.add(new THREE.Points(p2gGeom, p2gMat));
+            gpu.p2gMat = p2gMat;
+
+            // Materials
+            gpu.matPrep = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: {
+                gVel0:{value:null}, gravity:{value:new THREE.Vector3()}, dt:{value:0.015}
+            }, vertexShader:FS_VERT, fragmentShader:`
+                precision highp float; in vec2 vUv; out vec4 fragColor;
+                uniform sampler2D gVel0; uniform vec3 gravity; uniform float dt;
+                void main() {
+                    vec4 data = texture(gVel0, vUv);
+                    float mass = data.w;
+                    vec3 vel = mass > 0.0 ? data.xyz / mass : vec3(0.0);
+                    vel += gravity * dt * step(0.01, mass);
+                    fragColor = vec4(vel, mass);
+                }
+            `});
+
+            const SIM_UNIFORMS = `
+                uniform vec3 tankMin; uniform float cellSize; uniform vec3 spherePos; uniform float sphereRadius;
+                vec3 getNV(vec3 nc, vec3 vC, sampler2D grid) {
+                    if (nc.x < 0.0 || nc.x > 31.0 || nc.y < 0.0 || nc.y > 31.0 || nc.z < 0.0 || nc.z > 31.0) return -vC;
+                    if (length(tankMin + nc * cellSize - spherePos) < sphereRadius) return -vC;
+                    return texture(grid, coordToUV(nc)).xyz;
+                }
+                float getNP(vec3 nc, float pC, sampler2D gridP, sampler2D gridV) {
+                    if (nc.x < 0.0 || nc.x > 31.0 || nc.y < 0.0 || nc.y > 31.0 || nc.z < 0.0 || nc.z > 31.0) return pC;
+                    if (length(tankMin + nc * cellSize - spherePos) < sphereRadius) return pC;
+                    if (texture(gridV, coordToUV(nc)).w <= 0.0) return 0.0;
+                    return texture(gridP, coordToUV(nc)).r;
+                }
+            `;
+
+            gpu.matDiv = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: {
+                gVel1:{value:null}, tankMin:{value:TANK_MIN}, cellSize:{value:CELL_SIZE}, spherePos:{value:spherePos}, sphereRadius:{value:sphereRadius}
+            }, vertexShader:FS_VERT, fragmentShader:`
+                precision highp float; in vec2 vUv; out vec4 fragColor;
+                uniform sampler2D gVel1;
+                ${COMMON_GLSL} ${SIM_UNIFORMS}
+                void main() {
+                    vec3 c = uvToCoord(vUv);
+                    vec3 vC = texture(gVel1, vUv).xyz;
+                    vec3 vL = getNV(c-vec3(1,0,0), vC, gVel1);
+                    vec3 vR = getNV(c+vec3(1,0,0), vC, gVel1);
+                    vec3 vB = getNV(c-vec3(0,1,0), vC, gVel1);
+                    vec3 vT = getNV(c+vec3(0,1,0), vC, gVel1);
+                    vec3 vBk = getNV(c-vec3(0,0,1), vC, gVel1);
+                    vec3 vF = getNV(c+vec3(0,0,1), vC, gVel1);
+                    fragColor = vec4(0.5*(vR.x-vL.x + vT.y-vB.y + vF.z-vBk.z), 0.0,0.0,1.0);
+                }
+            `});
+
+            gpu.matPres = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: {
+                gP0:{value:null}, gVel1:{value:null}, gDiv:{value:null}, tankMin:{value:TANK_MIN}, cellSize:{value:CELL_SIZE}, spherePos:{value:spherePos}, sphereRadius:{value:sphereRadius}
+            }, vertexShader:FS_VERT, fragmentShader:`
+                precision highp float; in vec2 vUv; out vec4 fragColor;
+                uniform sampler2D gP0; uniform sampler2D gVel1; uniform sampler2D gDiv;
+                ${COMMON_GLSL} ${SIM_UNIFORMS}
+                void main() {
+                    vec3 c = uvToCoord(vUv);
+                    if (texture(gVel1, vUv).w <= 0.0) { fragColor = vec4(0.0); return; }
+                    float pC = texture(gP0, vUv).r;
+                    float div = texture(gDiv, vUv).r;
+                    float pL = getNP(c-vec3(1,0,0), pC, gP0, gVel1);
+                    float pR = getNP(c+vec3(1,0,0), pC, gP0, gVel1);
+                    float pB = getNP(c-vec3(0,1,0), pC, gP0, gVel1);
+                    float pT = getNP(c+vec3(0,1,0), pC, gP0, gVel1);
+                    float pBk = getNP(c-vec3(0,0,1), pC, gP0, gVel1);
+                    float pF = getNP(c+vec3(0,0,1), pC, gP0, gVel1);
+                    fragColor = vec4((div - pL-pR-pB-pT-pBk-pF)/-6.0, 0.0,0.0,1.0);
+                }
+            `});
+
+            gpu.matGrad = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: {
+                gVel1:{value:null}, gP0:{value:null}, tankMin:{value:TANK_MIN}, cellSize:{value:CELL_SIZE}, spherePos:{value:spherePos}, sphereRadius:{value:sphereRadius}
+            }, vertexShader:FS_VERT, fragmentShader:`
+                precision highp float; in vec2 vUv; out vec4 fragColor;
+                uniform sampler2D gVel1; uniform sampler2D gP0;
+                ${COMMON_GLSL} ${SIM_UNIFORMS}
+                void main() {
+                    vec3 c = uvToCoord(vUv);
+                    vec4 data = texture(gVel1, vUv);
+                    if (data.w <= 0.0) { fragColor = vec4(0.0); return; }
+                    float pC = texture(gP0, vUv).r;
+                    float pL = getNP(c-vec3(1,0,0), pC, gP0, gVel1);
+                    float pR = getNP(c+vec3(1,0,0), pC, gP0, gVel1);
+                    float pB = getNP(c-vec3(0,1,0), pC, gP0, gVel1);
+                    float pT = getNP(c+vec3(0,1,0), pC, gP0, gVel1);
+                    float pBk = getNP(c-vec3(0,0,1), pC, gP0, gVel1);
+                    float pF = getNP(c+vec3(0,0,1), pC, gP0, gVel1);
+                    vec3 grad = 0.5*vec3(pR-pL, pT-pB, pF-pBk);
+                    fragColor = vec4(data.xyz - grad, data.w);
+                }
+            `});
+
+            gpu.matUpdatePos = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: {
+                posTex:{value:null}, velTex:{value:null}, dt:{value:0.015}, uScenario:{value:0}
+            }, vertexShader:FS_VERT, fragmentShader:`
+                precision highp float; in vec2 vUv; out vec4 fragColor;
+                uniform sampler2D posTex; uniform sampler2D velTex; uniform float dt; uniform int uScenario;
+                void main() {
+                    ivec2 texel = ivec2(gl_FragCoord.xy);
+                    vec3 pos = texelFetch(posTex, texel, 0).xyz;
+                    vec3 vel = texelFetch(velTex, texel, 0).xyz;
+                    vec3 nPos = pos + vel * dt;
+                    
+                    nPos = max(nPos, vec3(-4.9));
+                    nPos = min(nPos, vec3(4.9));
+                    
+                    if (uScenario == 3 && pos.y > -4.8 && nPos.y <= -4.8) {
+                        float r1 = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233))) * 43758.5453);
+                        float r2 = fract(sin(dot(gl_FragCoord.xy, vec2(39.3468,11.135))) * 43758.5453);
+                        nPos = vec3((r1-0.5)*1.0, 4.5, (r2-0.5)*1.0);
+                    }
+                    fragColor = vec4(nPos, 1.0);
+                }
+            `});
+
+            gpu.matG2P = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, uniforms: {
+                posTex:{value:null}, velTex:{value:null}, posNewTex:{value:null}, gVel1:{value:null}, gVel2:{value:null}, tankMin:{value:TANK_MIN}, cellSize:{value:CELL_SIZE}, uVisc:{value:0.05}, uScenario:{value:0}
+            }, vertexShader:FS_VERT, fragmentShader:`
+                precision highp float; in vec2 vUv; out vec4 fragColor;
+                uniform sampler2D posTex; uniform sampler2D velTex; uniform sampler2D posNewTex;
+                uniform sampler2D gVel1; uniform sampler2D gVel2;
+                uniform vec3 tankMin; uniform float cellSize; uniform float uVisc; uniform int uScenario;
+                ${COMMON_GLSL}
+                vec3 sampleGrid(sampler2D g, vec3 pos) {
+                    vec3 gPos = (pos - tankMin) / cellSize;
+                    vec3 base = floor(gPos);
+                    vec3 f = fract(gPos);
+                    vec3 v = vec3(0.0);
+                    for(int i=0; i<8; i++) {
+                        float fx = (i&1)!=0 ? f.x : 1.0-f.x;
+                        float fy = (i&2)!=0 ? f.y : 1.0-f.y;
+                        float fz = (i&4)!=0 ? f.z : 1.0-f.z;
+                        vec3 c = base + vec3((i&1)!=0?1.0:0.0, (i&2)!=0?1.0:0.0, (i&4)!=0?1.0:0.0);
+                        v += texture(g, coordToUV(c)).xyz * fx * fy * fz;
+                    }
+                    return v;
+                }
+                void main() {
+                    ivec2 texel = ivec2(gl_FragCoord.xy);
+                    vec3 pos = texelFetch(posTex, texel, 0).xyz;
+                    vec3 vel = texelFetch(velTex, texel, 0).xyz;
+                    vec3 nPos = texelFetch(posNewTex, texel, 0).xyz;
+                    
+                    vec3 gPre = sampleGrid(gVel1, pos);
+                    vec3 gPost = sampleGrid(gVel2, pos);
+                    
+                    vec3 flip = vel + (gPost - gPre);
+                    vec3 nVel = mix(flip, gPost, clamp(uVisc*0.5 + 0.05, 0.0, 1.0));
+                    
+                    if (uScenario == 3 && nPos.y > 4.0 && pos.y < -4.0) {
+                        nVel = vec3(0.0, -2.0, 0.0);
+                    }
+                    
+                    // sphere collision velocity response
+                    vec3 sd = pos - spherePos; 
+                    // (Sphere interaction handled in grid projection, simple damp here)
+                    
+                    fragColor = vec4(nVel, 1.0);
+                }
+            `});
+            gpu.matG2P.uniforms.spherePos = {value: spherePos};
+            gpu.matG2P.uniforms.sphereRadius = {value: sphereRadius};
+            // Inject sphere uniform into G2P shader code
+            gpu.matG2P.fragmentShader = gpu.matG2P.fragmentShader.replace('uniform float uScenario;', 'uniform float uScenario; uniform vec3 spherePos; uniform float sphereRadius;');
+
+            // Raymarch Water Material
+            gpu.matWater = new THREE.ShaderMaterial({
+                glslVersion: THREE.GLSL3,
+                uniforms: {
+                    gVel1:{value:null}, bgTex:{value:null}, camPos:{value:new THREE.Vector3()}, invViewProj:{value:new THREE.Matrix4()},
+                    res:{value:new THREE.Vector2(window.innerWidth, window.innerHeight)}, tankMin:{value:TANK_MIN}, tankMax:{value:TANK_MAX}, cellSize:{value:CELL_SIZE}
+                },
+                vertexShader:FS_VERT,
+                fragmentShader:`
+                    precision highp float; in vec2 vUv; out vec4 fragColor;
+                    uniform sampler2D gVel1; uniform sampler2D bgTex;
+                    uniform vec3 camPos; uniform mat4 invViewProj; uniform vec2 res;
+                    uniform vec3 tankMin; uniform vec3 tankMax; uniform float cellSize;
+                    ${COMMON_GLSL}
+                    
+                    float getD(vec3 p) {
+                        vec3 coord = (p - tankMin) / cellSize;
+                        coord = clamp(coord, 0.0, 31.0);
+                        vec3 base = floor(coord); vec3 f = fract(coord);
+                        float d = 0.0;
+                        for(int i=0; i<8; i++) {
+                            float fx = (i&1)!=0 ? f.x : 1.0-f.x;
+                            float fy = (i&2)!=0 ? f.y : 1.0-f.y;
+                            float fz = (i&4)!=0 ? f.z : 1.0-f.z;
+                            vec3 c = base + vec3((i&1)!=0?1.0:0.0, (i&2)!=0?1.0:0.0, (i&4)!=0?1.0:0.0);
+                            d += texture(gVel1, coordToUV(c)).w * fx * fy * fz;
+                        }
+                        return d;
+                    }
+                    vec3 getN(vec3 p) {
+                        float e = cellSize;
+                        return normalize(vec3(
+                            getD(p+vec3(e,0,0))-getD(p-vec3(e,0,0)),
+                            getD(p+vec3(0,e,0))-getD(p-vec3(0,e,0)),
+                            getD(p+vec3(0,0,e))-getD(p-vec3(0,0,e))
+                        ));
+                    }
+                    bool iBox(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax, out float tn, out float tf) {
+                        vec3 invD = 1.0/rd;
+                        vec3 t0 = (bmin-ro)*invD; vec3 t1 = (bmax-ro)*invD;
+                        vec3 tmin = min(t0,t1); vec3 tmax = max(t0,t1);
+                        tn = max(max(tmin.x,tmin.y),tmin.z);
+                        tf = min(min(tmax.x,tmax.y),tmax.z);
+                        return tf > max(tn,0.0);
+                    }
+                    void main() {
+                        vec2 uv = gl_FragCoord.xy / res;
+                        vec4 ndc = vec4(uv*2.0-1.0, 1.0, 1.0);
+                        vec4 world = invViewProj * ndc; world /= world.w;
+                        vec3 dir = normalize(world.xyz - camPos);
+                        
+                        float tn, tf;
+                        if(!iBox(camPos, dir, tankMin, tankMax, tn, tf)) { fragColor=vec4(0.0); return; }
+                        tn = max(tn, 0.0);
+                        float stepS = (tf-tn)/64.0;
+                        float t = tn;
+                        for(int i=0; i<64; i++) {
+                            vec3 p = camPos + dir*t;
+                            if(getD(p) > 1.5) {
+                                vec3 N = getN(p);
+                                vec3 V = dir;
+                                vec3 R = reflect(V, N);
+                                vec3 T = refract(V, N, 1.0/1.33);
+                                
+                                vec3 L = normalize(vec3(1.0, 1.0, 1.0));
+                                float diff = max(dot(N, L), 0.0);
+                                float spec = pow(max(dot(reflect(-L, N), -V), 0.0), 64.0);
+                                vec3 waterCol = vec3(0.1, 0.5, 0.8) * (0.6 + 0.4*diff) + spec*0.5;
+                                
+                                float fres = 0.1 + 0.9*pow(1.0 - max(dot(N,-V),0.0), 3.0);
+                                vec2 ruv = clamp(uv + N.xy*0.1, 0.001, 0.999);
+                                vec3 bg = texture(bgTex, ruv).rgb;
+                                
+                                vec3 envRef = vec3(0.8,0.9,1.0) * pow(max(R.y,0.0), 2.0);
+                                
+                                vec3 finalC = mix(bg*waterCol, envRef, fres);
+                                fragColor = vec4(finalC, 1.0);
+                                return;
+                            }
+                            t += stepS;
+                        }
+                        fragColor = vec4(0.0);
+                    }
+                `,
+                transparent: true, depthWrite: false
+            });
+            gpu.waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(2,2), gpu.matWater);
+            sceneWater.add(gpu.waterMesh);
+
+            // Raw Particles Material
+            gpu.matRaw = new THREE.ShaderMaterial({
+                glslVersion: THREE.GLSL3,
+                uniforms: { posTex:{value:null}, velTex:{value:null} },
+                vertexShader: `
+                    uniform sampler2D posTex; uniform sampler2D velTex;
+                    out vec3 vColor;
+                    void main() {
+                        int idx = gl_VertexID;
+                        ivec2 texel = ivec2(idx % 256, idx / 256);
+                        vec3 pos = texelFetch(posTex, texel, 0).xyz;
+                        vec3 vel = texelFetch(velTex, texel, 0).xyz;
+                        vColor = mix(vec3(0,0,1), vec3(1,1,0), clamp(length(vel)*0.2,0.0,1.0));
+                        vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+                        gl_Position = projectionMatrix * mvPos;
+                        gl_PointSize = 3.0;
+                    }
+                `,
+                fragmentShader: `
+                    precision highp float; in vec3 vColor; out vec4 fragColor;
+                    void main() {
+                        float d = length(gl_PointCoord - 0.5);
+                        if(d > 0.5) discard;
+                        fragColor = vec4(vColor, 1.0);
+                    }
+                `,
+                transparent: true, depthTest: true
+            });
+            const rawGeo = new THREE.BufferGeometry();
+            rawGeo.setDrawRange(0, MAX_PARTICLES);
+            gpu.rawPoints = new THREE.Points(rawGeo, gpu.matRaw);
+            sceneForeground.add(gpu.rawPoints);
+            gpu.rawPoints.visible = false;
+        }
+
+        // --- CPU FALLBACK ---
+        let cpu = {};
+        function initCPU() {
+            document.getElementById('methodName').innerText = "CPU SPH (Fallback)";
+            document.getElementById('pCount').max = 3000;
+            document.getElementById('pCount').value = 3000;
+            activeParticles = 3000;
+            document.getElementById('pCountVal').innerText = "3000";
+            
+            cpu.pos = new Float32Array(MAX_PARTICLES*3);
+            cpu.vel = new Float32Array(MAX_PARTICLES*3);
+            cpu.density = new Float32Array(MAX_PARTICLES);
+            
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(cpu.pos, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_PARTICLES*3), 3));
+            cpu.mat = new THREE.PointsMaterial({ size:0.15, vertexColors:true, transparent:true, opacity:0.8 });
+            cpu.points = new THREE.Points(geo, cpu.mat);
+            sceneForeground.add(cpu.points);
+        }
+
+        function updateCPU(dt) {
+            const h = 0.5, h2 = h*h;
+            const restD = 8.0, k = 5.0;
+            const grid = new Map();
+            const cs = h;
+            
+            for(let i=0; i<activeParticles; i++) {
+                let cx = Math.floor((cpu.pos[i*3]+5)/cs), cy = Math.floor((cpu.pos[i*3+1]+5)/cs), cz = Math.floor((cpu.pos[i*3+2]+5)/cs);
+                let key = cx+','+cy+','+cz;
+                if(!grid.has(key)) grid.set(key,[]);
+                grid.get(key).push(i);
+            }
+            
+            for(let i=0; i<activeParticles; i++) {
+                let d = 0;
+                let cx = Math.floor((cpu.pos[i*3]+5)/cs), cy = Math.floor((cpu.pos[i*3+1]+5)/cs), cz = Math.floor((cpu.pos[i*3+2]+5)/cs);
+                for(let x=-1;x<=1;x++) for(let y=-1;y<=1;y++) for(let z=-1;z<=1;z++) {
+                    let cell = grid.get((cx+x)+','+(cy+y)+','+(cz+z));
+                    if(cell) for(let j of cell) {
+                        let dx=cpu.pos[i*3]-cpu.pos[j*3], dy=cpu.pos[i*3+1]-cpu.pos[j*3+1], dz=cpu.pos[i*3+2]-cpu.pos[j*3+2];
+                        let r2 = dx*dx+dy*dy+dz*dz;
+                        if(r2<h2) d += (h2-r2);
+                    }
+                }
+                cpu.density[i] = d;
+            }
+            
+            for(let i=0; i<activeParticles; i++) {
+                let fx=0, fy=-params.gravity, fz=0;
+                let cx = Math.floor((cpu.pos[i*3]+5)/cs), cy = Math.floor((cpu.pos[i*3+1]+5)/cs), cz = Math.floor((cpu.pos[i*3+2]+5)/cs);
+                for(let x=-1;x<=1;x++) for(let y=-1;y<=1;y++) for(let z=-1;z<=1;z++) {
+                    let cell = grid.get((cx+x)+','+(cy+y)+','+(cz+z));
+                    if(cell) for(let j of cell) {
+                        if(i===j) continue;
+                        let dx=cpu.pos[i*3]-cpu.pos[j*3], dy=cpu.pos[i*3+1]-cpu.pos[j*3+1], dz=cpu.pos[i*3+2]-cpu.pos[j*3+2];
+                        let r2 = dx*dx+dy*dy+dz*dz;
+                        if(r2<h2 && r2>0.0001) {
+                            let r = Math.sqrt(r2);
+                            let p = k * (cpu.density[i] + cpu.density[j] - 2*restD);
+                            let f = p * (h-r)/r;
+                            fx+=dx*f; fy+=dy*f; fz+=dz*f;
+                        }
+                    }
+                }
+                cpu.vel[i*3] += fx*dt; cpu.vel[i*3+1] += fy*dt; cpu.vel[i*3+2] += fz*dt;
+                cpu.pos[i*3] += cpu.vel[i*3]*dt; cpu.pos[i*3+1] += cpu.vel[i*3+1]*dt; cpu.pos[i*3+2] += cpu.vel[i*3+2]*dt;
+                
+                for(let a=0;a<3;a++) {
+                    if(cpu.pos[i*3+a]<-4.9) { cpu.pos[i*3+a]=-4.9; cpu.vel[i*3+a]*=-0.5; }
+                    if(cpu.pos[i*3+a]>4.9) { cpu.pos[i*3+a]=4.9; cpu.vel[i*3+a]*=-0.5; }
+                }
+                
+                let speed = Math.sqrt(cpu.vel[i*3]**2+cpu.vel[i*3+1]**2+cpu.vel[i*3+2]**2);
+                let cols = cpu.points.geometry.attributes.color.array;
+                cols[i*3]=speed*0.1; cols[i*3+1]=0.2; cols[i*3+2]=1.0-speed*0.1;
+            }
+            cpu.points.geometry.attributes.position.needsUpdate = true;
+            cpu.points.geometry.attributes.color.needsUpdate = true;
+        }
+
+        function resetSim() {
+            if (useGPU) {
+                let posData = new Float32Array(MAX_PARTICLES*4);
+                let velData = new Float32Array(MAX_PARTICLES*4);
+                
+                for(let i=0; i<MAX_PARTICLES; i++) {
+                    let x=0,y=0,z=0;
+                    if(scenario===0) {
+                        x = -4 + Math.random()*2; y = -4 + Math.random()*8; z = -4 + Math.random()*8;
+                    } else if(scenario===1) {
+                        x = (Math.random()<0.5 ? -4 : 2) + Math.random()*2; y = -4 + Math.random()*8; z = -4 + Math.random()*8;
+                    } else if(scenario===2) {
+                        if(i<activeParticles/2) { x=-4+Math.random()*8; y=-4+Math.random()*2; z=-4+Math.random()*8; }
+                        else { let t=Math.random()*Math.PI*2, p=Math.acos(2*Math.random()-1), r=Math.random()*1.5; x=r*Math.sin(p)*Math.cos(t); y=3+r*Math.cos(p); z=r*Math.sin(p)*Math.sin(t); }
+                    } else if(scenario===3) {
+                        x=(Math.random()-0.5)*1.0; y=-4+Math.random()*8; z=(Math.random()-0.5)*1.0;
+                    } else if(scenario===4) {
+                        x=-4+Math.random()*8; y=-4+Math.random()*3; z=-4+Math.random()*8;
+                    }
+                    posData[i*4]=x; posData[i*4+1]=y; posData[i*4+2]=z; posData[i*4+3]=1;
+                }
+                
+                let tex = new THREE.DataTexture(posData, 256, 256, THREE.RGBAFormat, THREE.FloatType);
+                tex.needsUpdate = true;
+                copyTextureToRT(tex, gpu.posRT[0]); copyTextureToRT(tex, gpu.posRT[1]);
+                
+                let vTex = new THREE.DataTexture(velData, 256, 256, THREE.RGBAFormat, THREE.FloatType);
+                vTex.needsUpdate = true;
+                copyTextureToRT(vTex, gpu.velRT[0]); copyTextureToRT(vTex, gpu.velRT[1]);
+            } else {
+                for(let i=0; i<activeParticles; i++) {
+                    cpu.pos[i*3] = -4 + Math.random()*2; cpu.pos[i*3+1] = -4 + Math.random()*8; cpu.pos[i*3+2] = -4 + Math.random()*8;
+                    cpu.vel[i*3] = 0; cpu.vel[i*3+1] = 0; cpu.vel[i*3+2] = 0;
+                }
+            }
+            dropObjActive = false;
+            window.dropObjMesh.visible = false;
+        }
+
+        function copyTextureToRT(tex, rt) {
+            let mat = new THREE.MeshBasicMaterial({map:tex});
+            gpu.fsMesh.material = mat;
+            renderer.setRenderTarget(rt);
+            renderer.render(gpu.fsScene, gpu.fsCam);
+        }
+
+        function renderPass(mat, target) {
+            gpu.fsMesh.material = mat;
+            renderer.setRenderTarget(target);
+            renderer.render(gpu.fsScene, gpu.fsCam);
+        }
+
+        function stepGPU(dt) {
+            let currPos = gpu.posRT[0], nextPos = gpu.posRT[1];
+            let currVel = gpu.velRT[0], nextVel = gpu.velRT[1];
+
+            // P2G
+            gpu.p2gMat.uniforms.posTex.value = currPos.texture;
+            gpu.p2gMat.uniforms.velTex.value = currVel.texture;
+            gpu.p2gGeom.instanceCount = activeParticles * 8;
+            renderer.setRenderTarget(gpu.gVel0);
+            renderer.setClearColor(0x000000, 0);
+            renderer.clear();
+            renderer.render(gpu.p2gScene, gpu.fsCam);
+
+            // Grid Prep
+            let g = new THREE.Vector3(0, -params.gravity, 0).applyAxisAngle(new THREE.Vector3(0,0,1), tiltAngle);
+            gpu.matPrep.uniforms.gVel0.value = gpu.gVel0.texture;
+            gpu.matPrep.uniforms.gravity.value = g;
+            gpu.matPrep.uniforms.dt.value = dt;
+            renderPass(gpu.matPrep, gpu.gVel1);
+
+            // Divergence
+            gpu.matDiv.uniforms.gVel1.value = gpu.gVel1.texture;
+            gpu.matDiv.uniforms.spherePos.value = spherePos;
+            renderPass(gpu.matDiv, gpu.gDiv);
+
+            // Pressure Solve
+            gpu.matPres.uniforms.gVel1.value = gpu.gVel1.texture;
+            gpu.matPres.uniforms.gDiv.value = gpu.gDiv.texture;
+            gpu.matPres.uniforms.spherePos.value = spherePos;
+            let pIn = gpu.gP[0], pOut = gpu.gP[1];
+            for(let i=0; i<20; i++) {
+                gpu.matPres.uniforms.gP0.value = pIn.texture;
+                renderPass(gpu.matPres, pOut);
+                let tmp = pIn; pIn = pOut; pOut = tmp;
+            }
+            gpu.gP[0] = pIn; gpu.gP[1] = pOut;
+
+            // Gradient Subtraction
+            gpu.matGrad.uniforms.gVel1.value = gpu.gVel1.texture;
+            gpu.matGrad.uniforms.gP0.value = pIn.texture;
+            gpu.matGrad.uniforms.spherePos.value = spherePos;
+            renderPass(gpu.matGrad, gpu.gVel2);
+
+            // Position Update
+            gpu.matUpdatePos.uniforms.posTex.value = currPos.texture;
+            gpu.matUpdatePos.uniforms.velTex.value = currVel.texture;
+            gpu.matUpdatePos.uniforms.dt.value = dt;
+            gpu.matUpdatePos.uniforms.uScenario.value = scenario;
+            renderPass(gpu.matUpdatePos, nextPos);
+
+            // G2P
+            gpu.matG2P.uniforms.posTex.value = currPos.texture;
+            gpu.matG2P.uniforms.velTex.value = currVel.texture;
+            gpu.matG2P.uniforms.posNewTex.value = nextPos.texture;
+            gpu.matG2P.uniforms.gVel1.value = gpu.gVel1.texture;
+            gpu.matG2P.uniforms.gVel2.value = gpu.gVel2.texture;
+            gpu.matG2P.uniforms.uVisc.value = params.viscosity;
+            gpu.matG2P.uniforms.uScenario.value = scenario;
+            gpu.matG2P.uniforms.spherePos.value = spherePos;
+            renderPass(gpu.matG2P, nextVel);
+
+            gpu.posRT[0] = nextPos; gpu.posRT[1] = currPos;
+            gpu.velRT[0] = nextVel; gpu.velRT[1] = currVel;
+            
+            gpu.matWater.uniforms.gVel1.value = gpu.gVel1.texture;
+            gpu.matWater.uniforms.bgTex.value = gpu.bgRT.texture;
+            gpu.matRaw.uniforms.posTex.value = gpu.posRT[0].texture;
+            gpu.matRaw.uniforms.velTex.value = gpu.velRT[0].texture;
+
+            // Density Error Readback (approx)
+            if(frameCount % 10 === 0) {
+                const buf = new Float32Array(16);
+                renderer.readRenderTargetPixels(gpu.gVel1, 100, 50, 2, 2, buf);
+                let sum = 0, c = 0;
+                for(let i=3; i<buf.length; i+=4) { if(buf[i]>0) {sum+=buf[i]; c++;} }
+                let err = c>0 ? Math.abs((sum/c)-1.0)*100 : 0;
+                elDensityErr.innerText = err.toFixed(2)+"%";
+            }
+        }
+
+        // --- INTERACTION & EVENTS ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const plane = new THREE.Plane();
+        
+        function updateMouse(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            plane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), new THREE.Vector3(0,0,0));
+            raycaster.ray.intersectPlane(plane, spherePos);
+        }
+
+        function setupEvents() {
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth/window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                if(useGPU) {
+                    gpu.bgRT.setSize(window.innerWidth, window.innerHeight);
+                    gpu.matWater.uniforms.res.value.set(window.innerWidth, window.innerHeight);
+                }
+            });
+
+            window.addEventListener('mousedown', (e) => {
+                if(e.button===0) { isDragging = true; updateMouse(e); }
+            });
+            window.addEventListener('mousemove', (e) => { if(isDragging) updateMouse(e); });
+            window.addEventListener('mouseup', () => { 
+                isDragging = false; spherePos.set(1000,1000,1000); 
+                window.stirSphereMesh.visible = false;
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if(e.key === 'ArrowLeft') tiltAngle += 0.05;
+                if(e.key === 'ArrowRight') tiltAngle -= 0.05;
+            });
+
+            document.getElementById('hideUI').onclick = () => document.getElementById('ui').classList.add('hidden');
+            document.getElementById('pauseBtn').onclick = (e) => { params.paused = !params.paused; e.target.innerText = params.paused ? "Resume" : "Pause"; };
+            document.getElementById('stepBtn').onclick = () => { params.paused = true; params.stepOnce = true; document.getElementById('pauseBtn').innerText = "Resume"; };
+            document.getElementById('resetBtn').onclick = () => resetSim();
+            document.getElementById('scenario').onchange = (e) => { scenario = parseInt(e.target.value); resetSim(); };
+            
+            document.getElementById('dropBtn').onclick = () => {
+                dropObjActive = true;
+                dropObjPos.set((Math.random()-0.5)*2, 4, (Math.random()-0.5)*2);
+                dropObjVel.set(0,0,0);
+                window.dropObjMesh.visible = true;
+            };
+
+            const bindSlider = (id, param, disp) => {
+                const el = document.getElementById(id);
+                el.oninput = (e) => { params[param] = parseFloat(e.target.value); document.getElementById(disp).innerText = e.target.value; };
+            };
+            bindSlider('visc', 'viscosity', 'viscVal');
+            bindSlider('grav', 'gravity', 'gravVal');
+            bindSlider('dt', 'dt', 'dtVal');
+            
+            document.getElementById('pCount').oninput = (e) => {
+                activeParticles = parseInt(e.target.value);
+                document.getElementById('pCountVal').innerText = activeParticles;
+            };
+
+            document.getElementById('showParticles').onchange = (e) => {
+                if(useGPU) gpu.rawPoints.visible = e.target.checked;
+                else cpu.points.material.size = e.target.checked ? 0.3 : 0.15;
+            };
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            let now = performance.now();
+            if(frameCount % 30 === 0) {
+                fps = 1000 * 30 / (now - lastTime);
+                lastTime = now;
+                elFPS.innerText = fps.toFixed(0);
+                elSimTime.innerText = (params.paused ? 0 : (1000/fps).toFixed(1)) + " ms";
+                elDensityErr.innerText = useGPU ? elDensityErr.innerText : "N/A (CPU)";
+            }
+            frameCount++;
+
+            controls.update();
+
+            // Camera tilt trick: keep physics upright, roll camera
+            camera.up.set(0,1,0).applyAxisAngle(new THREE.Vector3(0,0,1), tiltAngle);
+            camera.lookAt(controls.target);
+
+            // Stirring Sphere Visual
+            window.stirSphereMesh.visible = isDragging && !dropObjActive;
+            window.stirSphereMesh.position.copy(spherePos);
+
+            // Drop Object Physics & Two-way coupling approximation
+            if (dropObjActive) {
+                dropObjVel.y -= 9.81 * params.dt;
+                if(useGPU && frameCount%2===0) {
+                    let cx = Math.floor((dropObjPos.x+5)/CELL_SIZE);
+                    let cy = Math.floor((dropObjPos.y+5)/CELL_SIZE);
+                    let cz = Math.max(0,Math.min(31,Math.floor((dropObjPos.z+5)/CELL_SIZE)));
+                    let sx = cz%8, sy = Math.floor(cz/8);
+                    let buf = new Float32Array(4);
+                    renderer.readRenderTargetPixels(gpu.gVel1, sx*32+cx, sy*32+cy, 1, 1, buf);
+                    let mass = buf[3];
+                    dropObjVel.y += mass * 15.0 * params.dt; // buoyancy
+                }
+                dropObjPos.addScaledVector(dropObjVel, params.dt);
+                if(dropObjPos.y < -4) { dropObjPos.y = -4; dropObjVel.y *= -0.4; }
+                if(Math.abs(dropObjPos.x)>4.5) { dropObjPos.x = Math.sign(dropObjPos.x)*4.5; dropObjVel.x*=-0.4; }
+                if(Math.abs(dropObjPos.z)>4.5) { dropObjPos.z = Math.sign(dropObjPos.z)*4.5; dropObjVel.z*=-0.4; }
+                
+                window.dropObjMesh.position.copy(dropObjPos);
+                spherePos.copy(dropObjPos);
+            }
+
+            // Scenario updates
+            if (scenario === 4) {
+                spherePos.set(Math.sin(now*0.002)*3.0, -3.0, 0);
+                window.stirSphereMesh.visible = true;
+                window.stirSphereMesh.position.copy(spherePos);
+            }
+
+            // SIMULATION
+            if (!params.paused || params.stepOnce) {
+                let t0 = performance.now();
+                if (useGPU) stepGPU(params.dt);
+                else updateCPU(params.dt);
+                if(params.stepOnce) params.stepOnce = false;
+            }
+
+            // RENDER
+            renderer.setClearColor(0x111111, 1);
+
+            if (useGPU) {
+                // 1. Background to RT
+                renderer.setRenderTarget(gpu.bgRT);
+                renderer.clear();
+                renderer.render(sceneBackground, camera);
+
+                // 2. Background to Screen
+                renderer.setRenderTarget(null);
+                renderer.clear();
+                renderer.render(sceneBackground, camera);
+
+                // 3. Water
+                gpu.matWater.uniforms.camPos.value.copy(camera.position);
+                let vp = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+                gpu.matWater.uniforms.invViewProj.value.copy(vp).invert();
+                
+                if(!document.getElementById('showParticles').checked) {
+                    renderer.render(sceneWater, camera);
+                }
+                renderer.render(sceneForeground, camera);
+
+            } else {
+                renderer.setRenderTarget(null);
+                renderer.clear();
+                renderer.render(sceneBackground, camera);
+                renderer.render(sceneForeground, camera);
+            }
+
+            if(frameCount === 2) elLoading.classList.add('hidden');
+        }
+
+        init();
+    </script>
+</body>
+</html>
