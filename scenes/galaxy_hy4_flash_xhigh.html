@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Galaxy Benchmark - Spaceship Voyage</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; color: #0f0; user-select: none; }
+        #loading { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; font-size: 24px; background: #000; z-index: 100; transition: opacity 0.5s; }
+        canvas { display: block; }
+        #ui { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+        .panel { pointer-events: auto; background: rgba(0, 20, 0, 0.7); border: 1px solid #0f0; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,255,0,0.2); }
+        #hud { position: absolute; top: 10px; left: 10px; font-size: 14px; min-width: 200px; }
+        #hud div { margin-bottom: 5px; text-shadow: 0 0 5px #0f0; }
+        #controls { position: absolute; bottom: 10px; left: 10px; display: flex; gap: 5px; align-items: center; }
+        #infoPanel { position: absolute; top: 10px; right: 10px; max-width: 320px; font-size: 12px; line-height: 1.4; }
+        #infoPanel h3 { margin: 0 0 5px 0; border-bottom: 1px solid #0f0; padding-bottom: 5px; }
+        #minimap-container { position: absolute; bottom: 10px; right: 10px; padding: 5px; }
+        #minimap { display: block; width: 200px; height: 200px; }
+        button, select { background: #001100; color: #0f0; border: 1px solid #0f0; padding: 5px 10px; cursor: pointer; font-family: inherit; font-size: 12px; text-transform: uppercase; }
+        button:hover, select:hover { background: #0f0; color: #000; }
+        .hidden { display: none !important; }
+        #err { display: none; position: absolute; inset: 0; justify-content: center; align-items: center; color: #fff; font-size: 20px; background: #000; z-index: 200; flex-direction: column; }
+    </style>
+    <script type="importmap">
+    {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+    </script>
+</head>
+<body>
+    <div id="loading">GENERATING PROCEDURAL GALAXY...</div>
+    <div id="err"><h1>WebGL Unavailable</h1><p>This benchmark requires WebGL to run.</p></div>
+    <button id="btn-show" class="panel hidden" style="position:absolute; top:10px; left:10px;">Show UI</button>
+
+    <div id="ui">
+        <div id="hud" class="panel">
+            <div>REGION: <span id="region-val">Outer Rim</span></div>
+            <div>DIST: <span id="dist-val">0 ly</span></div>
+            <div>SPEED: <span id="speed-val">0 km/s</span></div>
+            <div>ETA: <span id="eta-val">00:00</span></div>
+        </div>
+
+        <div id="infoPanel" class="panel">
+            <h3>HOW IT WORKS</h3>
+            <p><b>SCALE &amp; PRECISION:</b> To seamlessly bridge the 1:10<sup>14</sup> scale gap between a 30m ship and a 100,000 ly galaxy without z-fighting or floating-point jitter, we use a <i>cinematic scale-compression</i> technique. The galaxy is rendered at a visually compressed radius (1500 units) while local objects are scaled up. Depth is stabilized via a logarithmic depth buffer.</p>
+            <p><b>GALAXY:</b> 200,000 GPU points are generated in logarithmic spiral arms, a central bar, and a bulge. A custom vertex shader applies differential rotation (inner stars orbit faster), dust lane dimming based on density wave theory, and H-II region emission.</p>
+            <p><b>HYPERDRIVE:</b> Warp distorts space by pushing galaxy points along the ship's normalized direction vector via shader uniforms, while the camera FOV widens and engine plumes extend.</p>
+        </div>
+
+        <div id="controls" class="panel">
+            <button id="btn-play">Pause</button>
+            <button id="btn-speed">Speed: 1x</button>
+            <select id="cam-mode">
+                <option value="CINEMATIC">Cinematic Cam</option>
+                <option value="CHASE">Chase Cam</option>
+                <option value="COCKPIT">Cockpit Cam</option>
+                <option value="MAP">Galaxy Map</option>
+            </select>
+            <button id="btn-mute">Audio: On</button>
+            <button id="btn-hide">Hide UI</button>
+        </div>
+
+        <div id="minimap-container" class="panel">
+            <canvas id="minimap" width="200" height="200"></canvas>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // WebGL Check
+        const testCanvas = document.createElement('canvas');
+        if (!testCanvas.getContext('webgl2') && !testCanvas.getContext('webgl')) {
+            document.getElementById('err').style.display = 'flex';
+            document.getElementById('loading').style.display = 'none';
+            throw new Error("WebGL not supported");
+        }
+
+        // Core Setup
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.0002);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        const renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.8);
+        composer.addPass(bloomPass);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enabled = false;
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0x223344, 2));
+        const coreLight = new THREE.PointLight(0xffddaa, 100, 300);
+        coreLight.position.set(0, 0, 0);
+        scene.add(coreLight);
+
+        // --- GALAXY GENERATION (200,000 Points) ---
+        const N = 200000;
+        const pos = new Float32Array(N * 3);
+        const temp = new Float32Array(N);
+        const size = new Float32Array(N);
+        const flags = new Float32Array(N);
+
+        for (let i = 0; i < N; i++) {
+            let r, theta, y;
+            let type = Math.random();
+
+            if (type < 0.15) { // Bulge
+                r = Math.pow(Math.random(), 2) * 200;
+                theta = Math.random() * Math.PI * 2;
+                y = (Math.random() - 0.5) * (150 - r * 0.4);
+            } else if (type < 0.85) { // Spiral Arms
+                let arm = Math.floor(Math.random() * 4);
+                let armOffset = arm * (Math.PI / 2);
+                r = 150 + Math.random() * 1350;
+                let spiral = Math.log(r / 150) * 3.5;
+                theta = spiral + armOffset + (Math.random() - 0.5) * 0.4;
+                y = (Math.random() - 0.5) * 25;
+            } else if (type < 0.95) { // Thin Disc
+                r = Math.random() * 1500;
+                theta = Math.random() * Math.PI * 2;
+                y = (Math.random() - 0.5) * 10;
+            } else { // Halo
+                r = Math.random() * 1800;
+                theta = Math.random() * Math.PI * 2;
+                y = (Math.random() - 0.5) * 500;
+            }
+
+            pos[i * 3] = Math.cos(theta) * r;
+            pos[i * 3 + 1] = y;
+            pos[i * 3 + 2] = Math.sin(theta) * r;
+
+            let t = Math.random();
+            if (type < 0.15) t = Math.random() * 0.3;
+            else if (type < 0.85) t = 0.5 + Math.random() * 0.5;
+            temp[i] = t;
+
+            let s = 1.0 + Math.random() * 2.0;
+            flags[i] = 0;
+            if (type < 0.85 && Math.random() < 0.02) {
+                flags[i] = 1; // HII region
+                s = 5.0;
+            } else if (Math.random() < 0.01) {
+                s = 4.0; // Bright star
+            }
+            size[i] = s;
+        }
+
+        const galaxyGeo = new THREE.BufferGeometry();
+        galaxyGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        galaxyGeo.setAttribute('aTemp', new THREE.BufferAttribute(temp, 1));
+        galaxyGeo.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+        galaxyGeo.setAttribute('aFlags', new THREE.BufferAttribute(flags, 1));
+
+        const galaxyMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uWarpFactor: { value: 0 },
+                uWarpDir: { value: new THREE.Vector3() }
+            },
+            vertexShader: `
+                attribute float aTemp;
+                attribute float aSize;
+                attribute float aFlags;
+                uniform float uTime;
+                uniform float uWarpFactor;
+                uniform vec3 uWarpDir;
+                varying vec3 vColor;
+                varying float vAlpha;
+
+                void main() {
+                    vec3 p = position;
+                    float r = length(p.xz);
+                    float theta = atan(p.z, p.x);
+                    
+                    // Differential rotation
+                    float omega = 5.0 / (r + 50.0);
+                    float omegaPattern = 1.0;
+                    float currentTheta = theta + uTime * omega * 0.01;
+                    p.x = cos(currentTheta) * r;
+                    p.z = sin(currentTheta) * r;
+
+                    // Dust lanes (Density wave theory approximation)
+                    float baseTheta = log(r / 150.0) * 3.5 + uTime * omegaPattern * 0.01;
+                    float relTheta = theta - baseTheta;
+                    float armDist = abs(mod(relTheta + 0.7854, 1.5708) - 0.7854);
+                    float dust = smoothstep(0.1, 0.2, armDist) * (1.0 - smoothstep(0.3, 0.4, armDist));
+                    float dim = 1.0 - dust * 0.85;
+
+                    // Colors
+                    vec3 coolColor = vec3(1.0, 0.6, 0.2);
+                    vec3 hotColor = vec3(0.5, 0.8, 1.0);
+                    bool isHII = mod(aFlags, 2.0) >= 1.0;
+                    vColor = mix(coolColor, hotColor, aTemp);
+                    if (isHII) vColor = vec3(1.0, 0.1, 0.4);
+                    vColor *= dim;
+                    vAlpha = dim;
+
+                    // Warp effect
+                    p -= uWarpDir * uWarpFactor * (1000.0 / (r + 10.0)) * 20.0;
+
+                    // Gravitational lensing around core
+                    if (r < 40.0) {
+                        p.xz += normalize(p.xz) * (40.0 - r) * 0.5;
+                    }
+
+                    vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+                    gl_PointSize = aSize * (1200.0 / -mvPosition.z) * (1.0 + uWarpFactor * 5.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vColor;
+                varying float vAlpha;
+                void main() {
+                    vec2 coord = gl_PointCoord - vec2(0.5);
+                    float dist = length(coord);
+                    if (dist > 0.5) discard;
+                    float glow = 1.0 - dist * 2.0;
+                    glow = pow(glow, 2.0);
+                    gl_FragColor = vec4(vColor * glow * vAlpha, glow * vAlpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        const galaxy = new THREE.Points(galaxyGeo, galaxyMat);
+        scene.add(galaxy);
+
+        // --- BLACK HOLE ---
+        const bhGroup = new THREE.Group();
+        const eh = new THREE.Mesh(new THREE.SphereGeometry(8, 32, 32), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+        bhGroup.add(eh);
+        const glow = new THREE.Mesh(new THREE.SphereGeometry(10, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending }));
+        bhGroup.add(glow);
+
+        const discGeo = new THREE.RingGeometry(10, 45, 128);
+        const discMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+            fragmentShader: `
+                uniform float uTime; varying vec2 vUv;
+                void main() {
+                    vec2 pos = vUv * 2.0 - 1.0;
+                    float r = length(pos);
+                    if (r < 0.22 || r > 1.0) discard;
+                    float angle = atan(pos.y, pos.x);
+                    float normR = (r - 0.22) / 0.78;
+                    float swirl = angle + uTime * 2.0 / (r + 0.1) - normR * 10.0;
+                    float noise = sin(swirl * 5.0) * cos(swirl * 3.0 - normR * 20.0);
+                    float intensity = smoothstep(0.0, 0.1, normR) * (1.0 - smoothstep(0.9, 1.0, normR));
+                    vec3 color = mix(vec3(1.0, 0.2, 0.0), vec3(1.0, 0.9, 0.5), normR * (noise*0.5+0.5));
+                    gl_FragColor = vec4(color * intensity * 3.0, intensity);
+                }
+            `,
+            side: THREE.DoubleSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const disc = new THREE.Mesh(discGeo, discMat);
+        disc.rotation.x = Math.PI / 2;
+        bhGroup.add(disc);
+        scene.add(bhGroup);
+
+        // --- NEBULA ---
+        const nCanvas = document.createElement('canvas');
+        nCanvas.width = nCanvas.height = 256;
+        const nCtx = nCanvas.getContext('2d');
+        const imgData = nCtx.createImageData(256, 256);
+        for(let i=0; i<256*256; i++) {
+            let x = i%256, y = Math.floor(i/256);
+            let d = Math.sqrt((x-128)**2 + (y-128)**2)/128;
+            let v = Math.max(0, 1-d)**3;
+            let n = Math.random()*0.5+0.5;
+            imgData.data[i*4] = 200*v*n; imgData.data[i*4+1] = 50*v*n; imgData.data[i*4+2] = 255*v*n; imgData.data[i*4+3] = 255*v*n;
+        }
+        nCtx.putImageData(imgData,0,0);
+        const nebulaTex = new THREE.CanvasTexture(nCanvas);
+        const nebulaMat = new THREE.SpriteMaterial({ map: nebulaTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+        const nebulaGroup = new THREE.Group();
+        for(let i=0; i<40; i++) {
+            let spr = new THREE.Sprite(nebulaMat);
+            spr.position.set(40 + (Math.random()-0.5)*120, (Math.random()-0.5)*40, -15 + (Math.random()-0.5)*120);
+            let s = 30 + Math.random()*80;
+            spr.scale.set(s, s, 1);
+            nebulaGroup.add(spr);
+        }
+        scene.add(nebulaGroup);
+
+        // --- STAR SYSTEMS ---
+        const sysA = new THREE.Group(); sysA.position.set(-150, 0, 0);
+        const starA = new THREE.Mesh(new THREE.SphereGeometry(30, 32, 32), new THREE.MeshBasicMaterial({color: 0xffeebb}));
+        starA.position.set(-60, 0, -60);
+        sysA.add(starA);
+        const lightA = new THREE.PointLight(0xffeebb, 500, 300); lightA.position.copy(starA.position); sysA.add(lightA);
+
+        const planetA = new THREE.Mesh(new THREE.SphereGeometry(15, 64, 64), new THREE.MeshStandardMaterial({color: 0x2255aa, roughness: 0.8}));
+        sysA.add(planetA);
+        const atmos = new THREE.Mesh(new THREE.SphereGeometry(16.5, 64, 64), new THREE.ShaderMaterial({
+            vertexShader: `varying vec3 vNormal; void main(){ vNormal=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+            fragmentShader: `varying vec3 vNormal; void main(){ float i=pow(0.6-dot(vNormal, vec3(0,0,1.0)), 3.0); gl_FragColor=vec4(0.2,0.5,1.0,i); }`,
+            blending: THREE.AdditiveBlending, transparent: true, side: THREE.BackSide, depthWrite: false
+        }));
+        sysA.add(atmos);
+        const moon = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 32), new THREE.MeshStandardMaterial({color: 0x888888}));
+        moon.position.set(25, 0, 10); sysA.add(moon);
+        scene.add(sysA);
+
+        const sysB = new THREE.Group(); sysB.position.set(150, 0, 0);
+        const starB = new THREE.Mesh(new THREE.SphereGeometry(40, 32, 32), new THREE.MeshBasicMaterial({color: 0xffaa55}));
+        starB.position.set(80, 0, 60); sysB.add(starB);
+        const lightB = new THREE.PointLight(0xffaa55, 600, 400); lightB.position.copy(starB.position); sysB.add(lightB);
+        const gasGiant = new THREE.Mesh(new THREE.SphereGeometry(25, 64, 64), new THREE.MeshStandardMaterial({color: 0xcc8844, roughness: 0.9}));
+        sysB.add(gasGiant);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(35, 60, 128), new THREE.MeshBasicMaterial({color: 0xdddddd, side: THREE.DoubleSide, transparent: true, opacity: 0.6}));
+        ring.rotation.x = Math.PI/2 + 0.2; sysB.add(ring);
+        scene.add(sysB);
+
+        // --- SPACESHIP ---
+        const ship = new THREE.Group();
+        const hullMat = new THREE.MeshStandardMaterial({ color: 0x8899aa, metalness: 0.8, roughness: 0.3 });
+        
+        const hullPts = [];
+        for(let i=0; i<=10; i++) hullPts.push(new THREE.Vector2(Math.sin(i*0.3)*1.5 + 1, i*1.5 - 7.5));
+        const hull = new THREE.Mesh(new THREE.LatheGeometry(hullPts, 16), hullMat);
+        hull.rotation.x = -Math.PI/2;
+        ship.add(hull);
+
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0); shape.bezierCurveTo(6, 0, 12, 2, 14, 6); shape.bezierCurveTo(9, 5, 4, 3, 0, 2);
+        const wingGeo = new THREE.ExtrudeGeometry(shape, {depth: 0.4, bevelEnabled: true, bevelSize: 0.2, bevelThickness: 0.2, bevelSegments: 2});
+        const wingL = new THREE.Mesh(wingGeo, hullMat); wingL.rotation.x = Math.PI/2; wingL.position.set(1.5, 0, 2); ship.add(wingL);
+        const wingR = new THREE.Mesh(wingGeo, hullMat); wingR.rotation.x = Math.PI/2; wingR.rotation.z = Math.PI; wingR.position.set(-1.5, 0, 2); ship.add(wingR);
+
+        const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x001122, emissive: 0x002244, metalness:0.9, roughness:0.1, transmission:0.8, thickness:0.5 });
+        const cockpit = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 32), glassMat);
+        cockpit.scale.set(1, 0.6, 2); cockpit.position.set(0, 0.8, -2); ship.add(cockpit);
+
+        const engMat = new THREE.MeshBasicMaterial({color: 0x00ffff});
+        const engGeo = new THREE.CylinderGeometry(0.6, 0.6, 1, 16); engGeo.rotateX(Math.PI/2);
+        const eng1 = new THREE.Mesh(engGeo, engMat); eng1.position.set(3, 0, 4); ship.add(eng1);
+        const eng2 = new THREE.Mesh(engGeo, engMat); eng2.position.set(-3, 0, 4); ship.add(eng2);
+
+        const plumeMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: {value:0} },
+            vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+            fragmentShader: `uniform float uTime; varying vec2 vUv; void main(){ float n=sin(vUv.x*20.0+uTime*10.0)*cos(vUv.y*20.0-uTime*15.0); float g=smoothstep(0.0,1.0,vUv.y)*(n*0.5+0.5); gl_FragColor=vec4(0.0,0.6,1.0,g*0.9); }`,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const plumeGeo = new THREE.ConeGeometry(0.6, 6, 16); plumeGeo.rotateX(-Math.PI/2);
+        const plume1 = new THREE.Mesh(plumeGeo, plumeMat); plume1.position.set(3, 0, 7); ship.add(plume1);
+        const plume2 = new THREE.Mesh(plumeGeo, plumeMat); plume2.position.set(-3, 0, 7); ship.add(plume2);
+
+        const redLight = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({color:0xff0000})); redLight.position.set(-14, 0, 5); ship.add(redLight);
+        const greenLight = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({color:0x00ff00})); greenLight.position.set(14, 0, 5); ship.add(greenLight);
+        const strobe = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshBasicMaterial({color:0xffffff})); strobe.position.set(0, 2, -3); ship.add(strobe);
+
+        scene.add(ship);
+
+        // --- MAP PLANE & ROUTE ---
+        const mapPlane = new THREE.Mesh(new THREE.PlaneGeometry(4000,4000), new THREE.MeshBasicMaterial({visible:false}));
+        mapPlane.rotation.x = -Math.PI/2;
+        scene.add(mapPlane);
+
+        const curvePoints = [
+            new THREE.Vector3(-150, 5, 0), new THREE.Vector3(-100, 20, 20), new THREE.Vector3(-50, 10, 0),
+            new THREE.Vector3(0, 5, 0), new THREE.Vector3(50, 5, -20), new THREE.Vector3(100, 10, 0), new THREE.Vector3(150, 5, 0)
+        ];
+        const lookPoints = [
+            new THREE.Vector3(-140, 0, 0), new THREE.Vector3(-50, 0, 0), new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, 0), new THREE.Vector3(100, 0, -20), new THREE.Vector3(150, 0, 0), new THREE.Vector3(200, 0, 0)
+        ];
+        const warpPoints = [
+            new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0), new THREE.Vector3(1,0,0),
+            new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0)
+        ];
+        const camPoints = [
+            new THREE.Vector3(-160, 15, 15), new THREE.Vector3(-110, 30, 35), new THREE.Vector3(-60, 20, 15),
+            new THREE.Vector3(-10, 15, 15), new THREE.Vector3(40, 15, -5), new THREE.Vector3(90, 20, 15), new THREE.Vector3(140, 15, 15)
+        ];
+
+        const curve = new THREE.CatmullRomCurve3(curvePoints);
+        const lookCurve = new THREE.CatmullRomCurve3(lookPoints);
+        const warpCurve = new THREE.CatmullRomCurve3(warpPoints);
+        const camCurve = new THREE.CatmullRomCurve3(camPoints);
+
+        const routeLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curvePoints), new THREE.LineBasicMaterial({color: 0x00ff00}));
+        routeLine.position.y = 3;
+        scene.add(routeLine);
+
+        // --- UI LOGIC ---
+        let isPlaying = true, speedMult = 1, camMode = 'CINEMATIC';
+        let journeyTime = 0, journeyDuration = 120;
+        let customPath = false, dest = new THREE.Vector3(), pathStartPos = new THREE.Vector3(), pathStartTime = 0;
+        let customRoute = null;
+
+        document.getElementById('btn-play').onclick = (e) => { isPlaying = !isPlaying; e.target.innerText = isPlaying ? "Pause" : "Play"; };
+        let speeds = [1, 2, 5], speedIdx = 0;
+        document.getElementById('btn-speed').onclick = (e) => { speedIdx = (speedIdx+1)%3; speedMult = speeds[speedIdx]; e.target.innerText = `Speed: ${speedMult}x`; };
+        
+        document.getElementById('cam-mode').onchange = (e) => {
+            camMode = e.target.value;
+            if(camMode === 'MAP') { controls.enabled = true; controls.target.set(0,0,0); camera.position.set(0, 800, 0); }
+            else controls.enabled = false;
+        };
+
+        document.getElementById('btn-hide').onclick = () => {
+            document.getElementById('ui').classList.add('hidden');
+            document.getElementById('btn-show').classList.remove('hidden');
+        };
+        document.getElementById('btn-show').onclick = (e) => {
+            document.getElementById('ui').classList.remove('hidden');
+            e.target.classList.add('hidden');
+        };
+
+        // Audio
+        let audioCtx, osc, gainNode, muted = false;
+        document.getElementById('btn-mute').onclick = (e) => {
+            muted = !muted;
+            if(gainNode) gainNode.gain.value = muted ? 0 : 0.5;
+            e.target.innerText = muted ? "Audio: Off" : "Audio: On";
+        };
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            osc = audioCtx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 50;
+            gainNode = audioCtx.createGain(); gainNode.gain.value = muted ? 0 : 0.5;
+            const filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 200;
+            osc.connect(filter); filter.connect(gainNode); gainNode.connect(audioCtx.destination); osc.start();
+        }
+        window.addEventListener('click', () => { if(!audioCtx) initAudio(); }, {once:true});
+
+        // Raycast for Map Destination
+        const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2(); let downPos = new THREE.Vector2();
+        window.addEventListener('pointerdown', e => downPos.set(e.clientX, e.clientY));
+        window.addEventListener('pointerup', e => {
+            if (camMode !== 'MAP') return;
+            if (downPos.distanceTo(new THREE.Vector2(e.clientX, e.clientY)) < 5) {
+                mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                const hits = raycaster.intersectObject(mapPlane);
+                if(hits.length) {
+                    dest.copy(hits[0].point); dest.y = 5;
+                    customPath = true; pathStartPos.copy(ship.position); pathStartTime = performance.now();
+                    if(customRoute) scene.remove(customRoute);
+                    customRoute = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pathStartPos, dest]), new THREE.LineBasicMaterial({color:0xff0000}));
+                    customRoute.position.y = 3; scene.add(customRoute);
+                }
+            }
+        });
+
+        // Minimap
+        const mCanvas = document.getElementById('minimap'); const mCtx = mCanvas.getContext('2d');
+        function drawMinimap() {
+            mCtx.clearRect(0,0,200,200);
+            mCtx.strokeStyle = '#0f0'; mCtx.lineWidth = 1;
+            mCtx.beginPath(); mCtx.arc(100,100,3,0,Math.PI*2); mCtx.stroke(); // Core
+            mCtx.beginPath();
+            for(let i=0; i<150; i++) { let a=i*0.2, r=i*1.2; mCtx.lineTo(100+Math.cos(a)*r*0.066, 100+Math.sin(a)*r*0.066); }
+            mCtx.stroke();
+            mCtx.fillStyle = '#fff'; mCtx.beginPath(); mCtx.arc(100+ship.position.x*0.066, 100+ship.position.z*0.066, 3,0,Math.PI*2); mCtx.fill();
+            if(customPath) { mCtx.fillStyle = '#f00'; mCtx.beginPath(); mCtx.arc(100+dest.x*0.066, 100+dest.z*0.066, 3,0,Math.PI*2); mCtx.fill(); }
+        }
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+        const shipDir = new THREE.Vector3();
+        const regionEl = document.getElementById('region-val'), distEl = document.getElementById('dist-val'), speedEl = document.getElementById('speed-val'), etaEl = document.getElementById('eta-val');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            galaxyMat.uniforms.uTime.value = time;
+            discMat.uniforms.uTime.value = time;
+            plumeMat.uniforms.uTime.value = time;
+            disc.rotation.z = time * 0.1;
+
+            if (isPlaying) journeyTime += dt * speedMult;
+            if (journeyTime > journeyDuration && !customPath) journeyTime = 0;
+
+            let warp = 0;
+            let t = Math.min(journeyTime / journeyDuration, 1.0);
+
+            if (customPath) {
+                let prog = (performance.now() - pathStartTime) / 5000;
+                if (prog >= 1) { ship.position.copy(dest); customPath = false; scene.remove(customRoute); }
+                else { ship.position.lerpVectors(pathStartPos, dest, prog); ship.lookAt(dest); warp = 1.0; }
+            } else {
+                ship.position.copy(curve.getPointAt(t));
+                ship.lookAt(lookCurve.getPointAt(Math.min(t+0.01, 1.0)));
+                warp = warpCurve.getPointAt(t).x;
+            }
+
+            ship.getWorldDirection(shipDir);
+            galaxyMat.uniforms.uWarpDir.value.copy(shipDir);
+            galaxyMat.uniforms.uWarpFactor.value = warp;
+            plume1.scale.y = plume2.scale.y = 1 + warp * 8;
+            camera.fov = 60 + warp * 30; camera.updateProjectionMatrix();
+
+            if (osc) osc.frequency.value = 50 + warp * 250 + Math.random()*5;
+
+            // Nav lights
+            redLight.material.color.setHex( (Math.floor(time*5)%2) ? 0xff0000 : 0x440000 );
+            greenLight.material.color.setHex( (Math.floor(time*4)%2) ? 0x00ff00 : 0x004400 );
+            strobe.material.color.setHex( (Math.floor(time*10)%8 === 0) ? 0xffffff : 0x000000 );
+
+            // Camera Modes
+            if (camMode === 'CINEMATIC') {
+                camera.position.lerp(camCurve.getPointAt(t), 0.05);
+                camera.lookAt(ship.position);
+            } else if (camMode === 'CHASE') {
+                const target = new THREE.Vector3(0, 4, 15).applyMatrix4(ship.matrixWorld);
+                camera.position.lerp(target, 0.1); camera.lookAt(ship.position);
+            } else if (camMode === 'COCKPIT') {
+                camera.position.copy(new THREE.Vector3(0, 1, -2).applyMatrix4(ship.matrixWorld));
+                camera.lookAt(new THREE.Vector3(0, 1, -100).applyMatrix4(ship.matrixWorld));
+            }
+
+            // HUD Updates
+            let rx = ship.position.x;
+            regionEl.innerText = rx < -100 ? "Departure System" : rx < -30 ? "Outer Perseus Arm" : rx < 30 ? "Galactic Core" : rx < 100 ? "Sagittarius Arm" : "Arrival System";
+            distEl.innerText = Math.floor(ship.position.length() * 1000).toLocaleString() + ' ly';
+            speedEl.innerText = warp > 0.1 ? (warp * 100).toFixed(1) + ' c' : Math.floor(warp*5000 + 450) + ' km/s';
+            let rem = (journeyTime - journeyTime) / speedMult; // Placeholder ETA logic based on cycle
+            let remTime = customPath ? 5 : (journeyDuration - journeyTime)/speedMult;
+            etaEl.innerText = `${Math.floor(remTime/60)}:${Math.floor(remTime%60).toString().padStart(2,'0')}`;
+
+            drawMinimap();
+            composer.render();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+        });
+
+        // Start
+        setTimeout(() => {
+            document.getElementById('loading').style.opacity = 0;
+            setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+        }, 500);
+        animate();
+    </script>
+</body>
+</html>
