@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A Timeline of the World</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #fff; user-select: none;
+  }
+  #svg-container {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  }
+  svg { width: 100%; height: 100%; display: block; }
+  
+  #text-layer {
+    position: absolute; top: 40px; left: 50px; max-width: 450px;
+    pointer-events: none; text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+  }
+  #text-layer h1 { margin: 0 0 5px 0; font-size: 32px; font-weight: 700; letter-spacing: 0.5px; }
+  #text-layer h2 { margin: 0 0 15px 0; font-size: 18px; font-weight: 400; color: #0ff; }
+  #text-layer p { margin: 0; font-size: 16px; line-height: 1.5; color: #ddd; }
+
+  #ui-layer {
+    position: absolute; bottom: 0; left: 0; width: 100%;
+    padding: 20px 30px; box-sizing: border-box;
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.7) 60%, transparent 100%);
+    pointer-events: none;
+  }
+  .controls-row {
+    display: flex; align-items: center; gap: 15px; margin-bottom: 12px;
+    pointer-events: auto;
+  }
+  button, select {
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);
+    color: #fff; padding: 8px 16px; border-radius: 4px; cursor: pointer;
+    font-size: 14px; outline: none; transition: background 0.2s;
+  }
+  button:hover, select:hover { background: rgba(255,255,255,0.25); }
+  
+  #date-readout {
+    margin-left: auto; font-size: 16px; font-variant-numeric: tabular-nums;
+    color: #0ff; font-weight: bold; letter-spacing: 0.5px;
+  }
+
+  #timeline-container {
+    position: relative; width: 100%; height: 12px;
+    background: rgba(255,255,255,0.1); border-radius: 6px;
+    cursor: pointer; pointer-events: auto; margin-top: 25px;
+  }
+  .era-band {
+    position: absolute; top: 0; bottom: 0; opacity: 0.6;
+  }
+  .era-band:first-child { border-radius: 6px 0 0 6px; }
+  .era-band:nth-last-child(3) { border-radius: 0 6px 6px 0; }
+  .era-label {
+    position: absolute; top: -20px; font-size: 11px; color: #aaa;
+    transform: translateX(-50%); pointer-events: none;
+  }
+  .tick {
+    position: absolute; top: -4px; bottom: -4px; width: 1px;
+    background: rgba(255,255,255,0.5); pointer-events: none;
+  }
+  #playhead {
+    position: absolute; top: -6px; bottom: -6px; width: 4px;
+    background: #0ff; border-radius: 2px; box-shadow: 0 0 10px #0ff;
+    transform: translateX(-50%); z-index: 10; pointer-events: none;
+  }
+
+  @keyframes fall { 100% { transform: translateY(700px); } }
+  .snow-particle { animation: fall linear infinite; }
+  
+  @keyframes smoke-rise { 100% { transform: translateY(-80px) scale(2); opacity: 0; } }
+  .smoke-particle { animation: smoke-rise 3s ease-out infinite; transform-origin: center; }
+  
+  @keyframes twinkle { 0%,100% {opacity:0.2;} 50% {opacity:1;} }
+  .blink { animation: twinkle 1.5s infinite; }
+</style>
+</head>
+<body>
+
+<div id="svg-container">
+  <svg id="stage" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
+    <!-- SVG injected via JS -->
+  </svg>
+</div>
+
+<div id="text-layer">
+  <h1 id="title">Loading...</h1>
+  <h2 id="date"></h2>
+  <p id="caption"></p>
+</div>
+
+<div id="ui-layer">
+  <div class="controls-row">
+    <button id="btn-play">Pause</button>
+    <button id="btn-restart">Restart</button>
+    <select id="speed">
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
+    </select>
+    <span id="date-readout"></span>
+  </div>
+  <div id="timeline-container">
+    <!-- Timeline injected via JS -->
+    <div id="playhead"></div>
+  </div>
+</div>
+
+<script>
+const chapters = [
+  { t: 0,   dur: 12, title: "Formation of the Earth", date: "4.54 billion years ago", caption: "A cloud of dust and gas collapses. The proto-Earth forms, followed by a colossal impact with the planet Theia." },
+  { t: 12,  dur: 10, title: "The Hadean", date: "4.5 to 4.0 billion years ago", caption: "A molten surface slowly cools. The crust forms and the first oceans condense from steam." },
+  { t: 22,  dur: 10, title: "First Life", date: "3.7–3.5 billion years ago", caption: "Microbial mats and stromatolites appear in shallow waters, beginning the long history of life." },
+  { t: 32,  dur: 10, title: "The Great Oxidation", date: "about 2.4 billion years ago", caption: "Cyanobacteria pump oxygen into the atmosphere. The sky and sea change color as iron oxidizes." },
+  { t: 42,  dur: 10, title: "Snowball Earth", date: "720–635 million years ago", caption: "Glaciers cover the planet from pole to pole in a series of extreme ice ages." },
+  { t: 52,  dur: 10, title: "Cambrian Explosion", date: "about 538 million years ago", caption: "A sudden burst of multicellular life. Trilobites and early fish fill the oceans." },
+  { t: 62,  dur: 10, title: "Life Moves onto Land", date: "470–375 million years ago", caption: "Plants, followed by animals, emerge from the water, transforming the continents with forests." },
+  { t: 72,  dur: 12, title: "Pangaea & Dinosaurs", date: "252–66 million years ago", caption: "Continents drift together to form Pangaea. Dinosaurs dominate the Mesozoic Era as the supercontinent breaks apart." },
+  { t: 84,  dur: 8,  title: "The Asteroid Impact", date: "66 million years ago", caption: "A massive asteroid strikes Earth, causing global wildfires and a dust cloud that leads to mass extinction." },
+  { t: 92,  dur: 8,  title: "Rise of Mammals", date: "66 to 2 million years ago", caption: "With the dinosaurs gone, mammals rapidly diversify and fill new ecological niches." },
+  { t: 100, dur: 10, title: "Homo Sapiens", date: "about 300,000 years ago", caption: "Modern humans evolve in Africa and begin to spread across the globe." },
+  { t: 110, dur: 10, title: "Farming Begins", date: "about 10,000 BCE", caption: "The Neolithic Revolution: humans cultivate crops and domesticate animals, settling in villages." },
+  { t: 120, dur: 10, title: "Early Civilisations", date: "3500–2560 BCE", caption: "Complex societies arise in river valleys. The Great Pyramid of Giza is built." },
+  { t: 130, dur: 10, title: "The Classical World", date: "500 BCE – 500 CE", caption: "Great empires rise: Greece, Rome, and Han China, leaving enduring legacies." },
+  { t: 140, dur: 10, title: "The Medieval World", date: "500 – 1500 CE", caption: "Feudal societies, castles, and trade networks define the Middle Ages across the globe." },
+  { t: 150, dur: 10, title: "Printing & Exploration", date: "1450 / 1492 CE", caption: "The printing press revolutionizes knowledge. Exploration connects the Old and New Worlds." },
+  { t: 160, dur: 10, title: "Industrial Revolution", date: "from about 1760 CE", caption: "Steam power, factories, and mass production transform societies and the landscape." },
+  { t: 170, dur: 10, title: "The 20th Century", date: "1903 – 1969 CE", caption: "Powered flight, two world wars, and the Apollo 11 Moon landing mark a century of rapid change." },
+  { t: 180, dur: 10, title: "The Digital Age", date: "Present", caption: "Computers, the internet, and global networks define the modern era." }
+];
+
+const eras = [
+  { name: "Hadean", start: 0, end: 22, color: "#4a1c0d" },
+  { name: "Archean", start: 22, end: 42, color: "#3a4a1c" },
+  { name: "Proterozoic", start: 42, end: 52, color: "#1c4a5a" },
+  { name: "Paleozoic", start: 52, end: 72, color: "#2a5a2a" },
+  { name: "Mesozoic", start: 72, end: 92, color: "#5a2a1c" },
+  { name: "Cenozoic", start: 92, end: 100, color: "#8a7a4a" },
+  { name: "Human History", start: 100, end: 190, color: "#4a4a8a" }
+];
+
+const TOTAL_DURATION = 190;
+
+const camKeys = [
+  { t: 0,   x: 500, y: 300, s: 0.1 },
+  { t: 10,  x: 500, y: 300, s: 0.8 },
+  { t: 60,  x: 500, y: 300, s: 0.8 },
+  { t: 72,  x: 500, y: 400, s: 1.5 },
+  { t: 80,  x: 500, y: 450, s: 3.0 },
+  { t: 100, x: 1625, y: 450, s: 3.0 },
+  { t: 190, x: 6700, y: 450, s: 3.0 }
+];
+
+const colorKeys = [
+  { t: 0,   sky: '#050510', land: '#000000' },
+  { t: 2,   sky: '#1a0b2e', land: '#ff5500' },
+  { t: 12,  sky: '#3a1c0d', land: '#5c3a21' },
+  { t: 25,  sky: '#8a6342', land: '#4a5d23' },
+  { t: 35,  sky: '#87CEEB', land: '#4a5d23' },
+  { t: 45,  sky: '#e0f8ff', land: '#ffffff' },
+  { t: 55,  sky: '#87CEEB', land: '#2e5c22' },
+  { t: 100, sky: '#87CEEB', land: '#2e5c22' },
+  { t: 140, sky: '#b0c4de', land: '#2e5c22' },
+  { t: 180, sky: '#1a1a2e', land: '#2e5c22' },
+  { t: 190, sky: '#1a1a2e', land: '#2e5c22' }
+];
+
+const scenes = [
+  { id: 'scene-dinos', start: 70, end: 84 },
+  { id: 'scene-asteroid', start: 84, end: 92 },
+  { id: 'scene-mammals', start: 92, end: 100 },
+  { id: 'scene-humans', start: 100, end: 110 },
+  { id: 'scene-farming', start: 110, end: 120 },
+  { id: 'scene-civ', start: 120, end: 130 },
+  { id: 'scene-classical', start: 130, end: 140 },
+  { id: 'scene-medieval', start: 140, end: 150 },
+  { id: 'scene-exploration', start: 150, end: 160 },
+  { id: 'scene-industrial', start: 160, end: 170 },
+  { id: 'scene-modern', start: 170, end: 180 },
+  { id: 'scene-digital', start: 180, end: 191 }
+];
+
+const sceneX = {
+  dinos: 275, asteroid: 800, mammals: 1400, humans: 1907,
+  farming: 2470, civ: 3034, classical: 3598, medieval: 4162,
+  exploration: 4726, industrial: 5290, modern: 5853, digital: 6417
+};
+
+function rnd(min, max) { return Math.random() * (max - min) + min; }
+function wrapper(id, content) { return `<g id="${id}" opacity="0">${content}</g>`; }
+
+let starsHTML = '';
+for(let i=0; i<150; i++) starsHTML += `<circle cx="${rnd(-1000,7000)}" cy="${rnd(-300,600)}" r="${rnd(0.5,2)}" fill="#fff" />`;
+
+let snowHTML = '';
+for(let i=0; i<80; i++) snowHTML += `<circle cx="${rnd(-200,1200)}" cy="${rnd(-700,0)}" r="${rnd(1,3)}" fill="#fff" class="snow-particle" style="animation-duration:${rnd(3,6)}s; animation-delay:${rnd(-5,0)}s" />`;
+
+let surfaceHTML = `<path id="ground" d="M-2000,500 Q0,480 2000,500 T6000,500 T10000,500 L10000,2000 L-2000,2000 Z" fill="#2e5c22" />`;
+
+let x = sceneX.dinos;
+surfaceHTML += wrapper('scene-dinos', `
+  <path d="M${x-100},500 Q${x},450 ${x+100},500 Z" fill="#1c3a12" />
+  <path d="M${x+20},500 Q${x+30},430 ${x+60},460 Q${x+70},400 ${x+90},500 Z" fill="#111" />
+  <circle cx="${x+65}" cy="390" r="15" fill="#111" />
+`);
+
+x = sceneX.asteroid;
+surfaceHTML += wrapper('scene-asteroid', `
+  <path d="M${x-120},500 L${x-60},450 L${x},500 Z" fill="#1a1a1a" />
+  <path d="M${x},500 L${x+60},450 L${x+120},500 Z" fill="#1a1a1a" />
+  <path d="M${x+30},500 L${x+35},420 L${x+45},500 Z" fill="#c00" filter="url(#glow)" />
+`);
+
+x = sceneX.mammals;
+surfaceHTML += wrapper('scene-mammals', `
+  <ellipse cx="${x}" cy="470" rx="45" ry="25" fill="#6b4423" />
+  <circle cx="${x-45}" cy="465" r="15" fill="#6b4423" />
+  <path d="M${x},445 L${x},500 M${x+30},445 L${x+30},500" stroke="#6b4423" stroke-width="8" />
+  <ellipse cx="${x+80}" cy="480" rx="20" ry="12" fill="#d2b48c" />
+`);
+
+x = sceneX.humans;
+surfaceHTML += wrapper('scene-humans', `
+  <path d="M${x-10},500 Q${x},430 ${x+10},500 Z" fill="orange" filter="url(#glow)" class="blink" />
+  <circle cx="${x-40}" cy="460" r="6" fill="#222" />
+  <line x1="${x-40}" y1="466" x2="${x-40}" y2="500" stroke="#222" stroke-width="4" />
+  <circle cx="${x+40}" cy="465" r="6" fill="#222" />
+  <line x1="${x+40}" y1="471" x2="${x+40}" y2="500" stroke="#222" stroke-width="4" />
+`);
+
+x = sceneX.farming;
+let fields = '';
+for(let i=0; i<6; i++) fields += `<polygon points="${x-70+i*20},500 ${x-60+i*20},460 ${x-50+i*20},500" fill="#8b8b3a" />`;
+surfaceHTML += wrapper('scene-farming', `
+  ${fields}
+  <rect x="${x+80}" y="450" width="30" height="50" fill="#8b5a2b" />
+  <polygon points="${x+75},450 ${x+95},420 ${x+115},450" fill="#6b3a1b" />
+`);
+
+x = sceneX.civ;
+surfaceHTML += wrapper('scene-civ', `
+  <rect x="${x-120}" y="495" width="240" height="10" fill="#0077be" />
+  <polygon points="${x-80},500 ${x-40},390 ${x},500" fill="#d2b48c" />
+  <rect x="${x+40}" y="430" width="50" height="70" fill="#c2a070" />
+  <rect x="${x+50}" y="400" width="30" height="30" fill="#c2a070" />
+`);
+
+x = sceneX.classical;
+surfaceHTML += wrapper('scene-classical', `
+  <rect x="${x-110}" y="430" width="12" height="70" fill="#ddd" />
+  <rect x="${x-85}" y="430" width="12" height="70" fill="#ddd" />
+  <rect x="${x-60}" y="430" width="12" height="70" fill="#ddd" />
+  <polygon points="${x-120},430 ${x-79},395 ${x-38},430" fill="#fff" />
+  <path d="M${x+20},500 L${x+20},430 A25 25 0 0 1 ${x+70},430 L${x+70},500 Z" fill="#c55" />
+  <polygon points="${x+110},500 ${x+140},420 ${x+170},500" fill="#82b" />
+  <polygon points="${x+120},440 ${x+140},390 ${x+160},440" fill="#82b" />
+`);
+
+x = sceneX.medieval;
+surfaceHTML += wrapper('scene-medieval', `
+  <rect x="${x-60}" y="380" width="120" height="120" fill="#888" />
+  <rect x="${x-70}" y="340" width="20" height="40" fill="#777" />
+  <rect x="${x+50}" y="340" width="20" height="40" fill="#777" />
+  <rect x="${x-10}" y="310" width="20" height="70" fill="#777" />
+`);
+
+x = sceneX.exploration;
+surfaceHTML += wrapper('scene-exploration', `
+  <path d="M${x-90},500 L${x+50},500 L${x+30},520 L${x-70},520 Z" fill="#5c3a21" />
+  <line x1="${x-20}" y1="500" x2="${x-20}" y2="390" stroke="#333" stroke-width="5" />
+  <polygon points="${x-20},395 ${x-20},490 ${x+40},490" fill="#fff" />
+  <polygon points="${x-20},395 ${x-20},490 ${x-80},490" fill="#eee" />
+  <rect x="${x+90}" y="440" width="50" height="60" fill="#654321" />
+`);
+
+x = sceneX.industrial;
+surfaceHTML += wrapper('scene-industrial', `
+  <rect x="${x-70}" y="380" width="90" height="120" fill="#553322" />
+  <rect x="${x-50}" y="300" width="25" height="80" fill="#442211" />
+  <rect x="${x+10}" y="340" width="25" height="40" fill="#442211" />
+  <circle cx="${x-38}" cy="290" r="18" fill="#aaa" class="smoke-particle" />
+  <circle cx="${x+22}" cy="330" r="15" fill="#aaa" class="smoke-particle" style="animation-delay:1s;" />
+  <circle cx="${x+90}" cy="450" r="30" fill="none" stroke="#333" stroke-width="6" stroke-dasharray="6,6" />
+`);
+
+x = sceneX.modern;
+surfaceHTML += wrapper('scene-modern', `
+  <g transform="translate(${x-120}, 330)">
+    <line x1="0" y1="0" x2="70" y2="0" stroke="#333" stroke-width="5" />
+    <line x1="20" y1="-20" x2="50" y2="20" stroke="#333" stroke-width="4" />
+    <rect x="30" y="-7" width="18" height="14" fill="#c00" />
+  </g>
+  <g transform="translate(${x+40}, 280)">
+    <path d="M0,0 L15,90 L50,90 L65,0 Z" fill="#eee" />
+    <polygon points="0,60 -20,90 0,90" fill="#c00" />
+    <polygon points="65,60 85,90 65,90" fill="#c00" />
+    <path d="M32,90 Q20,130 32,160 Q44,130 32,90" fill="orange" filter="url(#glow)" />
+  </g>
+  <circle cx="${x+160}" cy="180" r="45" fill="#ddd" />
+  <circle cx="${x+142}" cy="162" r="9" fill="#bbb" />
+  <circle cx="${x+175}" cy="195" r="14" fill="#bbb" />
+`);
+
+x = sceneX.digital;
+let city = '';
+for(let i=0; i<9; i++) {
+  let h = 60 + Math.random()*120;
+  let w = 35 + Math.random()*25;
+  let cx = x - 120 + i*45;
+  city += `<rect x="${cx}" y="${500-h}" width="${w}" height="${h}" fill="#081018" />`;
+  for(let r=10; r<h-10; r+=14) {
+     for(let c=6; c<w-6; c+=12) {
+        if(Math.random()>0.5) city += `<rect x="${cx+c}" y="${500-h+r}" width="5" height="5" fill="#0ff" class="blink" style="animation-delay:${rnd(0,2)}s" />`;
+     }
+  }
+}
+surfaceHTML += wrapper('scene-digital', city);
+
+const svgHTML = `
+<defs>
+  <filter id="glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="globe-clip"><circle cx="500" cy="300" r="250" /></clipPath>
+</defs>
+<rect id="sky-bg" x="-2000" y="-1000" width="10000" height="4000" fill="#050510" />
+<g id="world">
+  <g id="stars-group" opacity="1">${starsHTML}</g>
+  <g id="snow-group" opacity="0">${snowHTML}</g>
+  <g id="globe-group">
+    <circle cx="500" cy="300" r="250" fill="#ff5500" filter="url(#glow)" id="magma-core" />
+    <circle cx="500" cy="300" r="250" fill="#5c3a21" id="crust" opacity="0" />
+    <path d="M450,300 Q500,250 550,300 T650,300" fill="none" stroke="#ff5500" stroke-width="4" filter="url(#glow)" opacity="0" id="cracks" />
+    <g clip-path="url(#globe-clip)">
+      <circle cx="500" cy="300" r="250" fill="#1e5a8a" id="ocean-globe" opacity="0" />
+      <g id="cont-early" opacity="0">
+        <ellipse cx="450" cy="350" rx="35" ry="15" fill="#4a5d23" />
+        <ellipse cx="550" cy="250" rx="25" ry="12" fill="#4a5d23" />
+        <ellipse cx="480" cy="200" rx="15" ry="8" fill="#4a5d23" />
+      </g>
+      <g id="cont-pangaea" opacity="0">
+        <path d="M350,300 Q400,200 500,250 Q600,200 650,300 Q600,400 500,350 Q400,400 350,300 Z" fill="#2e5c22" />
+      </g>
+    </g>
+    <circle cx="500" cy="300" r="250" fill="#fff" id="ice-globe" opacity="0" />
+    <circle id="theia" cx="0" cy="0" r="80" fill="#ffaa00" filter="url(#glow)" />
+  </g>
+  <g id="surface-layer" opacity="0">${surfaceHTML}</g>
+</g>
+`;
+document.getElementById('stage').innerHTML = svgHTML;
+
+const track = document.getElementById('timeline-container');
+eras.forEach(era => {
+  let w = ((era.end - era.start) / TOTAL_DURATION) * 100;
+  let l = (era.start / TOTAL_DURATION) * 100;
+  track.innerHTML += `<div class="era-band" style="left:${l}%;width:${w}%;background:${era.color}"></div>`;
+  track.innerHTML += `<div class="era-label" style="left:${l + w/2}%">${era.name}</div>`;
+});
+chapters.forEach((ch) => {
+  let l = (ch.t / TOTAL_DURATION) * 100;
+  track.innerHTML += `<div class="tick" style="left:${l}%" title="${ch.title}"></div>`;
+});
+track.innerHTML += `<div id="playhead"></div>`;
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpColor(c1, c2, t) {
+  let r1 = parseInt(c1.substring(1,3), 16), g1 = parseInt(c1.substring(3,5), 16), b1 = parseInt(c1.substring(5,7), 16);
+  let r2 = parseInt(c2.substring(1,3), 16), g2 = parseInt(c2.substring(3,5), 16), b2 = parseInt(c2.substring(5,7), 16);
+  let r = Math.round(lerp(r1, r2, t)), g = Math.round(lerp(g1, g2, t)), b = Math.round(lerp(b1, b2, t));
+  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+}
+function getKey(t, keys, prop) {
+  if (t <= keys[0].t) return keys[0][prop];
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (t >= keys[i].t && t < keys[i+1].t) {
+       let lp = (t - keys[i].t) / (keys[i+1].t - keys[i].t);
+       return prop === 'color' ? lerpColor(keys[i].sky, keys[i+1].sky, lp) : lerp(keys[i][prop], keys[i+1][prop], lp);
+    }
+  }
+  return keys[keys.length - 1][prop];
+}
+function getColor(t, prop) {
+  if (t <= colorKeys[0].t) return colorKeys[0][prop];
+  for (let i = 0; i < colorKeys.length - 1; i++) {
+    if (t >= colorKeys[i].t && t < colorKeys[i+1].t) {
+       let lp = (t - colorKeys[i].t) / (colorKeys[i+1].t - colorKeys[i].t);
+       return lerpColor(colorKeys[i][prop], colorKeys[i+1][prop], lp);
+    }
+  }
+  return colorKeys[colorKeys.length - 1][prop];
+}
+
+let currentTime = 0;
+let isPlaying = true;
+let speed = 1;
+let currentChapterIndex = -1;
+let lastTime = performance.now();
+
+function update(t) {
+  let cx = getKey(t, camKeys, 'x');
+  let cy = getKey(t, camKeys, 'y');
+  let s = getKey(t, camKeys, 's');
+  document.getElementById('world').setAttribute('transform', `translate(${500 - cx*s}, ${300 - cy*s}) scale(${s})`);
+  
+  document.getElementById('sky-bg').setAttribute('fill', getColor(t, 'sky'));
+  document.getElementById('ground').setAttribute('fill', getColor(t, 'land'));
+
+  let pct = (t / TOTAL_DURATION) * 100;
+  document.getElementById('playhead').style.left = `${pct}%`;
+  
+  let idx = chapters.findIndex(c => t >= c.t && t < c.t + c.dur);
+  if (idx === -1) idx = chapters.length - 1;
+  document.getElementById('date-readout').innerText = chapters[idx].date;
+
+  if (idx !== currentChapterIndex) {
+     currentChapterIndex = idx;
+     document.getElementById('title').innerText = chapters[idx].title;
+     document.getElementById('date').innerText = chapters[idx].date;
+     document.getElementById('caption').innerText = chapters[idx].caption;
+  }
+
+  let theiaT = Math.min(1, Math.max(0, (t - 1) / 2));
+  document.getElementById('theia').setAttribute('transform', `translate(${lerp(800, 500, theiaT)}, ${lerp(50, 300, theiaT)})`);
+  document.getElementById('theia').style.opacity = t < 3 ? 1 : 0;
+  
+  document.getElementById('crust').style.opacity = Math.min(1, Math.max(0, (t - 5) / 5));
+  document.getElementById('cracks').style.opacity = Math.min(1, Math.max(0, (t - 6) / 5));
+  document.getElementById('ocean-globe').style.opacity = Math.min(1, Math.max(0, (t - 12) / 5));
+  document.getElementById('magma-core').style.opacity = Math.max(0, 1 - (t - 5) / 5);
+
+  let iceOp = 0;
+  if (t > 42 && t < 52) iceOp = t < 47 ? (t - 42)/5 : (52 - t)/5;
+  document.getElementById('ice-globe').style.opacity = iceOp;
+  document.getElementById('snow-group').style.opacity = iceOp;
+
+  document.getElementById('cont-early').style.opacity = (t > 20 && t < 65) ? 1 : 0;
+  document.getElementById('cont-pangaea').style.opacity = (t > 65) ? Math.min(1, (t-65)/5) : 0;
+
+  let cross = Math.min(1, Math.max(0, (t - 70) / 10));
+  document.getElementById('globe-group').style.opacity = 1 - cross;
+  document.getElementById('surface-layer').style.opacity = cross;
+  document.getElementById('stars-group').style.opacity = Math.max(0, 1 - t / 10);
+
+  scenes.forEach(sc => {
+     let op = (t >= sc.start && t < sc.end) ? 1 : 0;
+     if (t >= sc.start && t < sc.start + 2) op = (t - sc.start) / 2;
+     if (t > sc.end - 2 && t <= sc.end) op = (sc.end - t) / 2;
+     document.getElementById(sc.id).style.opacity = op;
+  });
+}
+
+function loop(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (isPlaying) {
+    currentTime += dt * speed;
+    if (currentTime >= TOTAL_DURATION) currentTime = 0;
+  }
+  update(currentTime);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+document.getElementById('btn-play').onclick = (e) => {
+   isPlaying = !isPlaying;
+   e.target.innerText = isPlaying ? "Pause" : "Play";
+};
+document.getElementById('btn-restart').onclick = () => { currentTime = 0; };
+document.getElementById('speed').onchange = (e) => { speed = parseFloat(e.target.value); };
+
+function jumpToNextChapter(dir) {
+  let idx = chapters.findIndex(c => currentTime >= c.t && currentTime < c.t + c.dur);
+  if (idx === -1) idx = 0;
+  let targetIdx = Math.max(0, Math.min(chapters.length - 1, idx + dir));
+  currentTime = chapters[targetIdx].t + 0.1;
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+     e.preventDefault(); document.getElementById('btn-play').click();
+  } else if (e.code === 'ArrowRight') {
+     jumpToNextChapter(1);
+  } else if (e.code === 'ArrowLeft') {
+     jumpToNextChapter(-1);
+  }
+});
+
+let dragging = false;
+function seek(e) {
+   let rect = track.getBoundingClientRect();
+   let pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+   currentTime = pct * TOTAL_DURATION;
+}
+track.addEventListener('mousedown', (e) => {
+   dragging = true; seek(e);
+});
+window.addEventListener('mousemove', (e) => { if (dragging) seek(e); });
+window.addEventListener('mouseup', () => { dragging = false; });
+</script>
+</body>
+</html>
