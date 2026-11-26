@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D Fluid Simulation — Water in a Glass Tank</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0d1117;font-family:'Segoe UI',system-ui,sans-serif;color:#e8edf4}
+  #app{position:fixed;inset:0}
+  #ui{position:fixed;top:12px;left:12px;z-index:10;width:262px;background:rgba(13,18,26,.82);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;backdrop-filter:blur(10px);box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  #ui h1{font-size:13px;letter-spacing:.08em;margin:0 0 2px;text-transform:uppercase;color:#7fd4ff}
+  #ui .sub{font-size:10px;color:#93a4b8;margin-bottom:8px}
+  .row{margin:6px 0;font-size:11px}
+  .row label{display:flex;justify-content:space-between;color:#c9d5e2;margin-bottom:2px}
+  input[type=range]{width:100%;accent-color:#4fc3f7;height:16px}
+  select,button{background:#1b2430;color:#e8edf4;border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:5px 8px;font-size:11px;cursor:pointer}
+  button:hover{background:#26334a}
+  button.active{background:#125b7a;border-color:#4fc3f7;color:#cdefff}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .small{font-size:10px;color:#9fb0c3}
+  #stats{position:fixed;right:12px;bottom:12px;z-index:10;background:rgba(13,18,26,.82);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:9px 12px;font-size:11px;backdrop-filter:blur(10px);line-height:1.6;font-variant-numeric:tabular-nums}
+  #stats b{color:#7fd4ff;font-weight:600}
+  #hide{position:fixed;top:12px;left:286px;z-index:10;background:rgba(13,18,26,.7);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#c9d5e2;padding:6px 10px;cursor:pointer;font-size:11px}
+  #loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:#0d1117;color:#7fd4ff;flex-direction:column;gap:12px}
+  .spin{width:38px;height:38px;border:3px solid rgba(127,212,255,.2);border-top-color:#4fc3f7;border-radius:50%;animation:s 1s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  #err{position:fixed;inset:0;z-index:99;display:none;align-items:center;justify-content:center;background:#0d1117;color:#f48fb1;font-size:14px;padding:30px;text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="loading"><div class="spin"></div><div>Preparing fluid simulation…</div></div>
+<div id="ui">
+  <h1>3D Fluid Benchmark</h1>
+  <div class="sub">SPH — density/pressure + projection · GPU-rendered particles</div>
+  <div class="row"><label>Scenario</label>
+    <select id="scenario">
+      <option value="dam">DAM BREAK</option>
+      <option value="doubledam">DOUBLE DAM</option>
+      <option value="drop">DROP</option>
+      <option value="faucet">FAUCET</option>
+      <option value="wave">WAVE MACHINE</option>
+    </select>
+  </div>
+  <div class="row"><label>Particles <span id="countVal"></span></label>
+    <select id="count"><option>8000</option><option selected>14000</option><option>22000</option><option>32000</option></select>
+  </div>
+  <div class="row"><label>Gravity <span id="gravVal"></span></label><input id="grav" type="range" min="2" max="22" step="0.5" value="11"></div>
+  <div class="row"><label>Viscosity <span id="viscVal"></span></label><input id="visc" type="range" min="0" max="1" step="0.05" value="0.22"></div>
+  <div class="row"><label>Time step ×<span id="dtVal"></span></label><input id="dtScale" type="range" min="0.25" max="1.6" step="0.05" value="1"></div>
+  <div class="row"><label>Tilt — pitch <span id="pitchVal"></span></label><input id="pitch" type="range" min="-50" max="50" step="1" value="14"></div>
+  <div class="row"><label>Tilt — roll <span id="rollVal"></span></label><input id="roll" type="range" min="-50" max="50" step="1" value="0"></div>
+  <div class="row grid2">
+    <button id="btnPause">Pause</button>
+    <button id="btnStep">Step</button>
+  </div>
+  <div class="row grid2">
+    <button id="btnReset">Reset</button>
+    <button id="btnFoam">Particles</button>
+  </div>
+  <div class="row"><label>Drop object</label>
+    <div class="grid2" style="margin-top:4px">
+      <button id="btnBall">Ball</button><button id="btnCrate">Crate</button><button id="btnDuck">Duck</button>
+    </div>
+  </div>
+  <div class="small">Drag in water to stir · Arrow keys tilt · wheel zooms</div>
+</div>
+<button id="hide">Hide UI</button>
+<div id="stats">fps <b id="sFps">–</b> · sim <b id="sMs">–</b> ms · <b id="sN">–</b> particles<br>density err <b id="sErr">–</b> · T+<b id="sT">0.0</b>s</div>
+<div id="err"></div>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+const TANK_W=6, TANK_H=5, TANK_D=6, WALL=0.14;
+let W,H, renderer, scene, camera, controls, clock;
+let tankGroup, damMeshL, damMeshR, waveWall;
+const state={
+  scenario:'dam', N:14000, targetN:14000, viscosity:0.22, gravity:11, dtScale:1,
+  pitch:14, roll:0, paused:false, speedMode:0, time:0, holdT:1.4,
+  densityErr:0, pos:null, vel:null, dens:null, speeds:null,
+  dams:[], damGroups:[], faucet:null, wave:{t:0}, faucetCount:0,
+};
+const objects=[]; // {mesh,r,density,vel,mass}
+let webgl2=false;
+
+try{ const t=document.createElement('canvas').getContext('webgl2'); webgl2=!!t; }catch(e){ webgl2=false; }
+if(!webgl2){
+  const e=document.getElementById('err'); e.style.display='flex';
+  e.textContent='WebGL2 is not available in this browser — the simulation requires it.';
+  throw new Error('WebGL2 missing');
+}
+
+init();
+buildScene();
+initScenario();
+requestAnimationFrame(loop);
+setTimeout(()=>{document.getElementById('loading').style.display='none';},600);
+
+function init(){
+  const app=document.getElementById('app');
+  W=innerWidth; H=innerHeight;
+  renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(W,H);
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+  app.appendChild(renderer.domElement);
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x11161d);
+  scene.fog=new THREE.Fog(0x11161d,30,70);
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+  camera=new THREE.PerspectiveCamera(42,W/H,0.1,200);
+  camera.position.set(9,6.5,10.5);
+  controls=new OrbitControls(camera,renderer.domElement);
+  controls.enableDamping=true; controls.dampingFactor=0.08;
+  controls.target.set(0,2.6,0); controls.maxPolarAngle=Math.PI*0.55; controls.minDistance=4; controls.maxDistance=30;
+  clock=new THREE.Clock();
+  addEventListener('resize',()=>{W=innerWidth;H=innerHeight;camera.aspect=W/H;camera.updateProjectionMatrix();renderer.setSize(W,H);});
+}
+
+function proceduralWood(){
+  const c=document.createElement('canvas'); c.width=512; c.height=512;
+  const g=c.getContext('2d'); g.fillStyle='#6b4a2e'; g.fillRect(0,0,512,512);
+  for(let i=0;i<70;i++){
+    const y=Math.random()*512; g.strokeStyle=`rgba(${30+Math.random()*40|0},${20+Math.random()*25|0},10,${0.15+Math.random()*0.25})`;
+    g.lineWidth=1+Math.random()*5; g.beginPath();
+    g.moveTo(0,y);
+    for(let x=0;x<=512;x+=32) g.lineTo(x,y+Math.sin(x*0.02+i)*6);
+    g.stroke();
+  }
+  const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace;
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(3,3); return tex;
+}
+
+function buildScene(){
+  const hemi=new THREE.HemisphereLight(0xdfefff,0x241d16,0.7); scene.add(hemi);
+  const key=new THREE.DirectionalLight(0xfff2e0,2.2);
+  key.position.set(6,12,7); key.castShadow=true;
+  key.shadow.mapSize.set(2048,2048);
+  key.shadow.camera.left=-10; key.shadow.camera.right=10; key.shadow.camera.top=10; key.shadow.camera.bottom=-10;
+  key.shadow.bias=-0.0005; scene.add(key);
+  const rim=new THREE.DirectionalLight(0x88bbff,0.9); rim.position.set(-8,6,-6); scene.add(rim);
+
+  const benchTex=proceduralWood();
+  const bench=new THREE.Mesh(new THREE.BoxGeometry(26,1.2,18), new THREE.MeshStandardMaterial({map:benchTex,roughness:0.55,metalness:0.05}));
+  bench.position.y=-0.6; bench.receiveShadow=true; scene.add(bench);
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(120,120), new THREE.MeshStandardMaterial({color:0x2a2f37,roughness:0.9}));
+  floor.rotation.x=-Math.PI/2; floor.position.y=-1.2; floor.receiveShadow=true; scene.add(floor);
+
+  tankGroup=new THREE.Group(); scene.add(tankGroup);
+  const innerW=TANK_W-2*WALL, innerH=TANK_H-WALL, innerD=TANK_D-2*WALL;
+  const glassMat=new THREE.MeshPhysicalMaterial({color:0xbfe3f0,metalness:0,roughness:0.04,transmission:0.92,thickness:0.06,ior:1.5,transparent:true,opacity:0.35,side:THREE.DoubleSide,envMapIntensity:1.4,depthWrite:false});
+  const mkPanel=(w,h,d)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),glassMat);
+  const bottom=mkPanel(TANK_W,WALL,TANK_D); bottom.position.y=WALL/2; tankGroup.add(bottom);
+  const north=mkPanel(TANK_W,TANK_H,WALL); north.position.set(0,TANK_H/2,TANK_D/2-WALL/2); tankGroup.add(north);
+  const south=mkPanel(TANK_W,TANK_H,WALL); south.position.set(0,TANK_H/2,-TANK_D/2+WALL/2); tankGroup.add(south);
+  const east=mkPanel(WALL,TANK_H,TANK_D); east.position.set(TANK_W/2-WALL/2,TANK_H/2,0); tankGroup.add(east);
+  const west=mkPanel(WALL,TANK_H,TANK_D); west.position.set(-TANK_W/2+WALL/2,TANK_H/2,0); tankGroup.add(west);
+  const edges=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(TANK_W,TANK_H,TANK_D)), new THREE.LineBasicMaterial({color:0x9fd8ec,transparent:true,opacity:0.85}));
+  edges.position.y=TANK_H/2; tankGroup.add(edges);
+  const chrome=new THREE.MeshStandardMaterial({color:0xd9e2ec,metalness:1,roughness:0.18});
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx,sz])=>{
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.12,TANK_H+0.35,16),chrome);
+    post.position.set(sx*(TANK_W/2),TANK_H/2,sz*(TANK_D/2)); post.castShadow=true; tankGroup.add(post);
+  });
+  // rim
+  const rim2=new THREE.Mesh(new THREE.TorusGeometry(1,0.05,10,64),chrome);
+  rim2.scale.set(TANK_W/2,TANK_D/2,1); rim2.rotation.x=Math.PI/2; rim2.position.y=TANK_H+0.03; tankGroup.add(rim2);
+
+  // dam plate
+  damMeshL=new THREE.Mesh(new THREE.PlaneGeometry(TANK_D-0.3,TANK_H-0.4), new THREE.MeshStandardMaterial({color:0xffab40,transparent:true,opacity:0.7,side:THREE.DoubleSide,emissive:0x552200}));
+  damMeshR=damMeshL.clone(); damMeshR.rotation.y=Math.PI/2; damMeshL.rotation.y=Math.PI/2;
+  tankGroup.add(damMeshL,damMeshR);
+
+  // wave wall
+  waveWall=new THREE.Mesh(new THREE.BoxGeometry(0.16,TANK_H-0.3,TANK_D-0.4), chrome.clone());
+  waveWall.material.color=new THREE.Color(0xcfd8e3); waveWall.castShadow=true;
+  tankGroup.add(waveWall);
+
+  // faucet
+  const faucet=new THREE.Group();
+  const pipe=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,1.6,20), new THREE.MeshStandardMaterial({color:0xe8ecf1,metalness:0.9,roughness:0.25}));
+  pipe.rotation.z=Math.PI/2; pipe.position.x=-0.8; faucet.add(pipe);
+  const nozzle=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.13,0.5,20), pipe.material);
+  nozzle.position.set(-1.55,-0.35,0); faucet.add(nozzle);
+  const handle=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.7,10),new THREE.MeshStandardMaterial({color:0xc62828,metalness:0.3,roughness:0.4}));
+  handle.rotation.x=Math.PI/2; handle.position.set(-0.5,0.35,0); faucet.add(handle);
+  faucet.position.set(-2.0,TANK_H+0.75,0); tankGroup.add(faucet); state.faucet=faucet;
+  faucet.visible=false;
+}
+
+// ----- particle liquid -----
+let points, pGeo, pPos, pSpeed, pDens, uTime;
+function buildLiquid(){
+  if(points){ tankGroup.remove(points); pGeo.dispose(); points.material.dispose(); }
+  pPos=new Float32Array(state.N*3);
+  pSpeed=new Float32Array(state.N);
+  pDens=new Float32Array(state.N);
+  pGeo=new THREE.BufferGeometry();
+  pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+  pGeo.setAttribute('aSpeed',new THREE.BufferAttribute(pSpeed,1));
+  pGeo.setAttribute('aDens',new THREE.BufferAttribute(pDens,1));
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{uSize:{value:1.0},uMode:{value:state.speedMode},uScale:{value:320}},
+    vertexShader:`
+      attribute float aSpeed; attribute float aDens;
+      varying float vSpeed; varying float vDens;
+      uniform float uSize; uniform float uScale; uniform float uTime;
+      void main(){
+        vSpeed=aSpeed; vDens=aDens;
+        vec4 mv=modelViewMatrix*vec4(position,1.0);
+        float s=uSize*(0.85+0.3*clamp(aDens,0.0,1.6));
+        gl_PointSize=clamp(s*uScale/-mv.z,2.0,90.0);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      varying float vSpeed; varying float vDens;
+      uniform float uMode;
+      void main(){
+        vec3 deep=vec3(0.015,0.16,0.24);
+        vec3 mid=vec3(0.05,0.45,0.62);
+        vec3 light=vec3(0.45,0.88,0.97);
+        float s=clamp(vSpeed/5.5,0.0,1.0);
+        vec3 col=(uMode<0.5)?mix(deep,mid,clamp(s*1.4,0.0,1.0)*0.85):vec3(0.95,0.25,0.15)-vec3(0.0,0.7,0.4)*s;
+        col=mix(col,light,s*0.45);
+        float foam=smoothstep(0.62,0.98,s);
+        col=mix(col,vec3(0.95,0.98,1.0),foam*0.85);
+        float d=length(gl_PointCoord-0.5);
+        if(d>0.5) discard;
+        float edge=smoothstep(0.5,0.12,d);
+        float shade=1.0-0.4*d;
+        gl_FragColor=vec4(col*shade, edge*0.93);
+      }`,
+    transparent:true, depthWrite:false});
+  points=new THREE.Points(pGeo,mat);
+  points.frustumCulled=false;
+  tankGroup.add(points);
+}
+
+function dims(){ const dx=Math.pow((TANK_W*(TANK_H)*TANK_D)/state.N,1/3); return {dx, R:2.3*dx, kappa:3/(Math.PI*Math.pow(2.3*dx,3))}; }
+
+function initScenario(){
+  const sc=state.scenario;
+  state.time=0; state.densityErr=0; objects.length=0;
+  objects.forEach(o=>tankGroup.remove(o.mesh)); objects.length=0;
+  state.dams=[]; state.damGroups=[]; state.faucetCount=0; state.paused=false; state.holdT = sc==='faucet'?1e9:1.4;
+  state.wave={t:0};
+  damMeshL.visible=false; damMeshR.visible=false; waveWall.visible=false; state.faucet.visible=false;
+  const dx=Math.pow((TANK_W*TANK_H*TANK_D)/state.N,1/3);
+  state.pos=new Float32Array(state.N*3);
+  state.vel=new Float32Array(state.N*3);
+  state.dens=new Float32Array(state.N);
+  const pos=state.pos;
+  let idx=0;
+  const place=(x,y,z)=>{ state.pos[idx*3]=x; state.pos[idx*3+1]=y; state.pos[idx*3+2]=z; state.vel[idx*3]=0; state.vel[idx*3+1]=0; state.vel[idx*3+2]=0; idx++; };
+  const innerX=TANK_W/2-WALL-dx, innerD=TANK_D/2-WALL-dx, bottom=WALL+dx, summit=TANK_H-0.15*TANK_H;
+  if(sc==='dam'){
+    state.dams.push(0.05); damMeshL.position.set(0.05,TANK_H/2,0); damMeshL.visible=true;
+    const yTop=TANK_H*0.86;
+    const per=Math.ceil(state.N/Math.floor(state.N/1));
+    let total=0; const yStep=dx;
+    for(let y=bottom+yStep*0.5;y<yTop;y+=yStep){
+      for(let z=-innerD+dx/2;z<innerD;z+=yStep){
+        for(let x=-innerX+dx/2;x<0.0;x+=yStep){ place(x,y,z); total++; if(total>=state.N) break; }
+        if(total>=state.N) break;
+      }
+      if(total>=state.N) break;
+    }
+  } else if(sc==='doubledam'){
+    state.dams.push(-1.05,1.05);
+    damMeshL.position.set(-1.05,TANK_H/2,0); damMeshL.visible=true;
+    damMeshR.position.set(1.05,TANK_H/2,0); damMeshR.visible=true; damMeshR.rotation.y=0;
+    const yTop=TANK_H*0.92;
+    let total=0; const yStep=dx;
+    outer: for(let y=bottom+yStep*0.5;y<yTop;y+=yStep){
+      for(let z=-innerD+dx/2;z<innerD;z+=yStep){
+        for(let x=-innerX+dx/2;x<innerX;x+=yStep){
+          if(Math.abs(x)<1.12) continue;
+          place(x,y,z); total++; if(total>=state.N) break outer;
+        }
+      }
+    }
+  } else if(sc==='drop'){
+    // shallow pool
+    let total=0; const yStep=dx; const halfW=innerX-dx; const yTop=0.28+dx*0.5+dx*Math.floor(0.32/dx);
+    for(let y=bottom+yStep*0.5;y<0.02+2.2;y+=yStep){
+      for(let z=-innerD+dx/2;z<innerD;z+=yStep){
+        for(let x=-halfW+dx/2;x<halfW;x+=yStep){ place(x,y,z); total++; if(total>=state.N*0.42) break; }
+        if(total>=state.N*0.42) break;
+      }
+      if(total>=state.N*0.42) break;
+    }
+    // falling droplet sphere
+    const sphereN=Math.min(state.N-Math.floor(state.N*0.42),Math.floor(state.N*0.55));
+    const R=0.9, cx=0, cy=TANK_H-0.6, cz=0;
+    let placed=0;
+    for(let dxa=-Math.floor(R/dx)+1;dxa<=Math.floor(R/dx);dxa++){
+      for(let dya=-Math.floor(R/dx)+1;dya<=Math.floor(R/dx);dya++){
+        for(let dza=-Math.floor(R/dx)+1;dza<=Math.floor(R/dx);dza++){
+          const px=dxa*dx, py=dya*dx, pz=dza*dx;
+          if(px*px+py*py+pz*pz>R*R) continue;
+          place(cx+px,cy+py,cz+pz); placed++;
+          if(placed>=sphereN) break;
+        }
+        if(placed>=sphereN) break;
+      }
+      if(placed>=sphereN) break;
+    }
+    state.vel.fill(0);
+  } else if(sc==='faucet'){
+    waveWall.visible=false; damMeshL.visible=false; damMeshR.visible=false; state.faucet.visible=true;
+    state.faucetCount=0;
+    const y=bottom+dx/2; let total=0; const yStep=dx;
+    for(let z=-innerD+dx/2;z<innerD;z+=yStep)
+      for(let x=-innerX+dx/2;x<innerX;x+=yStep){ place(x,y,z); total++; if(total>=state.N) break; }
+    state.N=total; // will grow via faucet
+    state.faucet=true; // flag
+  } else if(sc==='wave'){
+    waveWall.visible=true; damMeshL.visible=false; damMeshR.visible=false; state.faucet.visible=false;
+    let total=0; const yStep=dx;
+    for(let y=bottom+yStep*0.5;y<bottom+2.3;y+=yStep){
+      for(let z=-innerD+dx/2;z<innerD;z+=yStep){
+        for(let x=-innerX+dx/2;x<innerX;x+=yStep){ place(x,y,z); total++; if(total>=state.N) break; }
+        if(total>=state.N) break;
+      }
+      if(total>=state.N) break;
+    }
+  }
+  // trim arrays to placed count
+  const placed=idx;
+  state.pos=state.pos.slice(0,placed*3); state.vel=state.vel.slice(0,placed*3); state.dens=new Float32Array(placed);
+  state.pos.set?null:null;
+  state.N=placed;
+  buildLiquid();
+  // copy placement into attr arrays
+  pPos.set(state.pos);
+  updateAttrCount();
+}
+
+function updateAttrCount(){
+  pGeo.setDrawRange(0,state.N);
+  pGeo.attributes.position.needsUpdate=true;
+  pGeo.attributes.aSpeed.needsUpdate=true;
+  pGeo.attributes.aDens.needsUpdate=true;
+}
+
+function placeFaucetParticles(dt){
+  if(state.scenario!=='faucet') return;
+  const startIdx=state.N;
+  const maxN=Math.min(state.targetN, 6000);
+  if(state.N>=maxN) return;
+  const dx=0.28; let total=0;
+  const cx=-2.0+ -1.55? 0:0;
+  const fx=-3.55+1.55, fy=TANK_H+0.75-0.75;
+  const dropX=-3.5, dropY=TANK_H+0.55, dropZ=0;
+  const base=state.faucetCount||0;
+  let want=Math.ceil(140*dt);
+  for(let i=0;i<want;i++){
+    const px=dropX+(Math.random()-0.5)*0.18, pz=dropZ+(Math.random()-0.5)*0.18;
+    if(state.N>=maxN) break;
+    const newPos=new Float32Array((state.N+1)*3), newVel=new Float32Array((state.N+1)*3);
+    newPos.set(state.pos); newVel.set(state.vel);
+    newPos[state.N*3]=px; newPos[state.N*3+1]=dropY; newPos[state.N*3+2]=pz;
+    newVel[state.N*3+1]=-2.5; newVel[state.N*3]=0; newVel[state.N*3+2]=0;
+    state.pos=newPos; state.vel=newVel; state.N++; total++;
+  }
+  if(total>0){
+    // grow attrs
+    const newPos=pPos.slice?null:null;
+    const n=state.N;
+    const newA=new Float32Array(n*3); newA.set(state.pos);
+    const newSp=new Float32Array(n); newSp.set(pSpeed);
+    const newDe=new Float32Array(n); newDe.set(pDens);
+    pPos=newA; pSpeed=newSp; pDens=newDe;
+    pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+    pGeo.setAttribute('aSpeed',new THREE.BufferAttribute(pSpeed,1));
+    pGeo.setAttribute('aDens',new THREE.BufferAttribute(pDens,1));
+    points.geometry=pGeo;
+  }
+}
+
+// ----- physics -----
+const tmpVec=new THREE.Vector3(), qFix=new THREE.Quaternion();
+let hashHead=new Int32Array(64*64*64), hashNext=new Int32Array(0), hashKeys=new Int32Array(0);
+let cellCount=1;
+function ensureHash(){
+  const r=dims().R; const c=Math.max(4,Math.ceil(Math.max(TANK_W,TANK_H,TANK_D)/r)+2);
+  cellCount=c;
+  const total=c*c*c;
+  if(hashHead.length<total){ hashHead=new Int32Array(total); hashKeys=new Int32Array(state.N); hashNext=new Int32Array(state.N); }
+  else hashHead=hashHead.subarray(0,total);
+  hashKeys=new Int32Array(state.N); hashNext=new Int32Array(state.N);
+}
+
+function hashIndex(x,y,z,c,r){
+  const i=Math.floor((x+TANK_W/2)/r), j=Math.floor((y)/r), k=Math.floor((z+TANK_D/2)/r);
+  return (i*c+j)*c+k;
+}
+
+function stepPhysics(dt){
+  const sc=state.scenario;
+  const dx=dims().dx, R=dims().R, kappa=dims().kappa;
+  const c=Math.max(4,Math.ceil(Math.max(TANK_W,TANK_H,TANK_D)/R)+2); cellCount=c;
+  const total=c*c*c;
+  if(hashHead.length<total){ hashHead=new Int32Array(total); }
+  hashHead.fill(-1);
+  const pos=state.pos, vel=state.vel, dens=state.dens, N=state.N;
+  // gravity in tank-local coords
+  qFix.copy(tankGroup.quaternion).invert();
+  tmpVec.set(0,-state.gravity,0).applyQuaternion(qFix);
+  const gx=tmpVec.x, gy=tmpVec.y, gz=tmpVec.z;
+
+  // hash
+  for(let i=0;i<N;i++){
+    const x=pos[i*3], y=pos[i*3+1], z=pos[i*3+2];
+    const ci=Math.floor((x+TANK_W/2)/R), cj=Math.floor(y/R), ck=Math.floor((z+TANK_D/2)/R);
+    const key=(ci*c+cj)*c+ck; hashKeys[i]=key; hashNext[i]=hashHead[key]; hashHead[key]=i;
+  }
+
+  // density + pressure + viscosity
+  let densErr=0;
+  for(let i=0;i<N;i++){
+    const x=pos[i*3], y=pos[i*3+1], z=pos[i*3+2];
+    const ci=Math.floor((x+TANK_W/2)/R), cj=Math.floor(y/R), ck=Math.floor((z+TANK_D/2)/R);
+    let sumW=0, sumVW=0, sumV=0, count=0;
+    for(let a=ci-1;a<=ci+1;a++) for(let b=cj-1;b<=cj+1;b++) for(let d=ck-1;d<=ck+1;d++){
+      if(a<0||b<0||d<0||a>=c||b>=c||d>=c) continue;
+      let j=hashHead[(a*c+b)*c+d];
+      while(j>=0){
+        if(j!==i){
+          const dxa=pos[i*3]-pos[j*3], dya=pos[i*3+1]-pos[j*3+1], dza=pos[i*3+2]-pos[j*3+2];
+          const d2=dxa*dxa+dya*dya+dza*dza;
+          if(d2<R*R && d2>1e-9){
+            const d=Math.sqrt(d2); const u=d/R;
+            const w=kappa*Math.pow(1-u*u*u,3);
+            sumW+=w;
+            sumVW+=w*vel[j*3]; sumVW+=w*vel[j*3+1]; sumVW+=w*vel[j*3+2]; // placeholder removed below
+            sumV+=w; count++;
+          }
+        }
+        j=hashNext[j];
+      }
+    }
+    // proper velocity average (reuse calc cheaply)
+    let svx=0,svy=0,svz=0, sw=0;
+    for(let a=ci-1;a<=ci+1;a++) for(let b=cj-1;b<=cj+1;b++) for(let d=ck-1;d<=ck+1;d++){
+      if(a<0||b<0||d<0||a>=c||b>=c||d>=c) continue;
+      let j=hashHead[(a*c+b)*c+d];
+      while(j>=0){
+        if(j!==i){
+          const dxa=pos[i*3]-pos[j*3], dya=pos[i*3+1]-pos[j*3+1], dza=pos[i*3+2]-pos[j*3+2];
+          const d2=dxa*dxa+dya*dya+dza*dza;
+          if(d2<R*R && d2>1e-9){
+            const d=Math.sqrt(d2); const u=d/R;
+            const w=kappa*Math.pow(1-u*u*u,3);
+            sw+=w; svx+=w*vel[j*3]; svy+=w*vel[j*3+1]; svz+=w*vel[j*3+2];
+          }
+        }
+        j=hashNext[j];
+      }
+    }
+    const m=Math.pow(dx,3);
+    const rho=Math.max(0.05, m*sumW);
+    dens[i]=rho;
+    densErr+=Math.abs(rho-1);
+    // viscosity + pressure force
+    const p=Math.max(0,(rho-1)*(rho<1?0:40));
+    const inv=1/Math.max(rho,0.2);
+    let fx=0,fy=0,fz=0;
+    for(let a=ci-1;a<=ci+1;a++) for(let b=cj-1;b<=cj+1;b++) for(let d=ck-1;d<=ck+1;d++){
+      if(a<0||b<0||d<0||a>=c||b>=c||d>=c) continue;
+      let j=hashHead[(a*c+b)*c+d];
+      while(j>=0){
+        if(j!==i){
+          const rx=pos[i*3]-pos[j*3], ry=pos[i*3+1]-pos[j*3+1], rz=pos[i*3+2]-pos[j*3+2];
+          const d2=rx*rx+ry*ry+rz*rz;
+          if(d2<R*R && d2>1e-9){
+            const d=Math.sqrt(d2); const u=d/R;
+            const w=kappa*Math.pow(1-u*u*u,3);
+            const aux=Math.max(0,(dens[j]-1))*40;
+            const dir=(p+aux)/(Math.max(rho,0.2)*Math.max(dens[j],0.2));
+            const f=m*w*dir*(rx/d); let fy2=0;
+            fx+=f; fy+=m*w*dir*(ry/d); fz+=m*w*dir*(rz/d);
+          }
+        }
+        j=hashNext[j];
+      }
+    }
+    // viscosity
+    if(sw>0){
+      const vx=svx/sw - vel[i*3], vy=svy/sw - vel[i*3+1], vz=svz/sw - vel[i*3+2];
+      const k=state.viscosity*2.2;
+      vel[i*3]+=dt*(-k*(vel[i*3])*0.35 + k*(svx/sw - vel[i*3]));
+      vel[i*3+1]+=dt*(-k*(vel[i*3+1])*0.35 + k*(svy/sw - vel[i*3+1]));
+      vel[i*3+2]+=dt*(-k*(vel[i*3+2])*0.35 + k*(svz/sw - vel[i*3+2]));
+    }
+    // pressure/gradient velocity smoothing
+    const damp=0.995;
+    vel[i*3]=vel[i*3]*damp + dt*(fx + gx);
+    vel[i*3+1]=vel[i*3+1]*damp + dt*(fy + gy);
+    vel[i*3+2]=vel[i*3+2]*damp + dt*(fz + gz);
+  }
+  state.densityErr=densErr/Math.max(1,N);
+
+  // walls & dams
+  const halfX=TANK_W/2-WALL-dx*0.5, topY=TANK_H-dx*0.5, halfD=TANK_D/2-WALL-dx*0.5;
+  const hold=state.time<state.holdT;
+  for(let i=0;i<N;i++){
+    let x=pos[i*3], y=pos[i*3+1], z=pos[i*3+2];
+    // dams
+    if(hold){
+      for(const dX of state.dams){
+        if(state.scenario==='doubledam'){
+          if(dX<0 && x>dX){ x=dX - 0.02; vel[i*3]=Math.min(vel[i*3],0); }
+          else if(dX>0 && x<dX){ x=dX + 0.02; vel[i*3]=Math.max(vel[i*3],0); }
+        } else if(state.scenario==='dam'){
+          if(x>dX){ x=dX - 0.02; vel[i*3]=Math.min(vel[i*3],0); }
+        }
+      }
+    }
+    // wave wall
+    if(state.scenario==='wave'){
+      const wl=state.waveX ?? (-halfX+0.6);
+      if(x<wl+dx*0.5){ x=wl+dx*0.5; vel[i*3]=Math.abs(vel[i*3])*0.35; }
+    }
+    // bounds
+    if(x< -TANK_W/2+WALL+dx*0.5){ x=-TANK_W/2+WALL+dx*0.5; vel[i*3]=Math.abs(vel[i*3])*0.3; }
+    if(x>  TANK_W/2-WALL-dx*0.5){ x= TANK_W/2-WALL-dx*0.5; vel[i*3]=-Math.abs(vel[i*3])*0.3; }
+    if(z<-TANK_D/2+WALL+dx*0.5){ z=-TANK_D/2+WALL+dx*0.5; vel[i*3+2]=Math.abs(vel[i*3+2])*0.3; }
+    if(z> TANK_D/2-WALL-dx*0.5){ z= TANK_D/2-WALL-dx*0.5; vel[i*3+2]=-Math.abs(vel[i*3+2])*0.3; }
+    if(y< WALL+dx*0.5){ y=WALL+dx*0.5; vel[i*3+1]=Math.abs(vel[i*3+1])*0.35; }
+    if(y> TANK_H-dx*0.5){ y=TANK_H-dx*0.5; vel[i*3+1]=-Math.abs(vel[i*3+1])*0.3; }
+    pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+  }
+
+  // object collisions
+  for(const ob of objects){
+    const ox=ob.mesh.position.x, oy=ob.mesh.position.y, oz=ob.mesh.position.z;
+    const r=ob.r+dx*0.5;
+    // object gravity & buoyancy
+    let inside=0; const full=0.9*r*r*r*Math.PI*0.9*(Math.pow(dx,3)/ (dx*dx*dx)); // placeholder
+    let count=0;
+    for(let i=0;i<N;i++){
+      const dxa=pos[i*3]-ox, dya=pos[i*3+1]-oy, dza=pos[i*3+2]-oz;
+      const d2=dxa*dxa+dya*dya+dza*dza;
+      if(d2<r*r) count++;
+      if(d2<(r+dx)*(r+dx)){
+        // push out
+        const d=Math.sqrt(d2)||0.001;
+        const push=(r-d)/d;
+        pos[i*3]+=dxa*push; pos[i*3+1]+=dya*push; pos[i*3+2]+=dza*push;
+        const pv=vel[i*3]*dxa+vel[i*3+1]*dya+vel[i*3+2]*dza;
+        if(pv>0){ vel[i*3]-=pv*dxa/d; vel[i*3+1]-=pv*dya/d; vel[i*3+2]-=pv*dza/d; }
+      }
+    }
+    const expected=4*Math.PI*r*r*r*0.92/(dx*dx*dx)*1.9;
+    const sub=Math.min(1,Math.max(0,count/expected));
+    const mass=ob.density*4/3*Math.PI*r*r*r;
+    const buoy=1.05*sub*4/3*Math.PI*r*r*r;
+    const net=(mass-buoy)*state.gravity;
+    ob.vel.y-=dt*net*0.06;
+    ob.vel.y*=0.985;
+    ob.mesh.position.x+=ob.vel.x*dt; ob.mesh.position.y+=ob.vel.y*dt; ob.mesh.position.z+=ob.vel.z*dt;
+    // keep inside tank
+    const px=ob.mesh.position.x,py=ob.mesh.position.y,pz=ob.mesh.position.z;
+    const halfOI=TANK_W/2-WALL-ob.r;
+    if(px<-halfOI){ob.mesh.position.x=-halfOI;ob.vel.x*=-0.4;}
+    if(px>halfOI){ob.mesh.position.x=halfOI;ob.vel.x*=-0.4;}
+    if(pz<-halfOI){ob.mesh.position.z=-halfOI;ob.vel.z*=-0.4;}
+    if(pz>halfOI){ob.mesh.position.z=halfOI;ob.vel.z*=-0.4;}
+    const minY=WALL+ob.r;
+    if(py<minY){ob.mesh.position.y=minY;ob.vel.y=Math.abs(ob.vel.y)*0.35;}
+    if(py>TANK_H+0.5){ob.mesh.position.y=TANK_H+0.5;}
+    ob.vel.x*=0.99; ob.vel.z*=0.99;
+  }
+
+  // position projection (2 iterations)
+  const dxx=dx*1.02;
+  // re-hash for projection
+  ensureHash2();
+  for(let it=0;it<2;it++){
+    const ph=hashHead.slice?null:null;
+    // re-build hash
+    const c2=cellCount; const tot=c2*c2*c2;
+    hashHead.fill(-1);
+    for(let i=0;i<N;i++){
+      const ci=Math.floor((pos[i*3]+TANK_W/2)/R), cj=Math.floor(pos[i*3+1]/R), ck=Math.floor((pos[i*3+2]+TANK_D/2)/R);
+      const key=(ci*c2+cj)*c2+ck; hashKeys[i]=key; hashNext[i]=hashHead[key]; hashHead[key]=i;
+    }
+    const push=new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const ci=Math.floor((pos[i*3]+TANK_W/2)/R), cj=Math.floor(pos[i*3+1]/R), ck=Math.floor((pos[i*3+2]+TANK_D/2)/R);
+      for(let a=Math.max(0,ci-1);a<=Math.min(c2-1,ci+1);a++)for(let b=Math.max(0,cj-1);b<=Math.min(c2-1,cj+1);b++)for(let d=Math.max(0,ck-1);d<=Math.min(c2-1,ck+1);d++){
+        let j=hashHead[(a*c2+b)*c2+d];
+        while(j>=0){
+          if(j!==i){
+            const rx=pos[i*3]-pos[j*3], ry=pos[i*3+1]-pos[j*3+1], rz=pos[i*3+2]-pos[j*3+2];
+            const d2=rx*rx+ry*ry+rz*rz;
+            if(d2<dxx*dxx && d2>1e-9){
+              const d=Math.sqrt(d2); const diff=(dxx-d)/d/2*0.5;
+              push[i*3]+=rx*diff; push[i*3+1]+=ry*diff; push[i*3+2]+=rz*diff;
+            }
+          }
+          j=hashNext[j];
+        }
+      }
+    }
+    for(let i=0;i<N;i++){ pos[i*3]+=push[i*3]; pos[i*3+1]+=push[i*3+1]; pos[i*3+2]+=push[i*3+2]; }
+  }
+
+  // integrate
+  for(let i=0;i<N;i++){
+    pos[i*3]+=vel[i*3]*dt; pos[i*3+1]+=vel[i*3+1]*dt; pos[i*3+2]+=vel[i*3+2]*dt;
+  }
+  // final bounds clamp
+  for(let i=0;i<N;i++){
+    let x=pos[i*3], y=pos[i*3+1], z=pos[i*3+2];
+    if(x<WALL+dx*0.5){x=WALL+dx*0.5;vel[i*3]=Math.abs(vel[i*3])*0.2;}
+    if(x>TANK_W-WALL-dx*0.5){x=TANK_W-WALL-dx*0.5;vel[i*3]=-Math.abs(vel[i*3])*0.2;}
+    if(z<WALL+dx*0.5){z=WALL+dx*0.5;vel[i*3+2]=Math.abs(vel[i*3+2])*0.2;}
+    if(z>TANK_D-WALL-dx*0.5){z=TANK_D-WALL-dx*0.5;vel[i*3+2]=-Math.abs(vel[i*3+2])*0.2;}
+    if(y<WALL+dx*0.5){y=WALL+dx*0.5;vel[i*3+1]=Math.abs(vel[i*3+1])*0.25;}
+    if(y>TANK_H-dx*0.5){y=TANK_H-dx*0.5;vel[i*3+1]=-Math.abs(vel[i*3+1])*0.2;}
+    pos[i*3]=x;pos[i*3+1]=y;pos[i*3+2]=z;
+    const sp=Math.hypot(vel[i*3],vel[i*3+1],vel[i*3+2]);
+    pSpeed[i]=sp; pDens[i]=dens[i];
+  }
+  // update attrs
+  pPos.set(state.pos);
+  pGeo.setDrawRange(0,N);
+  pGeo.attributes.position.needsUpdate=true;
+  pGeo.attributes.aSpeed.needsUpdate=true;
+  pGeo.attributes.aDens.needsUpdate=true;
+}
+function ensureHash2(){}
+
+// view sync
+function syncGroup(){
+  tankGroup.rotation.set(THREE.MathUtils.degToRad(state.pitch),0,THREE.MathUtils.degToRad(state.roll),'XYZ');
+}
+
+// ----- scene objects -----
+function spawnObject(kind){
+  const halfX=TANK_W/2-WALL;
+  let mesh, r, density;
+  if(kind==='ball'){
+    r=0.5; density=0.62;
+    mesh=new THREE.Mesh(new THREE.SphereGeometry(r,32,24), new THREE.MeshStandardMaterial({color:0x1f6feb,roughness:0.25,metalness:0.15,envMapIntensity:0.9}));
+    mesh.position.set((Math.random()-0.5)*3, TANK_H+1.2, (Math.random()-0.5)*3);
+  } else if(kind==='crate'){
+    r=0.62; density=0.75;
+    mesh=new THREE.Mesh(new RoundedBoxGeometry(1.15,1.15,1.15,4,0.14), new THREE.MeshStandardMaterial({color:0xb9793f,roughness:0.75,metalness:0.05}));
+    mesh.position.set((Math.random()-0.5)*2.5, TANK_H+1.4, (Math.random()-0.5)*2.5);
+  } else {
+    r=0.72; density=0.35;
+    mesh=makeDuck();
+    mesh.position.set((Math.random()-0.5)*2.5, TANK_H+1.6, (Math.random()-0.5)*2.5);
+  }
+  mesh.castShadow=true;
+  tankGroup.add(mesh);
+  objects.push({mesh, r, density, vel:new THREE.Vector3(0,0,0)});
+}
+function makeDuck(){
+  const g=new THREE.Group();
+  const yellow=new THREE.MeshStandardMaterial({color:0xffd23f,roughness:0.45,metalness:0.02});
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.52,28,20),yellow); body.scale.set(1.25,0.85,0.9); g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.34,24,18),yellow); head.position.set(0.42,0.5,0); g.add(head);
+  const beak=new THREE.Mesh(new THREE.ConeGeometry(0.16,0.34,14), new THREE.MeshStandardMaterial({color:0xff8c1a,roughness:0.5}));
+  beak.rotation.z=-Math.PI/2; beak.position.set(0.82,0.48,0); g.add(beak);
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.4,12),yellow);
+  tail.rotation.z=Math.PI/2+0.5; tail.position.set(-0.68,0.18,0); g.add(tail);
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(0.055,10,8), new THREE.MeshStandardMaterial({color:0x202020}));
+  eye.position.set(0.52,0.62,0.24); g.add(eye);
+  const eye2=eye.clone(); eye2.position.z=-0.24; g.add(eye2);
+  return g;
+}
+
+// ----- stir interaction -----
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+let stirring=false; let stirPoint=new THREE.Vector3();
+function onPointerDown(e){ stirring=true; updatePointer(e); applyStir(); }
+function onPointerMove(e){ if(stirring){ updatePointer(e); applyStir(); } }
+function onPointerUp(){ stirring=false; }
+function updatePointer(e){ pointer.x=(e.clientX/innerWidth)*2-1; pointer.y=-(e.clientY/innerHeight)*2+1; }
+function applyStir(){
+  // raycast into water volume: find tank-local point
+  raycaster.setFromCamera(pointer,camera);
+  // approximate intersect with tank box (local space)
+  const invQ=tankGroup.quaternion.clone().invert();
+  let best=null,bestD=1e9;
+  const ro=raycaster.ray.origin, rd=raycaster.ray.direction;
+  // slab intersection with local box [-hx,hx]x[0,H]x[-hz,hz]
+  // transform ray into local
+  const roLocal=ro.clone().sub(tankGroup.position).applyQuaternion(invQ);
+  const rdLocal=rd.clone().applyQuaternion(invQ);
+  // simple iterative point sampling
+  for(let t=0;t<60;t++){
+    const p=roLocal.clone().addScaledVector(rdLocal,t*0.15);
+    if(p.x>-TANK_W/2 && p.x<TANK_W/2 && p.y>0 && p.y<TANK_H && p.z>-TANK_D/2 && p.z<TANK_D/2){
+      best=p; break;
+    }
+  }
+  if(!best) return;
+  stirPoint.copy(best);
+  const r=1.4, r2=r*r;
+  const pos=state.pos, vel=state.vel, N=state.N;
+  const center=new THREE.Vector3(stirPoint.x,Math.min(stirPoint.y,TANK_H-0.3),stirPoint.z);
+  for(let i=0;i<N;i++){
+    const dxa=pos[i*3]-center.x, dya=pos[i*3+1]-center.y, dza=pos[i*3+2]-center.z;
+    const d2=dxa*dxa+dya*dya+dza*dza;
+    if(d2<r2){
+      const d=Math.sqrt(d2)||0.001;
+      const f=(1-d/r)*46;
+      vel[i*3]+=dxa/d*f; vel[i*3+1]+=dya/d*f*0.8+3.0*(1-d/r); vel[i*3+2]+=dza/d*f;
+    }
+  }
+}
+renderer.domElement.addEventListener('pointerdown',onPointerDown);
+renderer.domElement.addEventListener('pointermove',onPointerMove);
+addEventListener('pointerup',onPointerUp);
+
+// ----- UI -----
+const $=id=>document.getElementById(id);
+$('scenario').addEventListener('change',e=>{state.scenario=e.target.value;initScenario();});
+$('count').addEventListener('change',e=>{state.targetN=parseInt(e.target.value);state.N=state.targetN;initScenario();});
+$('grav').addEventListener('input',e=>{state.gravity=parseFloat(e.target.value);$('gravVal').textContent=state.gravity.toFixed(1);});
+$('visc').addEventListener('input',e=>{state.viscosity=parseFloat(e.target.value);$('viscVal').textContent=state.viscosity.toFixed(2);});
+$('dtScale').addEventListener('input',e=>{state.dtScale=parseFloat(e.target.value);$('dtVal').textContent=state.dtScale.toFixed(2);});
+$('pitch').addEventListener('input',e=>{state.pitch=parseFloat(e.target.value);$('pitchVal').textContent=state.pitch.toFixed(0)+'°';});
+$('roll').addEventListener('input',e=>{state.roll=parseFloat(e.target.value);$('rollVal').textContent=state.roll.toFixed(0)+'°';});
+$('btnPause').addEventListener('click',()=>{state.paused=!state.paused;$('btnPause').textContent=state.paused?'Resume':'Pause';$('btnPause').classList.toggle('active',state.paused);});
+$('btnStep').addEventListener('click',()=>{stepOnce();});
+$('btnReset').addEventListener('click',()=>{initScenario();});
+$('btnFoam').addEventListener('click',()=>{state.speedMode=state.speedMode?0:1;$('btnFoam').textContent=state.speedMode?'Liquid':'Particles';$('btnFoam').classList.toggle('active',!!state.speedMode);if(points)points.material.uniforms.uMode.value=state.speedMode;});
+$('btnBall').addEventListener('click',()=>spawnObject('ball'));
+$('btnCrate').addEventListener('click',()=>spawnObject('crate'));
+$('btnDuck').addEventListener('click',()=>spawnObject('duck'));
+$('hide').addEventListener('click',()=>{
+  const ui=$('ui'); const h=ui.style.display==='none';
+  ui.style.display=h?'block':'none';
+  $('hide').textContent=h?'Hide UI':'Show UI';
+});
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowUp'){state.pitch=Math.min(50,state.pitch+4);$('pitch').value=state.pitch;$('pitchVal').textContent=state.pitch.toFixed(0)+'°';}
+  if(e.key==='ArrowDown'){state.pitch=Math.max(-50,state.pitch-4);$('pitch').value=state.pitch;$('pitchVal').textContent=state.pitch.toFixed(0)+'°';}
+  if(e.key==='ArrowLeft'){state.roll=Math.min(50,state.roll+4);$('roll').value=state.roll;$('rollVal').textContent=state.roll.toFixed(0)+'°';}
+  if(e.key==='ArrowRight'){state.roll=Math.max(-50,state.roll-4);$('roll').value=state.roll;$('rollVal').textContent=state.roll.toFixed(0)+'°';}
+  if(e.key===' '){e.preventDefault();$('btnPause').click();}
+});
+$('gravVal').textContent=state.gravity.toFixed(1);
+$('viscVal').textContent=state.viscosity.toFixed(2);
+$('dtVal').textContent=state.dtScale.toFixed(2);
+$('pitchVal').textContent=state.pitch.toFixed(0)+'°';
+$('rollVal').textContent=state.roll.toFixed(0)+'°';
+$('countVal').textContent=state.N.toLocaleString();
+
+function stepOnce(){
+  const dt=(1/60)*state.dtScale;
+  const sub=2;
+  for(let i=0;i<sub;i++) stepPhysics(dt/sub);
+  syncGroup();
+  if(state.scenario==='faucet') placeFaucetParticles(dt);
+}
+
+let fpsCount=0, fpsTime=0, simMs=0;
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),0.05);
+  const t0=performance.now();
+  // dam hold / faucet / wave wall
+  state.time+=dt;
+  const hold=state.time<state.holdT;
+  damMeshL.visible=hold && state.dams.includes(-1.05);
+  damMeshR.visible=hold && state.dams.includes(1.05);
+  if(state.scenario==='dam') damMeshL.visible=hold;
+  if(state.scenario==='doubledam'){ damMeshL.visible=hold; damMeshR.visible=hold; damMeshR.rotation.y=0; damMeshL.rotation.y=0;}
+  // dam positions
+  if(state.scenario==='dam') damMeshL.position.set(0.05,TANK_H/2,0);
+  if(state.scenario==='doubledam'){ damMeshL.position.set(-1.05,TANK_H/2,0); damMeshR.position.set(1.05,TANK_H/2,0); }
+  if(state.scenario==='wave'){
+    const wt=Math.sin(state.time*1.5)*0.5+0.5;
+    const x=-(TANK_W/2-WALL)+0.5+wt*1.1;
+    waveWall.position.set(x,TANK_H/2,0);
+    state.waveX=x;
+    damMeshL.visible=false; damMeshR.visible=false;
+  } else state.waveX=null;
+  if(state.scenario==='faucet' && !state.paused) placeFaucetParticles(dt);
+
+  syncGroup();
+
+  if(!state.paused){
+    const sub=2, dtSub=(1/60)*state.dtScale/sub;
+    for(let i=0;i<sub;i++) stepPhysics(dtSub);
+    state.time+=0; // already advanced
+  }
+  simMs=performance.now()-t0;
+
+  // water surface brightness flicker (foam) — no extra work
+
+  fpsCount++; fpsTime+=dt;
+  if(fpsTime>=0.5){
+    const fps=Math.round(fpsCount/fpsTime);
+    $('sFps').textContent=fps;
+    $('sMs').textContent=simMs.toFixed(1);
+    $('sN').textContent=state.N.toLocaleString();
+    $('sErr').textContent=(state.densityErr*100).toFixed(1)+'%';
+    $('sT').textContent=state.time.toFixed(1);
+    fpsCount=0; fpsTime=0;
+  }
+
+  controls.update();
+  renderer.render(scene,camera);
+}
+</script>
+</body>
+</html>
