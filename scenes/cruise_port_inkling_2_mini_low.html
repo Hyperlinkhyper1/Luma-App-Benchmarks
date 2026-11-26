@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Lisbon Cruise Terminal — 3D Benchmark</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#08111c;font-family:"Segoe UI",system-ui,Arial,sans-serif;color:#eef6ff}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  #loading{position:fixed;inset:0;background:#08111c;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:50;transition:opacity .7s}
+  #loading .ring{width:54px;height:54px;border-radius:50%;border:5px solid rgba(255,255,255,.16);border-top-color:#ffd27a;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loading b{font-size:20px;letter-spacing:.14em}
+  #loading span{opacity:.75;font-size:12px}
+  #hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:10px;pointer-events:none;z-index:20}
+  .panel{pointer-events:auto;background:rgba(10,18,30,.66);backdrop-filter:blur(9px);border:1px solid rgba(255,255,255,.14);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.35);padding:10px}
+  #left{max-width:360px}
+  #brand{font-size:12px;letter-spacing:.16em;font-weight:700;color:#ffd27a;margin:0 0 6px}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  button{pointer-events:auto;cursor:pointer;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#eaf4ff;border-radius:9px;padding:7px 10px;font-size:11px;font-weight:650;letter-spacing:.03em;transition:.18s}
+  button:hover{background:rgba(255,210,122,.22);border-color:#ffd27a;color:#fff}
+  button.active{background:#ffd27a;color:#23160a;border-color:#ffd27a}
+  button.danger{background:rgba(255,95,95,.18);border-color:rgba(255,120,120,.4);color:#ffd3d3}
+  input[type=range]{width:170px;accent-color:#ffd27a}
+  .small{font-size:10px;opacity:.78;line-height:1.35}
+  #right{min-width:230px;text-align:right}
+  #state{font-size:11px;color:#bfe9ff}
+  #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(0,0,0,.65);border:1px solid rgba(255,210,122,.35);color:#ffe8b3;border-radius:999px;padding:8px 16px;font-size:12px;z-index:25;opacity:0;transition:opacity .35s;pointer-events:none}
+  #toast.show{opacity:1}
+  #help{position:fixed;right:12px;bottom:12px;font-size:10px;opacity:.75;pointer-events:none;text-shadow:0 1px 2px #000}
+  #err{position:fixed;inset:0;background:#160b0b;color:#ffe2e2;display:none;align-items:center;justify-content:center;z-index:99;padding:30px;text-align:center;line-height:1.5}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="loading"><div class="ring"></div><b>LISBOA · CRUISE TERMINAL</b><span>Composing ship, Alfama and the Tagus…</span></div>
+<div id="hud">
+  <div class="panel" id="left">
+    <div id="brand">SANTA APOLÓNIA · LISBON</div>
+    <div class="small">3D cruise-port benchmark · procedural Three.js</div>
+    <div class="row">
+      <button data-cam="miradouro" class="active">Miradouro</button>
+      <button data-cam="waterfront">Waterfront</button>
+      <button data-cam="aerial">Aerial</button>
+      <button data-cam="river">From the River</button>
+      <button data-cam="deck">Ship’s Deck</button>
+    </div>
+    <div class="row">
+      <button id="walk">Walk the quay</button>
+      <button id="timeToggle">Pause time</button>
+      <button id="weatherBtn">Clear</button>
+    </div>
+    <div class="row"><input id="time" type="range" min="0" max="24" step="0.05" value="17.2"><span class="small" id="timeLabel">17:12</span></div>
+    <div class="row"><button id="depart" class="danger">Depart</button><button id="returnBtn">Return to berth</button><button id="hideHud">Hide UI</button></div>
+  </div>
+  <div class="panel" id="right">
+    <div id="state">MRV · Mooring secured</div>
+    <div class="small" style="margin-top:6px">Tip: click canvas to orbit · scroll to zoom · WASD in walk mode</div>
+    <div class="small" style="margin-top:6px">Golden hour is the signature light. Night ships glow.</div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="help">MIRADOURO · WATERFRONT · AERIAL · RIVER · DECK</div>
+<div id="err"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { Water } from 'three/addons/objects/Water.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+const app=document.getElementById('app'), loading=document.getElementById('loading'), err=document.getElementById('err');
+try{ init(); }catch(e){ console.error(e); err.style.display='flex'; err.innerHTML='<div><h1>WebGL unavailable</h1><p>This scene needs WebGL. Please try a modern browser with hardware acceleration enabled.</p></div>'; }
+
+function init(){
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x86a9c4);
+  const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.5,4000);
+  camera.position.set(-180,95,-260);
+  const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.12;
+  app.appendChild(renderer.domElement);
+
+  const clock=new THREE.Clock();
+  const sunDir=new THREE.Vector3();
+  const hemi=new THREE.HemisphereLight(0xbfd7ff,0x3a2a1e,1.0); scene.add(hemi);
+  const sun=new THREE.DirectionalLight(0xffd9a0,2.3); sun.position.set(-250,180,-80); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.left=-450; sun.shadow.camera.right=450; sun.shadow.camera.top=350; sun.shadow.camera.bottom=-350; sun.shadow.camera.far=1200; sun.shadow.bias=-0.00035; scene.add(sun);
+  const amb=new THREE.AmbientLight(0x223044,.35); scene.add(amb);
+
+  // Sky
+  const sky=new Sky(); sky.scale.setScalar(8000); scene.add(sky);
+  const skyU=sky.material.uniforms; skyU.turbidity.value=6.5; skyU.rayleigh.value=2.1; skyU.mieCoefficient.value=.006; skyU.mieDirectionalG.value=.78;
+
+  // Water — procedural normal map
+  const size=256, data=new Uint8Array(size*size*4);
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const i=(y*size+x)*4; const n=Math.sin(x*.19)*Math.cos(y*.17)+Math.sin((x+y)*.05)*.5;
+    data[i]=128+n*70; data[i+1]=128+Math.cos(x*.13)*35; data[i+2]=180+Math.sin(y*.12)*35; data[i+3]=255;
+  }
+  const normalTex=new THREE.DataTexture(data,size,size); normalTex.wrapS=normalTex.wrapT=THREE.RepeatWrapping; normalTex.repeat.set(26,26); normalTex.needsUpdate=true; normalTex.minFilter=THREE.LinearFilter;
+  const water=new Water(new THREE.PlaneGeometry(5200,1700,1,1),{textureWidth:512,textureHeight:512,waterNormals:normalTex,sunDirection:sunDir,sunColor:0xffe0b0,waterColor:0x0f3a50,eye:new THREE.Vector3(),distortionScale:2.4,size:9});
+  water.rotation.x=-Math.PI/2; water.position.set(-100,0,220); scene.add(water);
+
+  // Materials
+  const M={
+    hull:new THREE.MeshStandardMaterial({color:0xf5f7f2,roughness:.34,metalness:.12}),
+    hullDark:new THREE.MeshStandardMaterial({color:0x102538,roughness:.55,metalness:.05}),
+    boot:new THREE.MeshStandardMaterial({color:0xc82f3a,roughness:.45}),
+    white:new THREE.MeshStandardMaterial({color:0xf3f6fb,roughness:.5,metalness:.05}),
+    glass:new THREE.MeshStandardMaterial({color:0x173247,roughness:.12,metalness:.75,emissive:0x0a1a28,emissiveIntensity:.2}),
+    deck:new THREE.MeshStandardMaterial({color:0x8fa0ad,roughness:.8}),
+    wood:new THREE.MeshStandardMaterial({color:0x9a6a3c,roughness:.75}),
+    orange:new THREE.MeshStandardMaterial({color:0xff7a1f,roughness:.65}),
+    coral:new THREE.MeshStandardMaterial({color:0xff8a54,roughness:.7}),
+    teal:new THREE.MeshStandardMaterial({color:0x2fa39a,roughness:.55}),
+    yellow:new THREE.MeshStandardMaterial({color:0xf4b83c,roughness:.55}),
+    red:new THREE.MeshStandardMaterial({color:0xb43a32,roughness:.5}),
+    castle:new THREE.MeshStandardMaterial({color:0xb99a72,roughness:.95}),
+    stone:new THREE.MeshStandardMaterial({color:0xcdbb9d,roughness:.9}),
+    roof:new THREE.MeshStandardMaterial({color:0xb9643a,roughness:.95}),
+    roof2:new THREE.MeshStandardMaterial({color:0xc9854d,roughness:.95}),
+    quo:new THREE.MeshStandardMaterial({color:0x6f7a82,roughness:.9}),
+    road:new THREE.MeshStandardMaterial({color:0x3a3f45,roughness:.92}),
+    grass:new THREE.MeshStandardMaterial({color:0x315a34,roughness:1}),
+    dark:new THREE.MeshStandardMaterial({color:0x22262b,roughness:.7}),
+    light:new THREE.MeshStandardMaterial({color:0xfff2c6,emissive:0xffd36a,emissiveIntensity:1.35,roughness:.3}),
+    statue:new THREE.MeshStandardMaterial({color:0x3e2d24,roughness:.75})
+  };
+  const pastels=[0xf7e9d2,0xf2c9a8,0xf5d7c5,0xe9f0e8,0xfdeec9,0xeadad0,0xffffff,0xf4d3c0];
+  const azulejo=new THREE.MeshStandardMaterial({color:0xdfeef2,roughness:.35,metalness:.05,emissive:0x0a1820,emissiveIntensity:.05});
+
+  function box(w,h,d,mat,x=0,y=0,z=0,cast=true){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;return m;}
+  function cyl(r,h,mat,x=0,y=0,z=0,seg=24){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;return m;}
+  function textPlane(txt,w,h,bg,fg,font=90){const c=document.createElement('canvas');c.width=512;c.height=Math.max(2,Math.round(512*h/w));const g=c.getContext('2d');g.fillStyle=bg;g.fillRect(0,0,c.width,c.height);g.fillStyle=fg;g.font=`700 ${font}px Georgia,serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(txt,c.width/2,c.height/2);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t,transparent:true,side:THREE.DoubleSide}));}
+
+  // ---------- Geography ----------
+  const world=new THREE.Group(); scene.add(world);
+  // North bank ground and hillside
+  const bankGeo=new THREE.PlaneGeometry(5200,260,64,24);
+  const pos=bankGeo.attributes.position;
+  for(let i=0;i<pos.count;i++){const x=pos.getX(i),y=pos.getY(i);const depth=-y; // y negative = far behind
+    let z=y;let hgt=0;
+    const hill=THREE.MathUtils.smoothstep(-(z),60,190);
+    if(z<-45) hgt=hill*46;
+    pos.setY(i,0); // keep planar XZ via rotate below
+    pos.setZ(i,hgt*1.0);
+  }
+  bankGeo.rotateX(-Math.PI/2); bankGeo.computeVertexNormals();
+  const bank=new THREE.Mesh(bankGeo,new THREE.MeshStandardMaterial({color:0x43513f,roughness:1,vertexColors:false})); bank.position.set(0,0,-130); bank.receiveShadow=true; world.add(bank);
+  // Actually simpler bank fallback:
+  // (kept above for hillside profile)
+
+  const quay=box(2400,2.4,34,M.quo,0,1.2,-6); quay.receiveShadow=true; world.add(quay);
+  const quayEdge=box(2400,1.2,3,new THREE.MeshStandardMaterial({color:0x8a8f88,roughness:.9}),0,2.45,10.5); world.add(quayEdge);
+  // roadway behind terminal
+  const road=box(2400,.35,9,M.road,0,2.6,-27,false); world.add(road);
+  // south bank low strip
+  const south=box(2600,3,90,new THREE.MeshStandardMaterial({color:0x585c48,roughness:1}),-350,1.2,300,false); world.add(south);
+  const southRoad=box(2600,.2,8,M.road,-350,3.0,250,false); world.add(southRoad);
+
+  // ---------- Alfama houses (instanced-ish) ----------
+  const houseGeo=new RoundedBoxGeometry(7.5,8,7.5,2,1.1);
+  const roofGeo=new THREE.ConeGeometry(6.0,4.2,4); roofGeo.rotateY(Math.PI/4);
+  const houseGroup=new THREE.Group(); world.add(houseGroup);
+  const housePositions=[];
+  for(let i=0;i<150;i++){
+    const x=-330+Math.random()*620; const z=-55-Math.random()*130;
+    const hill=THREE.MathUtils.clamp((-z-45)/140,0,1);
+    const y=hill*44+2.2;
+    if(z>-60&&x<-180) continue; // leave plaza/praça open
+    housePositions.push({x,y,z,r:-.06+Math.random()*.12});
+  }
+  const houseMesh=new THREE.InstancedMesh(houseGeo,new THREE.MeshStandardMaterial({color:0xffffff,roughness:.85}),housePositions.length);
+  const roofMesh=new THREE.InstancedMesh(roofGeo,new THREE.MeshStandardMaterial({color:0xb9643a,roughness:.95}),housePositions.length);
+  const dummy=new THREE.Object3D(); const col=new THREE.Color();
+  housePositions.forEach((h,i)=>{
+    dummy.position.set(h.x,h.y+3.2,h.z); dummy.rotation.set(0,h.r,0); dummy.scale.set(.8+Math.random()*.7,1+Math.random()*1.7,.8+Math.random()*.6); dummy.updateMatrix();
+    houseMesh.setMatrixAt(i,dummy.matrix); col.setHex(pastels[i%pastels.length]); if(i%17===0) col.setHex(0xd9ccd8); houseMesh.setColorAt(i,col);
+    dummy.position.set(h.x,h.y+3.2+dummy.scale.y*3.9,h.z); dummy.scale.set(dummy.scale.x,1,dummy.scale.z); dummy.updateMatrix(); roofMesh.setMatrixAt(i,dummy.matrix);
+  });
+  houseMesh.castShadow=roofMesh.castShadow=true; houseMesh.receiveShadow=roofMesh.receiveShadow=true;
+  if(houseMesh.instanceColor) houseMesh.instanceColor.needsUpdate=true;
+  houseGroup.add(houseMesh,roofMesh);
+  // a few azulejo-clad towers
+  for(let i=0;i<10;i++){
+    const h=box(9,18,9,azulejo,-260+Math.random()*520,26+Math.random()*18,-70-Math.random()*95); h.rotation.y=Math.random()*.5-.25; houseGroup.add(h);
+    houseGroup.add(box(10.2,1.4,10.2,M.roof2,h.position.x,h.position.y+9.5,h.position.z));
+  }
+
+  // Narrow streets: dark winding strips
+  for(let i=0;i<16;i++){
+    const w=box(2.2,.18,60+Math.random()*70,M.road,-280+i*42,5+Math.random()*20,-95-Math.random()*45,false);
+    w.rotation.y=-.5+Math.random()*1; world.add(w);
+  }
+
+  // ---------- São Jorge Castle ----------
+  const castle=new THREE.Group(); castle.position.set(130,46,-190); world.add(castle);
+  const wallMat=M.castle;
+  castle.add(box(66,26,54,wallMat,0,13,0));
+  castle.add(box(22,38,22,wallMat,-34,19,-20)); castle.add(box(22,34,22,wallMat,34,17,-20)); castle.add(box(20,30,20,wallMat,-34,15,20)); castle.add(box(20,28,20,wallMat,34,14,20));
+  for(let i=-3;i<=3;i++) castle.add(box(5,5,5,wallMat,i*9,28.5,-27));
+  for(let i=-3;i<=3;i++) castle.add(box(5,5,5,wallMat,i*9,28.5,27));
+  castle.add(box(12,44,12,wallMat,0,22,0)); castle.add(box(14,3,14,new THREE.MeshStandardMaterial({color:0x6b563d}),0,44,0));
+  const castleFlag=textPlane('★',8,8,'rgba(0,0,0,0)','#ffe0a0',120); castleFlag.position.set(0,58,0); castle.add(castleFlag);
+  const castleLight=new THREE.PointLight(0xffd28a,0,90); castleLight.position.set(0,40,0); castle.add(castleLight);
+
+  // ---------- Pantheon (Santa Engrácia) ----------
+  const pantheon=new THREE.Group(); pantheon.position.set(215,2.4,-38); world.add(pantheon);
+  pantheon.add(box(42,15,20,M.white,0,7.5,0));
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(12,32,16,0,Math.PI*2,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0xe8e2d2,roughness:.6})); dome.position.set(0,15,0); dome.castShadow=true; pantheon.add(dome);
+  pantheon.add(cyl(2.4,7,M.white,0,29,0,16));
+  for(let i=-3;i<=3;i++) pantheon.add(cyl(1.3,12,M.white,i*5.6,8,11.5,10));
+  pantheon.add(box(46,1.6,6,M.stone,0,16.2,0));
+
+  // Sé cathedral twin towers
+  const se=new THREE.Group(); se.position.set(115,2.4,-58); world.add(se);
+  se.add(box(30,10,20,M.stone,0,5,0));
+  se.add(box(7,34,7,M.stone,-9,17,0)); se.add(box(7,34,7,M.stone,9,17,0));
+  se.add(new THREE.Mesh(new THREE.ConeGeometry(5.4,8,4),M.roof).translateX(0).translateY(38).translateZ(0));
+  se.children[se.children.length-1].position.set(-9,38,0);
+  const seTower2=new THREE.Mesh(new THREE.ConeGeometry(5.4,8,4),M.roof); seTower2.position.set(9,38,0); se.add(seTower2);
+
+  // Praça do Comércio yellow arcades + arch
+  const commerce=new THREE.Group(); commerce.position.set(-235,2.4,-30); world.add(commerce);
+  for(let i=0;i<18;i++) commerce.add(box(11,18,9,i%2?M.yellow:M.coral,-96+i*11.2,9,0));
+  for(let i=0;i<19;i++) commerce.add(cyl(2.6,17,M.yellow,-105+i*11.7,9,5.2,12));
+  const arch=box(26,20,8,M.stone,0,10,26); commerce.add(arch);
+  const archHole=new THREE.Mesh(new THREE.CylinderGeometry(4.4,4.4,9,20,1,false,0,Math.PI),new THREE.MeshStandardMaterial({color:0x0c1622,roughness:1,side:THREE.DoubleSide})); archHole.rotation.z=Math.PI/2; archHole.rotation.y=Math.PI/2; archHole.position.set(0,9,26); commerce.add(archHole);
+  commerce.add(box(7,3,2,M.stone,0,21.5,26));
+  for(let i=-3;i<=3;i++) commerce.add(box(10,2,12,M.roof,i*11.2,19.4,0));
+
+  // ---------- 25 de Abril Bridge & Cristo Rei ----------
+  const bridge=new THREE.Group(); bridge.position.set(-640,0,135); world.add(bridge);
+  const deck=box(42,7,300,M.red,0,70,0); bridge.add(deck);
+  const deckLights=[];
+  bridge.add(box(52,2,300,new THREE.MeshStandardMaterial({color:0x7e2c27}),0,74.5,0));
+  // pylons
+  for(const z of[-105,105]){
+    bridge.add(box(7,190,7,M.red,0,95,z));
+    bridge.add(box(30,10,30,M.red,0,190,z));
+  }
+  // suspenders + cables
+  for(const zside of[-11,11]) for(let z=-105;z<=105;z+=21){
+    const cable=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,150,6),M.red); cable.position.set(0,125,z); cable.rotation.z=0; cable.rotation.x=0; cable.scale.y=1.0;
+    // side cables along x=±? Use red vertical suspenders
+  }
+  for(const side of[-12,12]){
+    const topCable=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.15,225,8),M.red); topCable.rotation.x=Math.PI/2; topCable.position.set(side,190,0); bridge.add(topCable);
+    for(let z=-100;z<=100;z+=22){const s=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,118,6),M.red); s.position.set(side,131,z*0.9); bridge.add(s);}
+  }
+  for(let z=-140;z<=140;z+=28){const lamp=new THREE.PointLight(0xffdda0,0,26); lamp.position.set(0,78,z); bridge.add(lamp); deckLights.push(lamp);}
+  // Cristo Rei south bank
+  const cristo=new THREE.Group(); cristo.position.set(-640,3,275); world.add(cristo);
+  cristo.add(box(16,9,16,M.stone,0,4.5,0));
+  cristo.add(cyl(4.6,9,M.statue,0,13.5,0,16));
+  const cristoBody=box(8,10,5,M.statue,0,24,0); cristo.add(cristoBody);
+  const cristoArms=box(22,2.5,2.5,M.statue,0,28.5,0); cristo.add(cristoArms);
+  const cristoHead=cyl(2.3,3,M.statue,0,31.5,0,14); cristo.add(cristoHead);
+  cristo.add(cyl(.8,7,M.statue,0,47,0,10)); // crossbar above
+  cristo.add(box(6,.8,.8,M.statue,0,49.5,0));
+
+  // ---------- Terminal & quay ----------
+  const terminal=new THREE.Group(); terminal.position.set(-40,2.6,-42); world.add(terminal);
+  const termMain=box(230,26,42,new THREE.MeshStandardMaterial({color:0xe9e2d3,roughness:.7}),0,13,0); terminal.add(termMain);
+  terminal.add(box(236,2.4,8,new THREE.MeshStandardMaterial({color:0x1c2c44,roughness:.5}),0,26.8,12));
+  for(let i=-8;i<=8;i++) terminal.add(box(10,16,3,new THREE.MeshStandardMaterial({color:0x243a55,roughness:.3,metalness:.5}),i*13,13,22));
+  const termSign=textPlane('LISBOA · TERMINAL DE CRUZEIROS',80,7,'rgba(0,0,0,0)','#ffd27a',46); termSign.position.set(0,22,24); terminal.add(termSign);
+  for(let i=-6;i<=6;i++) terminal.add(box(8,3.2,6,M.wood,i*30,1.6,27,true));
+
+  // yellow tram (28)
+  const tram=new THREE.Group(); tram.position.set(-120,6,-62); world.add(tram);
+  tram.add(box(22,5.4,8,M.yellow,0,3,0));
+  tram.add(box(21,3,7,new THREE.MeshStandardMaterial({color:0x203347,roughness:.3,metalness:.35}),0,6.8,0));
+  for(let i=-1;i<2;i++) tram.add(cyl(1.6,.6,M.dark,i*6.8,.6,4.4,12));
+  // taxis/coaches/trucks dynamic later
+
+  // ---------- Castle/city lights ----------
+  const cityLights=[];
+  for(let i=0;i<42;i++){const l=new THREE.PointLight(0xffd28a,0,26);l.position.set(-260+Math.random()*540,12+Math.random()*30,-58-Math.random()*110);world.add(l);cityLights.push(l);}
+  // window glow planes on houses (small)
+  const glowTex=new THREE.CanvasTexture((()=>{const c=document.createElement('canvas');c.width=c.height=32;const g=c.getContext('2d');g.fillStyle='#ffd27a';g.fillRect(0,0,32,32);return c})());
+  const glowGeo=new THREE.PlaneGeometry(.9,.9); const glowMat=new THREE.MeshBasicMaterial({map:glowTex,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+  const glows=new THREE.InstancedMesh(glowGeo,glowMat,360); const gd=new THREE.Object3D();
+  for(let i=0;i<360;i++){const h=housePositions[i%housePositions.length];gd.position.set(h.x+(Math.random()-.5)*4,h.y+2+Math.random()*8,h.z+3.9);gd.lookAt(0,h.y,0);gd.updateMatrix();glows.setMatrixAt(i,gd.matrix);}
+  world.add(glows);
+
+  // ---------- SHIP ----------
+  const NAME='“AZUL DE LISBOA”';
+  const ship=new THREE.Group(); ship.position.set(0,0,25); scene.add(ship);
+  const hullShape=new THREE.Shape();
+  hullShape.moveTo(150,-16); hullShape.lineTo(80,-19); hullShape.lineTo(-90,-19);
+  hullShape.quadraticCurveTo(-135,-15,-150,0); hullShape.quadraticCurveTo(-135,15,-90,19); hullShape.lineTo(80,19); hullShape.lineTo(150,16); hullShape.lineTo(150,-16);
+  const hullGeo=new THREE.ExtrudeGeometry(hullShape,{depth:15,bevelEnabled:true,bevelSize:2.2,bevelThickness:2.0,bevelSegments:3,curveSegments:24});
+  hullGeo.rotateX(-Math.PI/2); hullGeo.translate(0,-2.5,0);
+  const hull=new THREE.Mesh(hullGeo,M.hull); hull.castShadow=hull.receiveShadow=true; ship.add(hull);
+  const boot=new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape().moveTo(148,-17.6).lineTo(-132,-17.6).quadraticCurveTo(-150,-8,-150,0).quadraticCurveTo(-145,8,-132,17.6).lineTo(148,17.6),{depth:2.6,bevelEnabled:false}),M.boot);
+  boot.rotation.x=-Math.PI/2; boot.position.set(0,-2.2,0); ship.add(boot);
+  const bulb=new THREE.Mesh(new THREE.SphereGeometry(4.6,20,14),M.hullDark); bulb.scale.set(2.4,.75,.85); bulb.position.set(-150,-7.5,0); ship.add(bulb);
+  // stripe + name
+  const stripe=box(276,1.1,40.6,new THREE.MeshStandardMaterial({color:0x0e5d7a,roughness:.5}),0,7.6,0); ship.add(stripe);
+  const bowName=textPlane(NAME,42,6,'rgba(0,0,0,0)','#12314a',72); bowName.position.set(-133,5.2,11.5); bowName.rotation.y=Math.PI/2; ship.add(bowName);
+  const sternName=textPlane(NAME,44,6,'rgba(0,0,0,0)','#12314a',72); sternName.position.set(151.2,5.6,0); sternName.rotation.y=Math.PI; ship.add(sternName);
+  // anchors
+  const anchorGeo=new THREE.Group(); const aShank=cyl(.45,7,M.dark,0,0,0,8); const aArc=new THREE.Mesh(new THREE.TorusGeometry(3.3,.5,8,14,Math.PI),M.dark); aArc.rotation.z=Math.PI; aArc.position.y=-3.2; anchorGeo.add(aShank,aArc);
+  for(const z of[-15.5,15.5]){const a=anchorGeo.clone(); a.position.set(-120,2.2,z); a.rotation.x=z<0?0.12:-0.12; ship.add(a);}
+  // superstructure — 18 decks stacked with gentle taper
+  const deckCount=18;
+  for(let d=0;d<deckCount;d++){
+    const t=d/(deckCount-1);
+    const w=19-t*6.5; const y=9.5+d*2.45;
+    const b=box(236-d*4.5,2.35,2*w,d%2?M.white:M.white,0,y,0); b.castShadow=true; ship.add(b);
+    // windows band
+    const band=box(228-d*4.2,.8,2*w+.35,new THREE.MeshStandardMaterial({color:0x21384d,roughness:.25,metalness:.45,emissive:0x101d28,emissiveIntensity:.25}),0,y+.55,0);
+    ship.add(band);
+    // balconies / rails
+    for(let s=-1;s<=1;s+=2){
+      const rail=box(224-d*4.6,1.0,.35,new THREE.MeshStandardMaterial({color:0xe9edf2,roughness:.3,metalness:.6}),0,y+.6,s*(w+.25)); ship.add(rail);
+    }
+  }
+  // bridge at front
+  const bridgeHouse=box(34,5.2,38,M.white,-116,58.5,0); ship.add(bridgeHouse);
+  const bridgeGlass=box(30,2.7,38.6,M.glass,-116,59.6,0); ship.add(bridgeGlass);
+  for(const s of[-1,1]) ship.add(box(7,.8,5.4,M.white,-126,58.0,s*21.4)); // wings
+  // mast
+  const mast=cyl(.8,16,M.white,-108,72,0,12); ship.add(mast);
+  ship.add(cyl(1.7,1.1,M.dark,-108,78.5,0,16));
+  const radar=box(9,.8,1.5,M.dark,-108,82,0); radar.rotation.y=.5; ship.add(radar);
+  // funnels
+  for(const x of[30,72]){
+    const fn=new THREE.Mesh(new THREE.CylinderGeometry(4.4,5.6,13,20),new THREE.MeshStandardMaterial({color:0xf6f8f4,roughness:.4,metalness:.1})); fn.position.set(x,64,0); fn.castShadow=true; ship.add(fn);
+    const band2=cyl(4.55,2.2,M.red,x,70.2,0,20); ship.add(band2);
+    const cap=cyl(4.2,.8,M.dark,x,70.8,0,20); ship.add(cap);
+  }
+  // promenade lifeboats along mid decks
+  const lifeboatGeo=new THREE.CapsuleGeometry(1.35,6.4,6,12);
+  for(let s=-1;s<=1;s+=2) for(let i=0;i<12;i++){
+    const lb=new THREE.Mesh(lifeboatGeo,M.orange); lb.rotation.z=Math.PI/2; lb.position.set(-84+i*14.2,31.5,s*20.2); lb.castShadow=true; ship.add(lb);
+    ship.add(box(.5,2.2,.5,M.dark,-84+i*14.2,33.3,s*18.9,false));
+    ship.add(box(.5,2.2,.5,M.dark,-84+i*14.2,33.3,s*21.4,false));
+  }
+  // tenders
+  for(let s=-1;s<=1;s+=2) for(let i=0;i<4;i++){const t=box(5,1.7,2.2,M.teal,-40+i*28,28.5,s*20);t.castShadow=true;ship.add(t);}
+  // pool deck details
+  const pool1=new THREE.Mesh(new THREE.BoxGeometry(24,1.3,9),new THREE.MeshStandardMaterial({color:0x2ec3d8,roughness:.15,metalness:.2,emissive:0x0b5f6b,emissiveIntensity:.35})); pool1.position.set(20,83.2,-6); ship.add(pool1);
+  const pool2=new THREE.Mesh(new THREE.CylinderGeometry(4.5,4.5,1.3,20),pool1.material); pool2.position.set(-30,83.2,7); ship.add(pool2);
+  // slides
+  const slideMat=new THREE.MeshStandardMaterial({color:0xffd24a,roughness:.35});
+  const slideCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(58,82,-4),new THREE.Vector3(74,78,-6),new THREE.Vector3(86,66,-4),new THREE.Vector3(96,57,-2)]);
+  ship.add(new THREE.Mesh(new THREE.TubeGeometry(slideCurve,32,1.0,10),slideMat));
+  const slide2=new THREE.CatmullRomCurve3([new THREE.Vector3(52,82,5),new THREE.Vector3(70,76,8),new THREE.Vector3(84,63,7),new THREE.Vector3(94,56,5)]);
+  ship.add(new THREE.Mesh(new THREE.TubeGeometry(slide2,32,.8,10),new THREE.MeshStandardMaterial({color:0x38c7d8,roughness:.35})));
+  // loungers
+  const lounger=box(2.0,.55,.9,M.white,0,0,0);
+  const loungers=new THREE.InstancedMesh(new THREE.BoxGeometry(2.1,.55,.9),M.white,46); const lg=new THREE.Object3D();
+  for(let i=0;i<46;i++){lg.position.set(-62+(i%10)*11,83.0,(i<23?-11:10)+(Math.floor(i/10)%2)*1.4);lg.rotation.y=i%2?.1:-.1;lg.updateMatrix();loungers.setMatrixAt(i,lg.matrix);} ship.add(loungers);
+  // running track ring
+  const track=new THREE.Mesh(new THREE.TorusGeometry(16,1.7,10,60),new THREE.MeshStandardMaterial({color:0xe96f4c,roughness:.8})); track.rotation.x=Math.PI/2; track.position.set(72,82.7,4); ship.add(track);
+  // night window glow on ship
+  const shipGlowGeo=new THREE.PlaneGeometry(2.4,1.0);
+  const shipGlowMat=new THREE.MeshBasicMaterial({color:0xffd98c,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false});
+  const shipGlows=new THREE.InstancedMesh(shipGlowGeo,shipGlowMat,520);
+  let si=0; for(let d=0;d<16;d++) for(let s=-1;s<=1;s+=2) for(let i=0;i<16;i++){if(si>=520)break;const y=14.5+d*2.45;const w=19-d*0.36;si2=si;const hh=(d%3===0&&i%5===0)?1.6:1;const dummy=new THREE.Object3D();dummy.position.set(-96+i*12.5,y,s*(w-.1));dummy.rotation.y=s<0?Math.PI:0;dummy.scale.set(1.6,hh,1);dummy.updateMatrix();shipGlows.setMatrixAt(si++,dummy.matrix);} ship.add(shipGlows);
+  const shipLights=new THREE.PointLight(0xffe2a8,0,130); shipLights.position.set(0,70,0); ship.add(shipLights);
+  // bridge lights, masthead
+  const mastLight=new THREE.Mesh(new THREE.SphereGeometry(.7,10,8),M.light); mastLight.position.set(-108,84.5,0); ship.add(mastLight);
+
+  // gangways (hinged at terminal quay, ship end)
+  const gangways=[];
+  for(let i=0;i<3;i++){
+    const gx=-80+i*80;
+    const g=new THREE.Group(); g.position.set(gx,3.4,11); world.add(g);
+    g.add(box(4.6,.45,26,M.dark,0,0,13));
+    for(let y=-1;y<2;y++){g.add(box(.32,3.2,.32,M.white,-2.1,1.6,y*8+6));g.add(box(.32,3.2,.32,M.white,2.1,1.6,y*8+6));}
+    g.add(box(4.6,.35,.35,M.white,0,3.1,1)); g.add(box(4.6,.35,.35,M.white,0,3.1,25));
+    ship.updateMatrixWorld(true);
+    gangways.push({g,shipX:gx,baseRot:-.06});
+  }
+  // mooring lines to bollards
+  const lines=[];
+  for(const [shipX, quayX] of [[-140,-180],[-135,-120],[140,135],[135,190]]){
+    const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(shipX,1.8,25),new THREE.Vector3(quayX,2.8,8)]);
+    const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0x3a3026})); ship.parent.add(line); lines.push(line);
+  }
+  const bollards=[]; for(const bx of[-180,-120,135,190]){const b=cyl(1.15,2.0,M.dark,bx,3.2,4.5,12);world.add(b);bollards.push(b);}
+
+  // ---------- vehicles & passengers ----------
+  function makePassenger(color){const g=new THREE.Group();const b=cyl(.32,1.5,new THREE.MeshStandardMaterial({color,roughness:.8}),0,.95,0,8);const h=new THREE.Mesh(new THREE.SphereGeometry(.26,10,8),new THREE.MeshStandardMaterial({color:0xd9a67a,roughness:.7}));h.position.y=1.9;g.add(b,h);return g;}
+  const passengers=[]; const passColors=[0xe74c3c,0x3498db,0xf39c12,0x2ecc71,0x9b59b6,0xffffff];
+  for(let i=0;i<28;i++){const p=makePassenger(passColors[i%passColors.length]);world.add(p);passengers.push({p,t:Math.random(),speed:.05+Math.random()*.06,from:new THREE.Vector3(-75+Math.random()*150,0,8),to:new THREE.Vector3(-80+Math.random()*160,0,-34),phase:Math.random()*Math.PI*2});}
+  function makeVehicle(type){const g=new THREE.Group();
+    if(type==='truck'){ g.add(box(11,3.6,3.4,M.white,0,2.8,0)); g.add(box(4.2,3.2,3.2,M.teal,6.8,2.7,0)); }
+    else if(type==='taxi'){ g.add(box(4.4,1.25,2.0,M.yellow,0,1.05,0)); g.add(box(2.7,.85,1.8,M.glass,-.1,1.85,0)); }
+    else if(type==='coach'){ g.add(box(10.5,3.0,3.0,M.white,0,2.1,0)); g.add(box(9.6,1.5,2.7,M.glass,0,2.9,0)); }
+    else if(type==='forklift'){ g.add(box(3.6,2.6,2.4,M.yellow,0,1.5,0)); g.add(box(.6,3.0,.6,M.dark,2.1,2.7,-.8)); g.add(box(.6,3.0,.6,M.dark,2.1,2.7,.8)); g.add(box(2.0,1.4,2.0,M.wood,2.9,2.0,0)); }
+    for(const wz of[-1.1,1.1]) for(const wx of[-3,3]) { const w=cyl(.62,.35,M.dark,wx, .62,wz,10); w.rotation.x=Math.PI/2; g.add(w);} 
+    g.scale.setScalar(.9); return g; }
+  const vehicles=[]; let vid=0;
+  function spawnVehicle(){return new Promise(r=>setTimeout(()=>r(null),Math.random()*6000+3000)).then(()=>{const type=['truck','truck','taxi','coach','forklift'][vid++%7];const v=makeVehicle(type);const fromWest=Math.random()<.5;const y=type==='forklift'?2.6:2.6;v.position.set(fromWest?-430:430,y,-27+(fromWest?-2:2));v.rotation.y=fromWest?Math.PI/2:-Math.PI/2;if(type==='forklift'){v.position.set(-40+Math.random()*80,y,-38+Math.random()*6);v.rotation.y=Math.random()<.5?0:Math.PI;}world.add(v);vehicles.push({v,type,dir:fromWest?1:-1,speed:type==='forklift'?.9:(type==='coach'?6.5:(type==='taxi'?7.5:5.5)),life:0,max:type==='forklift'?26:150});});}
+  for(let i=0;i<2;i++) spawnVehicle();
+
+  // ---------- boats ----------
+  function makeBoat(len,color,type){const g=new THREE.Group();const hullM=new THREE.MeshStandardMaterial({color,roughness:.5});const hullB=box(len,3.2,len*.34,hullM,0,1.4,0);g.add(hullB);
+    if(type==='tug'){g.add(box(len*.42,4.2,len*.26,M.white,-len*.1,4.8,0));g.add(box(len*.16,2.8,len*.16,M.red,0,8.6,0));g.add(box(2.6,1.0,2.6,M.dark,-len*.35,5.9,0));}
+    else if(type==='pilot'){g.add(box(len*.36,2.8,len*.22,M.white,-len*.05,4.2,0));}
+    else if(type==='ferry'){g.add(box(len*.62,4.5,len*.3,M.white,0,4.7,0));g.add(box(len*.48,1.8,len*.26,M.glass,0,7.8,0));g.add(box(2.4,2.4,2.4,M.red,len*.24,7.8,0));}
+    else if(type==='sail'){g.add(cyl(.45,7.5,M.wood,0,5,0,8));const sail=new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(new Float32Array([0,7.2,0, 0,12,0, 4.2,7.2,0]),3)).setIndex([0,1,2]).computeVertexNormals(),new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide,roughness:.8}));g.add(sail);}
+    return g;}
+
+  const tug=makeBoat(38,0x1c2b3a,'tug'); tug.position.set(-185,0,55); scene.add(tug);
+  const pilot=makeBoat(22,0xe9e2d0,'pilot'); pilot.position.set(70,0,85); scene.add(pilot);
+  const ferries=[]; for(let i=0;i<2;i++){const f=makeBoat(80,0xe3efe9,'ferry');f.position.set(-350+i*260,0,150+i*30);scene.add(f);ferries.push({f,t:Math.random(),speed:.018+i*.01,dir:i?1:-1});}
+  const sails=[]; for(let i=0;i<6;i++){const s=makeBoat(18,0xffffff,'sail');s.position.set(-520+Math.random()*700,0,120+Math.random()*120);s.rotation.y=Math.random()*Math.PI;scene.add(s);sails.push(s);}
+  // seagulls
+  const gulls=[]; const gullMat=new THREE.MeshBasicMaterial({color:0xf4f7fb,side:THREE.DoubleSide});
+  for(let i=0;i<26;i++){const g=new THREE.Group();const w1=new THREE.Mesh(new THREE.PlaneGeometry(2.4,.7),gullMat);w1.position.x=-1.1;const w2=w1.clone();w2.position.x=1.1;g.add(w1,w2);g.position.set(-100+Math.random()*220,55+Math.random()*60,-10+Math.random()*70);g.scale.setScalar(.7+Math.random()*.7);scene.add(g);gulls.push({g,ph:Math.random()*Math.PI*2,r:26+Math.random()*45,cx:-100+Math.random()*160,cy:58+Math.random()*45,cz:-6+Math.random()*40,sp:.28+Math.random()*.3});}
+
+  // ---------- Controls / camera ----------
+  const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.dampingFactor=.07; controls.maxDistance=1400; controls.minDistance=18; controls.maxPolarAngle=Math.PI*.495; controls.target.set(0,24,0);
+
+  const presets={
+    miradouro:{pos:new THREE.Vector3(150,128,-205),tgt:new THREE.Vector3(-30,28,40)},
+    waterfront:{pos:new THREE.Vector3(-70,9,42),tgt:new THREE.Vector3(10,25,15)},
+    aerial:{pos:new THREE.Vector3(-40,270,-190),tgt:new THREE.Vector3(0,10,60)},
+    river:{pos:new THREE.Vector3(230,42,175),tgt:new THREE.Vector3(-60,30,0)},
+    deck:{pos:new THREE.Vector3(34,90,25),tgt:new THREE.Vector3(-190,60,-170)}
+  };
+  function setCam(name){const p=presets[name];camera.position.copy(p.pos);controls.target.copy(p.tgt);controls.update();}
+  setCam('miradouro');
+
+  // walks
+  let walk=false, yaw=Math.PI*.8, pitch=.05, keys={};
+  const walkPos=new THREE.Vector3(-40,15,-16);
+  document.addEventListener('keydown',e=>keys[e.code]=true);
+  document.addEventListener('keyup',e=>keys[e.code]=false);
+  document.body.addEventListener('pointerdown',e=>{if(walk&&e.target===renderer.domElement)renderer.domElement.requestPointerLock();});
+  renderer.domElement.addEventListener('mousemove',e=>{if(walk&&document.pointerLockElement===renderer.domElement){yaw-=e.movementX*.0022;pitch-=e.movementY*.0022;pitch=THREE.MathUtils.clamp(pitch,-.9,.9);}});
+  document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement!==renderer.domElement){walk=false;walkBtn.classList.remove('active');}});
+
+  // UI wiring
+  const walkBtn=document.getElementById('walk'), timeBtn=document.getElementById('timeToggle'), weatherBtn=document.getElementById('weatherBtn'), departBtn=document.getElementById('depart'), returnBtn=document.getElementById('returnBtn'), timeSlider=document.getElementById('time'), timeLabel=document.getElementById('timeLabel'), stateEl=document.getElementById('state'), toast=document.getElementById('toast'), hideBtn=document.getElementById('hideHud'), hud=document.getElementById('hud');
+  function showToast(m){toast.textContent=m;toast.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>toast.classList.remove('show'),2200);}
+  hideBtn.onclick=()=>{hud.style.display='none';showToast('UI hidden — press H to show');};
+  document.addEventListener('keydown',e=>{if(e.code==='KeyH'&&hud.style.display==='none')hud.style.display='flex';});
+  document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>{setCam(b.dataset.cam);document.querySelectorAll('[data-cam]').forEach(x=>x.classList.toggle('active',x===b));if(walk){walk=false;walkBtn.classList.remove('active');document.exitPointerLock?.();}});
+  walkBtn.onclick=()=>{walk=!walk;walkBtn.classList.toggle('active',walk);if(walk){walkPos.set(controls.target.z<0?-40:-40,camera.position.y<30?camera.position.y:1.8,-8);walkPos.y=1.8;yaw=Math.atan2(controls.target.x-camera.position.x,controls.target.z-camera.position.z);showToast('Walk mode: WASD + mouse look · ESC to exit');} };
+  let playing=true; timeBtn.onclick=()=>{playing=!playing;timeBtn.textContent=playing?'Pause time':'Play time';};
+  const weathers=['clear','haze','rain']; let weatherIdx=0;
+  weatherBtn.onclick=()=>{weatherIdx=(weatherIdx+1)%3;const w=weathers[weatherIdx];weatherBtn.textContent=w[0].toUpperCase()+w.slice(1);scene.fog=w==='clear'?null:(w==='haze'?new THREE.Fog(0xc6b49a,420,1800):new THREE.Fog(0x5a6470,240,1150));rain.visible=w==='rain';rainLight.intensity=w==='rain'?0.9:0.35;rainDrops.count=w==='rain'?1800:0;};
+  let timeOfDay=17.2; timeSlider.oninput=()=>{timeOfDay=+timeSlider.value;playing=false;timeBtn.textContent='Play time';};
+
+  // Audio horn
+  let audioCtx=null;
+  function horn(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const t=audioCtx.currentTime;const o1=audioCtx.createOscillator(),o2=audioCtx.createOscillator(),g=audioCtx.createGain(),f=audioCtx.createBiquadFilter();o1.type='sawtooth';o2.type='sawtooth';o1.frequency.setValueAtTime(87,t);o2.frequency.setValueAtTime(88.3,t);f.type='lowpass';f.frequency.value=480;f.Q.value=2;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(.34,t+.25);g.gain.exponentialRampToValueAtTime(.0001,t+2.9);o1.connect(f);o2.connect(f);f.connect(g);g.connect(audioCtx.destination);o1.start();o2.start();o1.stop(t+3);o2.stop(t+3);}catch(e){}}
+
+  // Rain
+  const rainGeo=new THREE.BufferGeometry(); const rainPos=new Float32Array(1800*3); for(let i=0;i<1800;i++){rainPos[i*3]=-900+Math.random()*1400;rainPos[i*3+1]=Math.random()*220;rainPos[i*3+2]=-140+Math.random()*380;} rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+  const rain=new THREE.Points(rainGeo,new THREE.PointsMaterial({color:0xcfe4ff,size:.8,transparent:true,opacity:.65,depthWrite:false})); rain.visible=false; scene.add(rain);
+
+  // ---------- Departure state machine ----------
+  let departure={mode:'berthed',t:0}; // berthed | departing | gone | returning
+  departBtn.onclick=()=>{if(departure.mode!=='berthed')return;departure.mode='departing';departure.t=0;horn();showToast('Departure — gangways retracting, lines releasing');stateEl.textContent='MRV · Departure sequence';};
+  returnBtn.onclick=()=>{if(departure.mode==='berthed')return;departure.mode='returning';departure.t=0;showToast('Bringing “Azul de Lisboa” back to berth');stateEl.textContent='MRV · Returning to berth';};
+
+  const startShipPos=new THREE.Vector3(0,0,25), startRotY=0;
+  const startTugPos=new THREE.Vector3(-185,0,55);
+  const gangwayStartRot=.06;
+
+  // ---------- Helpers for animation ----------
+  function lanePositions(v,t){return;}
+
+  function animate(){
+    requestAnimationFrame(animate);
+    const dt=Math.min(clock.getDelta(),.05), t=clock.elapsedTime;
+    if(playing){timeOfDay=(timeOfDay+dt*.11)%24;timeSlider.value=timeOfDay;}
+    // time-of-day lighting
+    const hr=timeOfDay;
+    const elev=Math.sin((hr-6)/24*Math.PI*2); // -1..1
+    const azimuth=(hr-12)/24*Math.PI*2;
+    sunDir.set(Math.cos(azimuth)*Math.cos(.35),Math.max(.12,elev),Math.sin(azimuth)*.8).normalize();
+    sun.position.copy(sunDir).multiplyScalar(500);
+    const day=THREE.MathUtils.clamp((elev+.12)/.55,0,1);
+    const night=1-day;
+    sun.intensity=1.95*day+0.12;
+    sun.color.setHSL(.09,Math.max(.25,.8*day),day>.4?.72:.55);
+    hemi.intensity=.25+.95*day;
+    hemi.color.setHSL(.58,.35*day+.05,.62);
+    hemi.groundColor.setHSL(.08,.35,.28*day+.12);
+    skyU.turbidity.value=6+weatherIdx*3; skyU.rayleigh.value=1.2+night*1.4;
+    skyU.sunPosition.value.copy(sunDir);
+    renderer.toneMappingExposure=.62+.66*day;
+    water.material.uniforms.sunDirection.value.copy(sunDir);
+    water.material.uniforms.sunColor.value.setHSL(.08,.85,.35+day*.45);
+    water.material.uniforms.waterColor.value.setHSL(.55,.55,.09+day*.11);
+    // stars/city/ship lights
+    const lightOn=night>.45;
+    cityLights.forEach(l=>l.intensity=lightOn?18:0);
+    deckLights.forEach(l=>l.intensity=lightOn?20:0);
+    castleLight.intensity=lightOn?34:0;
+    shipLights.intensity=lightOn?90:0;
+    glowMat.opacity=lightOn?.85:.12;
+    shipGlowMat.opacity=lightOn?1:.18;
+    mastLight.material=lightOn?M.light:new THREE.MeshStandardMaterial({color:0x333,emissive:0x000});
+    glows.visible=night>.2;
+    bridge.children.forEach(()=>{});
+    // labels & heading
+    const hh=Math.floor(hr), mm=Math.floor((hr-hh)*60); timeLabel.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+
+    // Walk camera
+    if(walk){
+      const speed=keys.ShiftLeft?7.5:4.2;
+      const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)); const r=new THREE.Vector3(-f.z,0,f.x);
+      if(keys.KeyW)walkPos.addScaledVector(f,speed*dt);
+      if(keys.KeyS)walkPos.addScaledVector(f,-speed*dt);
+      if(keys.KeyA)walkPos.addScaledVector(r,-speed*dt);
+      if(keys.KeyD)walkPos.addScaledVector(r,speed*dt);
+      walkPos.x=THREE.MathUtils.clamp(walkPos.x,-500,420); walkPos.z=THREE.MathUtils.clamp(walkPos.z,-95,9); walkPos.y=1.8;
+      camera.position.lerp(walkPos,.35);
+      camera.rotation.set(pitch,yaw,0,'YXZ');
+      controls.target.copy(walkPos);
+    } else { controls.update(); }
+
+    // Departure logic
+    if(departure.mode==='departing'){
+      departure.t+=dt; const k=departure.t;
+      const p=Math.min(1,k/9); // gangway/line phase
+      // retract gangways
+      gangways.forEach((gg,i)=>{gg.g.rotation.x=THREE.MathUtils.lerp(.06,-1.02,p);gg.g.position.z=THREE.MathUtils.lerp(11,9.2,p);});
+      lines.forEach(l=>{l.material.opacity=1-p;l.material.transparent=true;if(p>=1)l.visible=false;});
+      stateEl.textContent=k<10?'MRV · Lines releasing':'MRV · Pushes away from berth';
+      if(k>10){
+        const s=Math.min(1,(k-10)/46);
+        // tug pushes bow out then alongside
+        tug.position.set(-185-s*64,Math.sin(t*1.1)*.15,55+s*34);
+        tug.rotation.y=.5-s*.7;
+        ship.position.x=-s*s*260;
+        ship.position.z=25+s*10;
+        ship.rotation.y=s*.42;
+        ship.position.x=-s*s*560;
+        if(s<1){stateEl.textContent=`MRV · Underway · ${(6+s*4).toFixed(1)} kn`;}
+        else{departure.mode='gone';stateEl.textContent='MRV · Cruising westbound';showToast('Azul de Lisboa is now underway');}
+      }
+    } else if(departure.mode==='returning'){
+      departure.t+=dt;
+      const k=departure.t; const p=Math.min(1,k/42);
+      const s=1-p;
+      ship.position.x=-s*s*560; ship.position.z=25+s*10; ship.rotation.y=s*.42;
+      tug.position.set(-185-(1-s)*64,Math.sin(t*1.2)*.12,55+(1-s)*34); tug.rotation.y=.5-(1-s)*.7;
+      if(k>32){const q=Math.min(1,(k-32)/10);gangways.forEach((gg,i)=>{gg.g.rotation.x=THREE.MathUtils.lerp(-1.02,.06,q);gg.g.position.z=THREE.MathUtils.lerp(9.2,11,q);});lines.forEach(l=>{l.visible=true;l.material.opacity=q;l.material.transparent=true;});}
+      stateEl.textContent=p<1?'MRV · Returning to berth':'MRV · Mooring secured';
+      if(p>=1){departure.mode='berthed';ship.position.copy(startShipPos);ship.rotation.y=0;tug.position.copy(startTugPos);tug.rotation.y=.5;gangways.forEach(gg=>{gg.g.rotation.x=.06;gg.g.position.z=11;});lines.forEach(l=>{l.visible=true;l.material.opacity=1;l.material.transparent=false;});showToast('Azul de Lisboa secured again');}
+    }
+    if(departure.mode==='berthed'||departure.mode==='departing'&&departure.t<10){
+      ship.position.y=Math.sin(t*.55)*.18; ship.rotation.z=Math.sin(t*.4)*.006;
+    } else if(departure.mode==='departing'){
+      ship.position.y=Math.sin(t*.7)*.28; ship.rotation.z=Math.sin(t*.5)*.012;
+    } else if(departure.mode==='gone'){ ship.position.x-=dt*8.5; if(ship.position.x<-1240) ship.position.x=-1240; }
+
+    // Boats
+    ferries.forEach((o,i)=>{o.t+=dt*o.speed*(o.dir>0?1:-1);if(o.t>1)o.t=1;if(o.t<0)o.t=0;o.f.position.x=THREE.MathUtils.lerp(-520,340,o.t);o.f.position.z=152+i*34+Math.sin(t*.7+i)*2;o.f.rotation.y=o.dir>0?0:Math.PI;o.f.position.y=Math.sin(t*.8+i)*.18;});
+    sails.forEach((s,i)=>{s.position.x+=Math.sin(t*.2+i)*dt*2;s.rotation.y=Math.sin(t*.25+i)*.35;s.position.y=Math.sin(t*1.1+i*2)*.18;});
+    pilot.position.y=Math.sin(t*1.3)*.22; tug.position.y=Math.sin(t*1.15)*.16;
+    pilot.rotation.y=Math.sin(t*.4)*.25;
+    // gulls
+    gulls.forEach(g=>{g.ph+=dt*g.sp;const a=g.ph;g.g.position.set(g.cx+Math.cos(a)*g.r,g.cy+Math.sin(a*1.7)*5,g.cz+Math.sin(a)*g.r*.55);g.g.rotation.y=-a;const w=Math.sin(t*7+g.ph)*.55;g.g.children[0].rotation.z=w;g.g.children[1].rotation.z=-w;});
+    // passengers
+    passengers.forEach(o=>{o.t+=dt*o.speed;if(o.t>1){o.t=0;o.from.set(-75+Math.random()*150,0,8);o.to.set(-80+Math.random()*160,0,-34);}const x=THREE.MathUtils.lerp(o.from.x,o.to.x,o.t),z=THREE.MathUtils.lerp(o.from.z,o.to.z,o.t);o.p.position.set(x,2.55+Math.sin(t*6+o.phase)*.08,z);o.p.rotation.y=Math.atan2(o.to.x-o.from.x,o.to.z-o.from.z);});
+    // vehicles
+    vehicles.forEach(ent=>{ent.life+=dt;const v=ent.v;
+      if(ent.type==='forklift'){v.position.x+=ent.dir*ent.speed*dt;v.position.z=-36+Math.sin(ent.life*.4)*4;if(ent.life>ent.max||Math.abs(v.position.x)>140)ent.done=true;}
+      else{v.position.x+=ent.dir*ent.speed*dt;if((ent.dir>0&&v.position.x>470)||(ent.dir<0&&v.position.x<-470))ent.done=true;}
+      v.position.y=2.55+Math.abs(Math.sin(ent.life*3))*.06;
+    });
+    for(let i=vehicles.length-1;i>=0;i--){if(vehicles[i].done){world.remove(vehicles[i].v);vehicles.splice(i,1);if(vehicles.length<7)spawnVehicle();}}
+    if(vehicles.length<8&&Math.random()<.004)spawnVehicle();
+    // rain
+    if(rain.visible){const p=rain.geometry.attributes.position;for(let i=0;i<p.count;i++){let y=p.getY(i)-dt*110;if(y<0)y=220;p.setY(i,y);p.setX(i,p.getX(i)+dt*6);}p.needsUpdate=true;}
+    // tram mini movement
+    tram.position.x=-120+Math.sin(t*.08)*40; tram.rotation.y=.12+Math.sin(t*.08)*.025;
+
+    // labels
+    renderer.render(scene,camera);
+  }
+
+  // resize
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+  animate();
+  setTimeout(()=>{loading.style.opacity='0';setTimeout(()=>loading.remove(),800);showToast('Bem-vindo · Welcome to the Lisbon Cruise Terminal');},900);
+}
+</script>
+</body>
+</html>
