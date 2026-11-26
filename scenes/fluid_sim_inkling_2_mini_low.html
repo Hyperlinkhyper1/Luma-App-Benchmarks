@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>3D Fluid Simulation Benchmark — Water in a Glass Tank</title>
+<style>
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070b12;color:#e8f2ff;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#070b12;z-index:50;transition:opacity .35s ease}
+  #loading .card{padding:22px 28px;border:1px solid rgba(120,190,255,.25);border-radius:16px;background:rgba(10,18,30,.78);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(120,190,255,.25);border-top-color:#62c6ff;animation:s 1s linear infinite;margin:12px auto}
+  @keyframes s{to{transform:rotate(360deg)}}
+  #panel{position:fixed;top:14px;left:14px;width:316px;max-height:calc(100vh - 28px);overflow:auto;border:1px solid rgba(145,200,255,.22);border-radius:18px;background:rgba(9,15,26,.82);backdrop-filter:blur(12px);box-shadow:0 18px 55px rgba(0,0,0,.45);z-index:20;padding:14px;box-sizing:border-box}
+  #panel.hidden{transform:translateX(-120%);opacity:0;pointer-events:none}
+  #panelHead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
+  h1{font-size:14px;letter-spacing:.2px;margin:0;font-weight:700;line-height:1.25}
+  .sub{font-size:10px;color:#9fb9d4;margin-top:3px;line-height:1.35}
+  .pill{font-size:9px;color:#9fe2ff;border:1px solid rgba(130,220,255,.35);border-radius:999px;padding:2px 7px;white-space:nowrap}
+  .row{display:flex;gap:8px;align-items:center;margin:7px 0}
+  label{font-size:10px;color:#b8cde2;width:82px;flex:0 0 auto}
+  input[type=range]{flex:1;accent-color:#58c6ff;height:2px}
+  select,button{font-family:inherit}
+  select{flex:1;background:#101c2c;color:#dff1ff;border:1px solid rgba(140,190,240,.28);border-radius:9px;padding:5px 7px;font-size:11px;outline:none}
+  .btns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+  button{background:#14233a;color:#dff1ff;border:1px solid rgba(145,200,255,.25);border-radius:10px;padding:6px 4px;font-size:10px;cursor:pointer;transition:.15s}
+  button:hover{background:#1d3350;transform:translateY(-1px)}
+  button.primary{background:linear-gradient(180deg,#236b9a,#174462);border-color:rgba(130,220,255,.45)}
+  .small{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .small button{font-size:9px;padding:5px 6px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}
+  .stat{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:6px 7px}
+  .stat b{display:block;font-size:13px;color:#fff}
+  .stat span{font-size:9px;color:#8fa8bf}
+  .foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+  .foot button{width:auto}
+  #toggleUI{position:fixed;top:14px;right:14px;z-index:30}
+  #hud{position:fixed;bottom:14px;right:14px;z-index:15;padding:9px 11px;border-radius:14px;border:1px solid rgba(145,200,255,.2);background:rgba(8,13,23,.72);backdrop-filter:blur(10px);font-size:11px;line-height:1.45;color:#cfe4f8;max-width:270px}
+  #hud b{color:#9fe2ff}
+  #hint{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:12;padding:7px 12px;border-radius:999px;background:rgba(8,13,23,.65);border:1px solid rgba(145,200,255,.18);font-size:11px;color:#c8dcf0;backdrop-filter:blur(8px)}
+  @media (max-width:760px){#panel{width:calc(100vw - 28px);max-height:48vh}#hud{display:none}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="loading"><div class="card"><div style="font-weight:700">Preparing fluid bench</div><div class="sub">Building procedural tank, lighting and SPH state…</div><div class="spin"></div></div></div>
+<aside id="panel">
+  <div id="panelHead"><div><h1>3D FLUID BENCH</h1><div class="sub" id="engineBox">SPH · spatial-hash · Three.js</div></div><span class="pill" id="modePill">GPU probe</span></div>
+  <div class="row"><label>Scenario</label><select id="scenario">
+    <option value="dam">Dam break (default)</option><option value="double">Double dam</option><option value="drop">Drop into pool</option><option value="faucet">Faucet</option><option value="wave">Wave machine</option>
+  </select></div>
+  <div class="row"><label>Render</label><select id="renderMode"><option value="surface">Liquid surface</option><option value="particles">Raw particles · speed</option></select></div>
+  <div class="row"><label>Particles</label><input id="nParticles" type="range" min="4000" max="30000" step="1000" value="18000"/><span id="nLabel" style="width:48px;text-align:right;font-size:11px">18k</span></div>
+  <div class="row"><label>Viscosity</label><input id="viscosity" type="range" min="0" max="0.35" step="0.01" value="0.12"/><span id="vLabel" style="width:38px;text-align:right;font-size:11px">.12</span></div>
+  <div class="row"><label>Gravity</label><input id="gravity" type="range" min="0.2" max="3" step="0.05" value="1.35"/><span id="gLabel" style="width:36px;text-align:right;font-size:11px">1.35</span></div>
+  <div class="row"><label>Time step</label><input id="stepScale" type="range" min="0.25" max="1.6" step="0.05" value="1"/><span id="tLabel" style="width:36px;text-align:right;font-size:11px">1.00</span></div>
+  <div class="row"><label>Tilt X</label><input id="tiltX" type="range" min="-0.65" max="0.65" step="0.01" value="0"/></div>
+  <div class="row"><label>Tilt Z</label><input id="tiltZ" type="range" min="-0.65" max="0.65" step="0.01" value="0"/></div>
+  <div class="btns">
+    <button id="pauseBtn" class="primary">Pause</button><button id="stepBtn">Step</button><button id="resetBtn">Reset</button><button id="dropBall">Drop ball</button><button id="dropCrate">Drop crate</button><button id="dropDuck">Drop duck</button>
+  </div>
+  <div class="row small"><span class="sub">Arrows tilt tank · drag water to stir</span></div>
+  <div class="stats">
+    <div class="stat"><b id="stFps">—</b><span>fps</span></div><div class="stat"><b id="stMs">—</b><span>sim ms</span></div>
+    <div class="stat"><b id="stN">—</b><span>particles</span></div><div class="stat"><b id="stErr">—</b><span>density err</span></div>
+  </div>
+  <div class="foot"><span class="sub" id="engineNote">Float RT: checking…</span><button id="hidePanel">Hide UI</button></div>
+</aside>
+<button id="toggleUI">Show UI</button>
+<div id="hud"><b>Controls</b> · drag water to push<br/>arrows / sliders tilt the tank<br/>mouse drag orbits · wheel zooms<br/><span class="sub">two-way object coupling enabled</span></div>
+<div id="hint">Drag inside the glass to stir the water</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const app=document.getElementById('app');
+
+let renderer,scene,camera,controls,tank,benchFloor,causticMat,particlesMesh,pointsMesh,pointsGeom,foamGeom,foamMesh;
+let ok=true,floatRT=false;
+try{
+  renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.05;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+}catch(e){ ok=false; }
+if(!ok){
+  document.getElementById('loading').innerHTML='<div class="card"><div style="font-weight:700">WebGL unavailable</div><div class="sub">This benchmark needs WebGL2. Your browser or device blocked it.</div></div>';
+  throw new Error('WebGL unavailable');
+}
+app.appendChild(renderer.domElement);
+try{ floatRT=!!renderer.extensions.get('EXT_color_buffer_float'); }catch(e){ floatRT=false; }
+document.getElementById('modePill').textContent=floatRT?'GPU ready':'CPU fallback';
+document.getElementById('engineNote').textContent=floatRT?'EXT_color_buffer_float: yes':'EXT_color_buffer_float: no · CPU SPH';
+document.getElementById('engineBox').textContent=floatRT?'SPH · spatial-hash · Three.js r160':'SPH · spatial-hash · CPU fallback';
+
+scene=new THREE.Scene(); scene.background=new THREE.Color(0x0b111c); scene.fog=new THREE.Fog(0x0b111c,14,32);
+camera=new THREE.PerspectiveCamera(46,innerWidth/innerHeight,0.1,100); camera.position.set(7.4,5.7,8.6);
+controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.dampingFactor=.06; controls.target.set(0,2.25,0); controls.maxDistance=24; controls.minDistance=3.5;
+
+const hemi=new THREE.HemisphereLight(0xcfe8ff,0x16202f,1.25); scene.add(hemi);
+const key=new THREE.DirectionalLight(0xffffff,2.7); key.position.set(5,9,6); key.castShadow=true; key.shadow.mapSize.set(2048,2048); key.shadow.camera.left=-8; key.shadow.camera.right=8; key.shadow.camera.top=8; key.shadow.camera.bottom=-8; scene.add(key);
+const rim=new THREE.DirectionalLight(0x5db6ff,1.0); rim.position.set(-6,5,-7); scene.add(rim);
+
+// procedural bench
+function benchTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=512; const g=c.getContext('2d');
+  const grad=g.createLinearGradient(0,0,0,512); grad.addColorStop(0,'#2c3747'); grad.addColorStop(.55,'#1d2633'); grad.addColorStop(1,'#131a24'); g.fillStyle=grad; g.fillRect(0,0,512,512);
+  g.globalAlpha=.18; for(let y=0;y<512;y+=8){ g.fillStyle=(y%16?'#05070c':'#39485e'); g.fillRect(0,y,512,1); }
+  g.globalAlpha=.12; for(let i=0;i<2600;i++){ g.fillStyle=Math.random()>.5?'#8aa0ba':'#0b1018'; g.fillRect(Math.random()*512,Math.random()*512,1.2,1.2); }
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(5,5); return t;
+}
+benchFloor=new THREE.Mesh(new THREE.CylinderGeometry(10.5,10.8,.42,72), new THREE.MeshStandardMaterial({map:benchTexture(),roughness:.82,metalness:.02,color:0xffffff}));
+benchFloor.position.y=-.21; benchFloor.receiveShadow=true; scene.add(benchFloor);
+
+const W=4.0,H=4.25,D=3.0,glassT=.075;
+tank=new THREE.Group(); tank.position.set(0,2.55,0); scene.add(tank);
+// glass panels
+const glassMat=new THREE.MeshPhysicalMaterial({color:0xbfe8ff,transparent:true,opacity:.18,roughness:.06,metalness:0,transmission:0,side:THREE.DoubleSide,depthWrite:false,clearcoat:1,clearcoatRoughness:.08,ior:1.45});
+const glassBack=new THREE.Mesh(new THREE.BoxGeometry(W,H,glassT),glassMat); glassBack.position.set(0,0,-D/2); tank.add(glassBack);
+const glassLeft=new THREE.Mesh(new THREE.BoxGeometry(glassT,H,D),glassMat); glassLeft.position.set(-W/2,0,0); tank.add(glassLeft);
+const glassRight=new THREE.Mesh(new THREE.BoxGeometry(glassT,H,D),glassMat); glassRight.position.set(W/2,0,0); tank.add(glassRight);
+const glassFront=new THREE.Mesh(new THREE.BoxGeometry(W,H,glassT),new THREE.MeshPhysicalMaterial({...glassMat.toJSON(),opacity:.07})); glassFront.material=glassMat.clone(); glassFront.material.opacity=.06; glassFront.position.set(0,0,D/2); tank.add(glassFront);
+const floorMesh=new THREE.Mesh(new THREE.BoxGeometry(W+glassT,.16,D+glassT),new THREE.MeshStandardMaterial({color:0x85d6ff,roughness:.18,metalness:.05,transparent:true,opacity:.34,emissive:0x07263a})); floorMesh.position.set(0,-H/2-.08,0); floorMesh.receiveShadow=true; tank.add(floorMesh);
+const edgeMat=new THREE.LineBasicMaterial({color:0x9fe2ff,transparent:true,opacity:.72});
+const edges=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(W,H,D)),edgeMat); tank.add(edges);
+// rim
+const rimMesh=new THREE.Mesh(new THREE.TorusGeometry(W/2,.055,10,72),new THREE.MeshStandardMaterial({color:0xd8ecff,roughness:.18,metalness:.9})); rimMesh.rotation.x=Math.PI/2; rimMesh.scale.set(1,D/W,1); rimMesh.position.y=H/2; tank.add(rimMesh);
+// spout/faucet for scenario
+const faucet=new THREE.Group(); const pipeMat=new THREE.MeshStandardMaterial({color:0x8fa6bd,roughness:.25,metalness:.9});
+const pipe=new THREE.Mesh(new THREE.CylinderGeometry(.14,.14,.9,20),pipeMat); pipe.position.y=.45; faucet.add(pipe);
+const nozzle=new THREE.Mesh(new THREE.CylinderGeometry(.22,.16,.34,20),pipeMat); nozzle.position.y=-.05; faucet.add(nozzle);
+faucet.position.set(0,H/2+.95,0); tank.add(faucet); faucet.visible=false;
+
+// caustics
+causticMat=new THREE.ShaderMaterial({transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,uniforms:{uTime:{value:0}},vertexShader:'varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',fragmentShader:'uniform float uTime; varying vec2 vUv; float caustic(vec2 p,float t){vec2 i=p;float c=1.0;float inten=.005;for(int n=0;n<5;n++){float t2=t*(1.0+float(n)*.35);i=p+vec2(cos(t2-i.x)+sin(t2+i.y),sin(t2-i.y)+cos(t2+i.x))*.28;c+=1.0/length(vec2(p.x/(sin(i.x+t2)/inten),p.y/(cos(i.y+t2)/inten)));}return pow(abs(c/5.0),1.35);} void main(){vec2 p=vUv*vec2(5.,3.5);float c=caustic(p,uTime*.65);vec3 col=vec3(.25,.78,1.0)*c*.85;gl_FragColor=vec4(col,c*.5);}'});
+const caustic=new THREE.Mesh(new THREE.PlaneGeometry(W*.92,D*.92),causticMat); caustic.rotation.x=-Math.PI/2; caustic.position.set(0,-H/2+.015,0); tank.add(caustic);
+
+// particle meshes
+const MAXN=32000;
+const geo=new THREE.IcosahedronGeometry(1,0); 
+const mat=new THREE.MeshStandardMaterial({color:0x35a9ff,emissive:0x062d4d,emissiveIntensity:.45,roughness:.16,metalness:.02,transparent:true,opacity:.84});
+particlesMesh=new THREE.InstancedMesh(geo,mat,MAXN); particlesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); particlesMesh.frustumCulled=false; tank.add(particlesMesh);
+pointsGeom=new THREE.BufferGeometry();
+pointsGeom.setAttribute('position',new THREE.BufferAttribute(new Float32Array(MAXN*3),3).setUsage(THREE.DynamicDrawUsage));
+pointsGeom.setAttribute('aSpeed',new THREE.BufferAttribute(new Float32Array(MAXN),1).setUsage(THREE.DynamicDrawUsage));
+const pointsMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,vertexShader:'attribute float aSpeed; varying float vS; uniform float uSize; void main(){vS=aSpeed; vec4 mv=modelViewMatrix*vec4(position,1.); gl_PointSize=uSize*(1.0+vS*.16); gl_Position=projectionMatrix*mv;}',fragmentShader:'varying float vS; void main(){vec2 q=gl_PointCoord-.5; float d=length(q); if(d>.5) discard; vec3 cool=vec3(.16,.55,1.0); vec3 hot=vec3(1.0,.62,.2); vec3 col=mix(cool,hot,clamp(vS*.22,0.,1.)); float a=(1.0-smoothstep(.12,.5,d))*.92; gl_FragColor=vec4(col,a);}',uniforms:{uSize:{value:9}}});
+pointsMesh=new THREE.Points(pointsGeom,pointsMat); pointsMesh.frustumCulled=false; tank.add(pointsMesh);
+
+foamGeom=new THREE.BufferGeometry(); foamGeom.setAttribute('position',new THREE.BufferAttribute(new Float32Array(4096*3),3).setUsage(THREE.DynamicDrawUsage));
+const foamMat=new THREE.PointsMaterial({color:0xeafcff,size:.055,transparent:true,opacity:.9,depthWrite:false}); foamMesh=new THREE.Points(foamGeom,foamMat); foamMesh.frustumCulled=false; tank.add(foamMesh);
+
+const sim={N:18000,spacing:.1,h:.24,r:.055,maxCount:30000,fluidMass:1,gravityLocal:new THREE.Vector3(0,-1.35,0),time:0,simMs:0,densityErr:0,activeObjects:[],pistonX:-W/2+.12,pistonV:0,stirPoint:null,stirPrev:null,stirVel:new THREE.Vector3(),stirring:false};
+const pos=new Float32Array(MAXN*3),vel=new Float32Array(MAXN*3),acc=new Float32Array(MAXN*3);
+const tmpV=new THREE.Vector3(),tmpQ=new THREE.Quaternion(),worldDown=new THREE.Vector3(0,-1,0);
+let scenario='dam', paused=false, tiltX=0, tiltZ=0, gravityScale=1.35, viscosity=.12, stepScale=1, renderMode='surface', spawnAccum=0, lastTimestamp=performance.now(), fps=60, frameCount=0, fpsTime=performance.now();
+const params={};
+const raycaster=new THREE.Raycaster(); const pointerNDC=new THREE.Vector2(); const stirPlane=new THREE.Plane(new THREE.Vector3(0,0,1),0);
+
+function setCount(n){ sim.N=clamp(Math.round(n),4000,MAXN); params.nLabel.textContent=sim.N>=1000?(sim.N/1000).toFixed(1).replace('.0','')+'k':sim.N; nLabel.textContent=params.nLabel.textContent; particlesMesh.count=sim.N; pointsMesh.geometry.setDrawRange(0,sim.N); pointsGeom.attributes.position.needsUpdate=true; pointsGeom.attributes.aSpeed.needsUpdate=true; }
+function computeSpacing(){ sim.spacing=Math.cbrt((W*H*D)/sim.N)*.62; sim.h=sim.spacing*2.05; sim.r=sim.spacing*.62; }
+function fillParticles(mode){
+  computeSpacing();
+  const pad=sim.r+.08, floor=-H/2+pad, top=H/2-pad;
+  const density=(sim.N*((4/3)*Math.PI*sim.r*sim.r*sim.r))/(W*H*D); sim.fluidDensityNorm=density||1;
+  for(let i=0;i<sim.N;i++){
+    const j=i*3; let x,y,z;
+    if(mode==='dam'){ x=rand(-W/2+pad,-.15); y=rand(floor,Math.min(top,floor+2.35)); z=rand(-D/2+pad,D/2-pad); }
+    else if(mode==='double'){ if(i%2){ x=rand(.55,W/2-pad);} else { x=rand(-W/2+pad,-.55);} y=rand(floor,Math.min(top,floor+2.1)); z=rand(-D/2+pad,D/2-pad); }
+    else if(mode==='drop'){
+      if(i<sim.N*.66){ x=rand(-W/2+pad,W/2-pad); y=rand(floor,floor+.78); z=rand(-D/2+pad,D/2-pad); } // pool
+      else { x=rand(-.55,.55); y=rand(1.35,Math.min(top,2.8)); z=rand(-.55,.55);} // dropping blob
+    }
+    else if(mode==='faucet'){ const cap=Math.min(sim.N,11000); sim.N=cap; for(let k=0;k<3;k++){} x=rand(-W/2+pad,W/2-pad); y=rand(floor,floor+.62); z=rand(-D/2+pad,D/2-pad); }
+    else { x=rand(-W/2+pad,W/2-pad); y=rand(floor,floor+1.05); z=rand(-D/2+pad,D/2-pad); }
+    pos[j]=x; pos[j+1]=y; pos[j+2]=z;
+    vel[j]=0; vel[j+1]=i%2?rand(-.15,.15):rand(-.1,.1); vel[j+2]=0; acc[j]=0; acc[j+1]=0; acc[j+2]=0;
+  }
+  // faucet: preserve cap
+  if(mode==='faucet') setCount(sim.N);
+  sim.time=0; sim.densityErr=0;
+  clearObjects();
+  faucet.visible=(mode==='faucet');
+  // one piston object for conveyor/wave visual
+  if(pistonMesh){ tank.remove(pistonMesh); pistonMesh=null; }
+  if(mode==='wave'){ pistonVisual(); }
+}
+let pistonMesh=null;
+function pistonVisual(){
+  pistonMesh=new THREE.Mesh(new THREE.BoxGeometry(.16,H*.9,D*.92),new THREE.MeshStandardMaterial({color:0xd7b56b,metalness:.15,roughness:.45}));
+  pistonMesh.castShadow=true; tank.add(pistonMesh);
+}
+function clearObjects(){ for(const o of sim.activeObjects){ if(o.mesh) tank.remove(o.mesh); } sim.activeObjects.length=0; }
+function makeDuck(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.SphereGeometry(.34,28,20),new THREE.MeshStandardMaterial({color:0xffd845,roughness:.55,metalness:0})); body.scale.set(1.25,.8,.85); g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.19,20,16),new THREE.MeshStandardMaterial({color:0xffd845,roughness:.5})); head.position.set(.32,.34,0); g.add(head);
+  const beak=new THREE.Mesh(new THREE.ConeGeometry(.11,.26,14),new THREE.MeshStandardMaterial({color:0xff7a2f,roughness:.4})); beak.rotation.z=-Math.PI/2; beak.position.set(.58,.3,0); g.add(beak);
+  const wing=new THREE.Mesh(new THREE.SphereGeometry(.22,16,10),new THREE.MeshStandardMaterial({color:0xf4c62e,roughness:.6})); wing.scale.set(1.15,.35,.55); wing.position.set(-.02,.08,.18); g.add(wing);
+  g.traverse(m=>{ if(m.isMesh) m.castShadow=true; });
+  return g;
+}
+function makeCrate(){
+  const g=new THREE.Group();
+  const box=new THREE.Mesh(new THREE.BoxGeometry(.72,.72,.72),new THREE.MeshStandardMaterial({color:0xb98550,roughness:.72,metalness:0})); box.castShadow=true; g.add(box);
+  const edge=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(.74,.74,.74)),new THREE.LineBasicMaterial({color:0x6b4322})); g.add(edge);
+  for(const p of[[-.36,.36,0],[.36,-.36,0],[0,.36,-.36],[0,-.36,.36]]){ const strip=new THREE.Mesh(new THREE.BoxGeometry(.78,.08,.78),new THREE.MeshStandardMaterial({color:0x8a6036,roughness:.8})); strip.position.set(p[0],p[1],p[2]); g.add(strip); }
+  return g;
+}
+function addObject(kind){
+  let mesh,r,massDensity,visualScale=1;
+  if(kind==='ball'){ mesh=new THREE.Mesh(new THREE.SphereGeometry(.38,28,20),new THREE.MeshStandardMaterial({color:0xff5a5f,roughness:.32,metalness:.05})); mesh.castShadow=true; r=.38; massDensity=1.05; }
+  else if(kind==='crate'){ mesh=makeCrate(); r=.52; massDensity=.9; visualScale=.95; }
+  else { mesh=makeDuck(); r=.5; massDensity=.72; visualScale=.92; }
+  mesh.rotation.set(rand(0,3),rand(0,3),rand(0,3));
+  const local=new THREE.Vector3(rand(-.7,.7),H/2-.75,rand(-.5,.5));
+  mesh.position.copy(local); mesh.scale.setScalar(visualScale); tank.add(mesh);
+  sim.activeObjects.push({mesh,kind,r,vel:new THREE.Vector3(0,-.2,0),density:massDensity,id:Math.random()});
+}
+
+function resetScenario(){ fillParticles(scenario); }
+
+// sphere/cylinder caustic needs aspect; already set.
+
+function gradientKernel(dx,dy,dz,target,h,fromX,fromY,fromZ){
+  const d2=dx*dx+dy*dy+dz*dz; if(d2>=h*h||d2<1e-8){ target.set(0,0,0); return 0; }
+  const Wq=Math.exp(-3*d2/(h*h)); const s=(6/(h*h))*Wq*(1/Math.pow(1+d2*0,1));
+  target.set(dx*s,dy*s,dz*s); // xi-xj direction times factor
+  return Wq;
+}
+
+function simulate(dtRaw){
+  const dt=Math.min(dtRaw,0.033)*stepScale;
+  const N=sim.N, spacing=sim.spacing, h=sim.h, r=sim.r, floor=-H/2+r, top=H/2-r;
+  // tank orientation to local gravity
+  tank.rotation.set(tiltX,0,tiltZ);
+  tank.updateMatrixWorld();
+  tmpQ.copy(tank.quaternion).invert();
+  sim.gravityLocal.copy(worldDown).applyQuaternion(tmpQ).multiplyScalar(gravityScale);
+  // faucet injection while cap allows
+  if(scenario==='faucet'){
+    const cap=11000; faucet.visible=true; spawnAccum+=dt*420;
+    while(spawnAccum>=1){ spawnAccum-=1;
+      let overfull=false;
+      // find lowest index (oldest) to reuse? only inject if count < cap by replacing? Keep fixed N but if all particles below top inject by resetting oldest via index cycle.
+      const idx=(sim.faucetCursor=(sim.faucetCursor+1)%sim.N);
+      // find a particle in lower region to recycle if injecting too many
+      // choose youngest: find max y particle near top? Instead recycle a random low particle into spout.
+      const j=idx*3;
+      pos[j]=rand(-.12,.12); pos[j+1]=H/2-.32; pos[j+2]=rand(-.12,.12); vel[j]=0; vel[j+1]=-.4; vel[j+2]=0;
+    }
+  } else faucet.visible=false;
+
+  // wave piston
+  if(scenario==='wave'&&pistonMesh){
+    const t=sim.time*2.0;
+    const targetX=-W/2+.95+Math.sin(t)*.85;
+    const prev=sim.pistonX; sim.pistonX=targetX; sim.pistonV=(targetX-prev)/Math.max(dt,1e-4);
+    pistonMesh.position.x=targetX;
+  }
+  const pistonX=scenario==='wave'?sim.pistonX:(-W/2-1);
+
+  // build hash
+  const cell=h; const gx=Math.ceil(W/cell)+2, gy=Math.ceil(H/cell)+2, gz=Math.ceil(D/cell)+2;
+  const hash=new Map();
+  for(let i=0;i<N;i++){ const j=i*3; const ix=Math.floor((pos[j]+W/2)/cell), iy=Math.floor((pos[j+1]+H/2)/cell), iz=Math.floor((pos[j+2]+D/2)/cell); const key=(ix+1)*1000000+(iy+1)*10000+(iz+1); let arr=hash.get(key); if(!arr){arr=[]; hash.set(key,arr);} arr.push(i); }
+  const density=new Float32Array(N), pressure=new Float32Array(N);
+  const rho0=1, neighborSum=new Float32Array(N);
+  acc.fill(0,0,N*3);
+  const gradW=new THREE.Vector3();
+  let errSum=0;
+  for(let i=0;i<N;i++){
+    const j=i*3; const x=pos[j],y=pos[j+1],z=pos[j+2];
+    const ix=Math.floor((x+W/2)/cell), iy=Math.floor((y+H/2)/cell), iz=Math.floor((z+D/2)/cell);
+    let sumW=0,u=0;
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)for(let c=-1;c<=1;c++){
+      const arr=hash.get((ix+a+1)*1000000+(iy+b+1)*10000+(iz+c+1)); if(!arr) continue;
+      for(let q=0;q<arr.length;q++){ const l=arr[q]; if(l===i) continue; const m=l*3; const dx=x-pos[m],dy=y-pos[m+1],dz=z-pos[m+2]; const d2=dx*dx+dy*dy+dz*dz; if(d2>=h*h) continue; const Wq=Math.exp(-3*d2/(h*h)); sumW+=Wq; }
+    }
+    density[i]=sumW/Math.pow(h*h*h,1)+.0001; // scaled units
+    neighborSum[i]=sumW;
+    errSum+=Math.abs(density[i]-1);
+    pressure[i]=1000*(density[i]-1); // tune
+    // clamp
+    pressure[i]=clamp(pressure[i],-140,140);
+  }
+  // density check relative rough
+  sim.densityErr=errSum/N/1.0;
+  for(let i=0;i<N;i++){
+    const j=i*3; const x=pos[j],y=pos[j+1],z=pos[j+2];
+    let fx=0,fy=0,fz=0,nuX=0,nuY=0,nuZ=0;
+    const ix=Math.floor((x+W/2)/cell), iy=Math.floor((y+H/2)/cell), iz=Math.floor((z+D/2)/cell);
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)for(let c=-1;c<=1;c++){
+      const arr=hash.get((ix+a+1)*1000000+(iy+b+1)*10000+(iz+c+1)); if(!arr) continue;
+      for(let q=0;q<arr.length;q++){
+        const l=arr[q]; if(l===i) continue; const m=l*3; const dx=x-pos[m],dy=y-pos[m+1],dz=z-pos[m+2]; const d2=dx*dx+dy*dy+dz*dz; if(d2>=h*h||d2<1e-9) continue;
+        const Wq=Math.exp(-3*d2/(h*h)); const factor=(6/(h*h))*Wq;
+        const Psum=pressure[i]+pressure[l];
+        fx+=Psum*factor*dx; fy+=Psum*factor*dy; fz+=Psum*factor*dz;
+        // viscosity: local relative velocity
+        nuX+=(vel[m]-vel[j]); nuY+=(vel[m+1]-vel[j+1]); nuZ+=(vel[m+2]-vel[j+2]);
+      }
+    }
+    const visc=viscosity*(fx*.0015+nuX*.0045);
+    // massively reduce self / unit scaling
+    fx*=.0018; fy*=.0018; fz*=.0018;
+    nuX*=viscosity*.055; nuY*=viscosity*.055; nuZ*=viscosity*.055;
+    acc[j]=fx+nuX; acc[j+1]=fy+nuY; acc[j+2]=fz+nuZ;
+  }
+  // gravity & drag
+  for(let i=0;i<N;i++){ const j=i*3; acc[j]+=sim.gravityLocal.x; acc[j+1]+=sim.gravityLocal.y; acc[j+2]+=sim.gravityLocal.z; }
+  // stirring
+  if(sim.stirring && sim.stirPrev && sim.stirPoint){
+    tmpV.subVectors(sim.stirPoint,sim.stirPrev); const dx=tmpV.x,dy=tmpV.y,dz=tmpV.z; const stirMag=Math.hypot(dx,dy,dz);
+    if(stirMag>0){
+      const inv=1/Math.max(stirMag,1e-4); const dirX=dx*inv,dirY=dy*inv,dirZ=dz*inv; const strength=Math.min(6,stirMag*38);
+      for(let i=0;i<N;i++){ const j=i*3; const dx2=pos[j]-sim.stirPoint.x,dy2=pos[j+1]-sim.stirPoint.y,dz2=pos[j+2]-sim.stirPoint.z; const d2=dx2*dx2+dy2*dy2+dz2*dz2; const R=1.05; if(d2<R*R){ const fall=1-Math.sqrt(d2)/R; vel[j]+=dirX*strength*fall*dt; vel[j+1]+=dirY*strength*fall*dt; vel[j+2]+=dirZ*strength*fall*dt;} }
+    }
+    sim.stirPrev.copy(sim.stirPoint);
+  }
+  // integrate
+  for(let i=0;i<N;i++){ const j=i*3; vel[j]+=acc[j]*dt; vel[j+1]+=acc[j+1]*dt; vel[j+2]+=acc[j+2]*dt;
+    // damping mild
+    vel[j]*=.985; vel[j+1]*=.985; vel[j+2]*=.985;
+    // cap speed
+    const sp=Math.hypot(vel[j],vel[j+1],vel[j+2]); if(sp>7){ const s=7/sp; vel[j]*=s; vel[j+1]*=s; vel[j+2]*=s; }
+    pos[j]+=vel[j]*dt; pos[j+1]+=vel[j+1]*dt; pos[j+2]+=vel[j+2]*dt;
+    // walls
+    if(pos[j]<floor){} // noop
+    if(pos[j]<-W/2+r){pos[j]=-W/2+r; vel[j]=Math.abs(vel[j])*.18;}
+    if(pos[j]>W/2-r){pos[j]=W/2-r; vel[j]=-Math.abs(vel[j])*.18;}
+    if(pos[j+2]<-D/2+r){pos[j+2]=-D/2+r; vel[j+2]=Math.abs(vel[j+2])*.18;}
+    if(pos[j+2]>D/2-r){pos[j+2]=D/2-r; vel[j+2]=-Math.abs(vel[j+2])*.18;}
+    if(pos[j+1]<floor){pos[j+1]=floor; vel[j+1]=Math.abs(vel[j+1])*.22;}
+    if(pos[j+1]>top){pos[j+1]=top; vel[j+1]=-Math.abs(vel[j+1])*.12;}
+    // piston
+    if(pos[j]<pistonX+r){ const push=(pistonX+r)-pos[j]; pos[j]+=push; vel[j]=Math.max(vel[j],sim.pistonV*.92); if(sim.pistonV>0) vel[j]+=sim.pistonV*.28; }
+    if(pos[j]>pistonX+r+.015 && pistonX>-W/2 && pos[j]<pistonX+r+.18 && vel[j]<sim.pistonV*.9) vel[j]=sim.pistonV*.9;
+  }
+  // objects two-way
+  for(const obj of sim.activeObjects){
+    const p=obj.mesh.position; const velObj=obj.vel;
+    // particle contacts
+    let submerged=0, forceSum=new THREE.Vector3();
+    for(let i=0;i<N;i++){ const j=i*3; const dx=pos[j]-p.x,dy=pos[j+1]-p.y,dz=pos[j+2]-p.z; const d=Math.hypot(dx,dy,dz); const rr=obj.r+r; if(d<rr){ const push=(rr-d); const inv=1/Math.max(d,1e-4); const nx=dx*inv,ny=dy*inv,nz=dz*inv; pos[j]=p.x+nx*rr; pos[j+1]=p.y+ny*rr; pos[j+2]=p.z+nz*rr; const relVx=vel[j]-velObj.x,relVy=vel[j+1]-velObj.y,relVz=vel[j+2]-velObj.z; const rel=relVx*nx+relVy*ny+relVz*nz; if(rel<0){ vel[j]-=(1.65*rel)*nx; vel[j+1]-=(1.65*rel)*ny; vel[j+2]-=(1.65*rel)*nz; forceSum.x+=nx*(-rel)*.08; forceSum.y+=ny*(-rel)*.08; forceSum.z+=nz*(-rel)*.08; } submerged+=Math.max(0,rr-d); } }
+    const subFrac=clamp(submerged/(obj.r*2.8),0,1);
+    const buoy=sim.gravityLocal.clone().multiplyScalar(subFrac*1.85 - obj.density); // net acceleration
+    buoy.multiplyScalar(gravityScale*.75); forceSum.add(buoy.multiplyScalar(1.25/obj.density));
+    velObj.addScaledVector(forceSum,dt);
+    velObj.addScaledVector(sim.gravityLocal,dt);
+    velObj.multiplyScalar(.965);
+    velObj.y=clamp(velObj.y,-6,6);
+    p.addScaledVector(velObj,dt);
+    // object walls
+    if(p.x<-W/2+obj.r){p.x=-W/2+obj.r; velObj.x=Math.abs(velObj.x)*.25;} if(p.x>W/2-obj.r){p.x=W/2-obj.r; velObj.x=-Math.abs(velObj.x)*.25;}
+    if(p.z<-D/2+obj.r){p.z=-D/2+obj.r; velObj.z=Math.abs(velObj.z)*.25;} if(p.z>D/2-obj.r){p.z=D/2-obj.r; velObj.z=-Math.abs(velObj.z)*.25;}
+    if(p.y<floor+obj.r){p.y=floor+obj.r; velObj.y=Math.abs(velObj.y)*.25;} if(p.y>top-.12){p.y=top-.12; velObj.y=Math.min(velObj.y,0);}
+    obj.mesh.rotation.x+=velObj.z*dt*.35; obj.mesh.rotation.z-=velObj.x*dt*.35; obj.mesh.rotation.y+=velObj.x*dt*.1;
+    obj.mesh.position.copy(p);
+  }
+  sim.time+=dt;
+}
+
+// controls / events
+const nParticles=document.getElementById('nParticles'), nLabel=document.getElementById('nLabel'), viscosityInput=document.getElementById('viscosity'), vLabel=document.getElementById('vLabel'), gravityInput=document.getElementById('gravity'), gLabel=document.getElementById('gLabel'), stepScaleInput=document.getElementById('stepScale'), tLabel=document.getElementById('tLabel'), tiltXInput=document.getElementById('tiltX'), tiltZInput=document.getElementById('tiltZ'), scenarioInput=document.getElementById('scenario'), renderModeInput=document.getElementById('renderMode'), pauseBtn=document.getElementById('pauseBtn'), stepBtn=document.getElementById('stepBtn'), resetBtn=document.getElementById('resetBtn'), dropBall=document.getElementById('dropBall'), dropCrate=document.getElementById('dropCrate'), dropDuck=document.getElementById('dropDuck'), hidePanel=document.getElementById('hidePanel'), toggleUI=document.getElementById('toggleUI'), panel=document.getElementById('panel'), stFps=document.getElementById('stFps'), stMs=document.getElementById('stMs'), stN=document.getElementById('stN'), stErr=document.getElementById('stErr');
+params.nLabel=nLabel;
+nParticles.addEventListener('input',e=>{ setCount(+e.target.value); resetScenario(); });
+viscosityInput.addEventListener('input',e=>{ viscosity=+e.target.value; vLabel.textContent=viscosity.toFixed(2); });
+gravityInput.addEventListener('input',e=>{ gravityScale=+e.target.value; gLabel.textContent=gravityScale.toFixed(2); });
+stepScaleInput.addEventListener('input',e=>{ stepScale=+e.target.value; tLabel.textContent=stepScale.toFixed(2); });
+tiltXInput.addEventListener('input',e=>tiltX=+e.target.value); tiltZInput.addEventListener('input',e=>tiltZ=+e.target.value);
+scenarioInput.addEventListener('change',e=>{ scenario=e.target.value; resetScenario(); });
+renderModeInput.addEventListener('change',e=>{ renderMode=e.target.value; applyRenderMode(); });
+pauseBtn.addEventListener('click',()=>{ paused=!paused; pauseBtn.textContent=paused?'Play':'Pause'; });
+stepBtn.addEventListener('click',()=>{ simulate(0.0167); });
+resetBtn.addEventListener('click',resetScenario);
+dropBall.addEventListener('click',()=>addObject('ball')); dropCrate.addEventListener('click',()=>addObject('crate')); dropDuck.addEventListener('click',()=>addObject('duck'));
+hidePanel.addEventListener('click',()=>{ panel.classList.add('hidden'); toggleUI.textContent='Show UI'; });
+toggleUI.addEventListener('click',()=>{ panel.classList.toggle('hidden'); toggleUI.textContent=panel.classList.contains('hidden')?'Show UI':'Hide UI'; });
+
+addEventListener('keydown',e=>{ const k=e.key.toLowerCase(); if(k==='arrowleft'){ tiltZ=clamp(tiltZ-0.06,-0.65,0.65); tiltZInput.value=tiltZ;} else if(k==='arrowright'){ tiltZ=clamp(tiltZ+0.06,-0.65,0.65); tiltZInput.value=tiltZ;} else if(k==='arrowup'){ tiltX=clamp(tiltX-0.06,-0.65,0.65); tiltXInput.value=tiltX;} else if(k==='arrowdown'){ tiltX=clamp(tiltX+0.06,-0.65,0.65); tiltXInput.value=tiltX;} });
+function getPointerLocal(e){ const rect=renderer.domElement.getBoundingClientRect(); pointerNDC.x=((e.clientX-rect.left)/rect.width)*2-1; pointerNDC.y=-((e.clientY-rect.top)/rect.height)*2+1; raycaster.setFromCamera(pointerNDC,camera); const hit=new THREE.Vector3(); const targetSphere=new THREE.Sphere(new THREE.Vector3(),1); const center=tank.getWorldPosition(tmpV.set(0,0,0)); targetSphere.center.copy(center); targetSphere.radius=Math.max(W,H,D)*.82; if(raycaster.ray.intersectSphere(targetSphere,hit)){ tank.worldToLocal(hit); return hit; } const planeHit=new THREE.Vector3(); stirPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(),center); if(raycaster.ray.intersectPlane(stirPlane,planeHit)){ tank.worldToLocal(planeHit); return planeHit; } return null; }
+renderer.domElement.addEventListener('pointerdown',e=>{ if(e.target!==renderer.domElement) return; const p=getPointerLocal(e); if(p && p.x>-W/2 && p.x<W/2 && p.y>-H/2 && p.y<H/2 && p.z>-D/2 && p.z<D/2){ sim.stirring=true; sim.stirPoint=p.clone(); sim.stirPrev=p.clone(); } });
+window.addEventListener('pointermove',e=>{ if(!sim.stirring) return; const p=getPointerLocal(e); if(p) sim.stirPoint=p.clone(); });
+window.addEventListener('pointerup',()=>{ sim.stirring=false; sim.stirPrev=null; });
+function applyRenderMode(){ particlesMesh.visible=renderMode==='surface'; pointsMesh.visible=renderMode==='particles'; foamMesh.visible=renderMode==='surface'; }
+
+// resize
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2)); renderer.setSize(innerWidth,innerHeight); });
+
+// init
+setCount(18000); resetScenario(); applyRenderMode();
+document.getElementById('loading').style.opacity='0'; setTimeout(()=>document.getElementById('loading').style.display='none',400);
+
+const dummy=new THREE.Object3D(); let statTimer=0, frame=0;
+function render(now){
+  requestAnimationFrame(render); frame++;
+  const dt=Math.min((now-lastTimestamp)/1000,0.05); lastTimestamp=now;
+  if(!paused){ const t0=performance.now(); simulate(dt); sim.simMs=performance.now()-t0; }
+  causticMat.uniforms.uTime.value=sim.time*.9;
+  // update instances and points
+  const N=sim.N, arr=pointsGeom.attributes.position.array, spd=pointsGeom.attributes.aSpeed.array; let foamCount=0;
+  for(let i=0;i<N;i++){ const j=i*3; const x=pos[j],y=pos[j+1],z=pos[j+2]; dummy.position.set(x,y,z); dummy.scale.setScalar(sim.r); dummy.rotation.set(0,0,0); dummy.updateMatrix(); particlesMesh.setMatrixAt(i,dummy.matrix);
+    arr[i*3]=x; arr[i*3+1]=y; arr[i*3+2]=z; const s=Math.hypot(vel[j],vel[j+1],vel[j+2]); spd[i]=s;
+    if(foamCount<4096 && s>3.2){ const fj=foamCount*3; foamGeom.attributes.position.array[fj]=x; foamGeom.attributes.position.array[fj+1]=y; foamGeom.attributes.position.array[fj+2]=z; foamCount++; }
+  }
+  particlesMesh.instanceMatrix.needsUpdate=true; pointsGeom.attributes.position.needsUpdate=true; pointsGeom.attributes.aSpeed.needsUpdate=true; foamGeom.attributes.position.needsUpdate=true; foamGeom.setDrawRange(0,foamCount);
+  particlesMesh.count=N; pointsMesh.geometry.setDrawRange(0,N); pointsMat.uniforms.uSize.value=renderMode==='particles'?clamp(9*(1.6/(1+sim.spacing*6)),4,12):8;
+  controls.update(); renderer.render(scene,camera);
+  fpsTime+=dt; frameCount++; if(fpsTime>=.5){ fps=Math.round(frameCount/fpsTime); frameCount=0; fpsTime=0; }
+  statTimer+=dt; if(statTimer>.18){ statTimer=0; stFps.textContent=fps; stMs.textContent=sim.simMs.toFixed(1)+' ms'; stN.textContent=N.toLocaleString(); stErr.textContent=(sim.densityErr*100).toFixed(1)+'%'; }
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
