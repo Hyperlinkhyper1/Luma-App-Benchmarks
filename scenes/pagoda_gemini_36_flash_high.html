@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Garden Above the Clouds — 3D Voxel Diorama</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b132b;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #ffffff;
+    }
+    #webgl-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* UI Overlay */
+    #ui-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+    }
+
+    /* Header */
+    .header {
+      pointer-events: auto;
+      max-width: 420px;
+    }
+    .header h1 {
+      font-family: 'Cinzel', 'Georgia', 'Times New Roman', serif;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.6), 0 0 20px rgba(0,0,0,0.4);
+      color: #f8fafc;
+      margin-bottom: 4px;
+    }
+    .header p {
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      color: rgba(248, 250, 252, 0.75);
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    }
+
+    /* Bottom Control Bar */
+    .controls-bar {
+      pointer-events: auto;
+      align-self: center;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 8px 14px;
+      border-radius: 40px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .pill-group {
+      display: flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 20px;
+      padding: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .pill-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      outline: none;
+    }
+    .pill-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .pill-btn.active {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.22);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      font-weight: 600;
+    }
+
+    .select-dropdown {
+      background: rgba(0, 0, 0, 0.35);
+      color: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 16px;
+      outline: none;
+      cursor: pointer;
+    }
+    .select-dropdown option {
+      background: #0f172a;
+      color: #ffffff;
+    }
+
+    /* More Drawer Panel */
+    .more-panel {
+      position: absolute;
+      bottom: 80px;
+      align-self: center;
+      pointer-events: auto;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      padding: 16px 20px;
+      width: 320px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .more-panel.open {
+      display: flex;
+    }
+
+    .panel-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .panel-row input[type="range"] {
+      width: 140px;
+      accent-color: #38bdf8;
+      cursor: pointer;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 38px;
+      height: 20px;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .toggle-switch:checked {
+      background: #38bdf8;
+    }
+    .toggle-switch::before {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      background: #fff;
+      transition: 0.3s;
+    }
+    .toggle-switch:checked::before {
+      left: 20px;
+    }
+
+    .stats-badge {
+      font-family: monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 4px 8px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    @media (max-width: 768px) {
+      .header h1 { font-size: 22px; }
+      .controls-bar { gap: 8px; padding: 6px 10px; }
+      .pill-btn { padding: 5px 10px; font-size: 11px; }
+    }
+  </style>
+
+  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <div id="webgl-container"></div>
+
+  <div id="ui-layer">
+    <div class="header">
+      <h1>Garden Above the Clouds</h1>
+      <p>Drag to look around • Scroll to zoom • Right-drag to move</p>
+    </div>
+
+    <!-- More Drawer -->
+    <div class="more-panel" id="more-panel">
+      <div class="panel-row">
+        <span>Time Cycle (90s)</span>
+        <input type="checkbox" id="toggle-cycle" class="toggle-switch" checked>
+      </div>
+      <div class="panel-row">
+        <span>Time of Day</span>
+        <input type="range" id="slider-time" min="0" max="24" step="0.1" value="12">
+      </div>
+      <div class="panel-row">
+        <span>Auto-Rotate</span>
+        <input type="checkbox" id="toggle-autorotate" class="toggle-switch" checked>
+      </div>
+      <div class="panel-row">
+        <span>Voxel Engine Stats</span>
+        <span class="stats-badge" id="stats-readout">0 voxels | 60 FPS</span>
+      </div>
+    </div>
+
+    <!-- Main Pill Control Bar -->
+    <div class="controls-bar">
+      <select class="select-dropdown" id="camera-select">
+        <option value="Overview">Overview View</option>
+        <option value="Pagoda">Pagoda Terrace</option>
+        <option value="Torii">Torii Gate</option>
+        <option value="Bridge">Red Bridge</option>
+        <option value="Waterfall">Waterfall Cliff</option>
+      </select>
+
+      <div class="pill-group" id="season-group">
+        <button class="pill-btn active" data-season="Spring">Spring</button>
+        <button class="pill-btn" data-season="Summer">Summer</button>
+        <button class="pill-btn" data-season="Autumn">Autumn</button>
+        <button class="pill-btn" data-season="Winter">Winter</button>
+      </div>
+
+      <div class="pill-group" id="tod-group">
+        <button class="pill-btn" data-tod="Dawn">Dawn</button>
+        <button class="pill-btn active" data-tod="Day">Day</button>
+        <button class="pill-btn" data-tod="Sunset">Sunset</button>
+        <button class="pill-btn" data-tod="Night">Night</button>
+      </div>
+
+      <button class="pill-btn" id="btn-more">More ⚙</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Global exposed Benchmark API
+    window.__VOXEL__ = {
+      voxelCount: 0,
+      fps: 60,
+      pagodaFloors: 5,
+      timeOfDay: 'Day',
+      season: 'Spring'
+    };
+
+    // --- COLOR PALETTES & STYLES ---
+    const PALETTE = {
+      vermillion: 0xC73E1D,
+      vermillionDark: 0xA8321A,
+      jadeTeal: 0x2E8B7E,
+      jadeTealDark: 0x1F6359,
+      gold: 0xE8B86D,
+      teak: 0x4A2C1A,
+      teakDark: 0x2E1A0F,
+      stone: 0x9AA0A6,
+      stoneDark: 0x5A6065,
+      water: 0x48CAE4,
+      moss: 0x606C38,
+      cloudWhite: 0xF4F6FA,
+      snowWhite: 0xFFFFFF,
+      sand: 0xDFE6E9
+    };
+
+    // Seasonal Colors for Foliage Types: 0=Sakura, 1=Maple, 2=Pine, 3=Broadleaf, 4=Grass
+    const SEASON_COLORS = {
+      Spring: [0xFFB7C5, 0x74C365, 0x1B4332, 0x52B788, 0x74C365],
+      Summer: [0x2D6A4F, 0x2D6A4F, 0x1B4332, 0x40916C, 0x52B788],
+      Autumn: [0xE76F51, 0xD90429, 0x1B4332, 0xF77F00, 0xB5E48C],
+      Winter: [0xE2E8F0, 0x4A2C1A, 0x1B4332, 0xBEE3F8, 0xE2E8F0]
+    };
+
+    // --- SCENE SETUP ---
+    const container = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+    // Intro camera start position (far back in mist)
+    camera.position.set(0, 10, 240);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 + 0.05; // Prevent camera going under clouds
+    controls.minDistance = 25;
+    controls.maxDistance = 260;
+    controls.target.set(0, 15, 0);
+
+    // Dynamic Fog
+    scene.fog = new THREE.FogExp2(0xC6E2E9, 0.0032);
+
+    // Lights
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 10;
+    dirLight.shadow.camera.far = 380;
+    const d = 110;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    dirLight.shadow.bias = -0.0004;
+    scene.add(dirLight);
+
+    const hemiLight = new THREE.HemisphereLight(0x4EA8DE, 0x4A3C31, 1.1);
+    scene.add(hemiLight);
+
+    // Background Gradient Sky Dome
+    const skyGeo = new THREE.SphereGeometry(700, 32, 16);
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: new THREE.Color(0x4EA8DE) },
+        bottomColor: { value: new THREE.Color(0xD8F3DC) }
+      },
+      vertexShader: `
+        varying vec3 vWorldPos;
+        void main() {
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vWorldPos;
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        void main() {
+          float h = normalize(vWorldPos).y;
+          float f = smoothstep(-0.1, 0.55, h);
+          gl_FragColor = vec4(mix(bottomColor, topColor, f), 1.0);
+        }
+      `,
+      side: THREE.BackSide
+    });
+    const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(skyMesh);
+
+    // --- PROCEDURAL VOXEL ENGINE ---
+    class VoxelGrid {
+      constructor() {
+        this.data = new Map();
+      }
+      set(x, y, z, color, category = 'static', extra = {}) {
+        const key = `${x},${y},${z}`;
+        this.data.set(key, { x, y, z, color, category, ...extra });
+      }
+      has(x, y, z) {
+        return this.data.has(`${x},${y},${z}`);
+      }
+      isEnclosed(x, y, z) {
+        return this.has(x+1, y, z) && this.has(x-1, y, z) &&
+               this.has(x, y+1, z) && this.has(x, y-1, z) &&
+               this.has(x, y, z+1) && this.has(x, y, z-1);
+      }
+      getAO(x, y, z) {
+        let count = 0;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              if (dx === 0 && dy === 0 && dz === 0) continue;
+              if (this.has(x + dx, y + dy, z + dz)) count++;
+            }
+          }
+        }
+        return Math.max(0.38, 1.0 - (count * 0.032));
+      }
+    }
+
+    const grid = new VoxelGrid();
+    let pagodaVoxelCount = 0;
+
+    // --- PROCEDURAL SCENE GENERATION ---
+
+    // Simple Perlin-like 2D Noise helper
+    function noise2D(x, z) {
+      return Math.sin(x * 0.07) * Math.cos(z * 0.07) * 4.5 +
+             Math.sin(x * 0.18 + z * 0.12) * 2.5 +
+             Math.cos(x * 0.3 - z * 0.2) * 1.2;
+    }
+
+    // 1. MAIN ISLAND TERRAIN
+    console.time("Voxel Generation");
+    const islandRx = 75, islandRz = 58;
+
+    for (let x = -islandRx; x <= islandRx; x++) {
+      for (let z = -islandRz; z <= islandRz; z++) {
+        const nx = x / islandRx;
+        const nz = z / islandRz;
+        const distSq = nx * nx + nz * nz;
+
+        if (distSq <= 1.0) {
+          const n = noise2D(x, z);
+          let topY = Math.floor(n);
+
+          // Terraced heights
+          if (x >= -45 && x <= 15 && z >= -25 && z <= 30) topY = Math.max(topY, 5); // Level 2
+          if (x >= -22 && x <= 18 && z >= -32 && z <= 12) topY = Math.max(topY, 14); // Pagoda Terrace Level 3
+          if (x >= -50 && x <= -25 && z >= -45 && z <= -18) topY = Math.floor(18 + Math.sin(x*0.1)*6 + Math.cos(z*0.1)*6); // Crag Peak
+
+          // Pond carving
+          let isPond = false;
+          if (x >= 8 && x <= 32 && z >= 4 && z <= 26 && topY <= 6) {
+            isPond = true;
+            topY = 3; // carve down
+          }
+
+          // Bottom cliff taper
+          const cliffDepth = Math.floor((1 - Math.sqrt(distSq)) * 26 + noise2D(x*0.5, z*0.5) * 2);
+          const botY = -cliffDepth;
+
+          for (let y = botY; y <= topY; y++) {
+            let color = PALETTE.stoneDark;
+            let category = 'static';
+
+            if (y === topY) {
+              if (isPond) {
+                if (y === 3) {
+                  grid.set(x, y, z, PALETTE.water, 'water');
+                  continue;
+                }
+              }
+              // Surface caps
+              if (topY >= 14 && x >= -20 && x <= 16 && z >= -30 && z <= 10) {
+                color = PALETTE.sand; // Zen Raked Gravel / Terrace
+              } else if (topY >= 18) {
+                color = PALETTE.moss; // Crag moss
+              } else {
+                color = PALETTE.moss;
+                category = 'foliage';
+              }
+            } else if (y > topY - 3) {
+              color = PALETTE.stone;
+            } else {
+              // Stratified rock shades
+              const layer = Math.abs(y) % 6;
+              color = layer < 3 ? PALETTE.stoneDark : PALETTE.teakDark;
+            }
+
+            grid.set(x, y, z, color, category, { foliageType: 4 });
+          }
+
+          // Hanging Vines & Moss Overhangs
+          if (distSq > 0.82 && Math.random() < 0.35) {
+            const vineLen = Math.floor(Math.random() * 8) + 3;
+            for (let v = 1; v <= vineLen; v++) {
+              grid.set(x, botY - v, z, PALETTE.moss, 'foliage', { foliageType: 4 });
+            }
+          }
+        }
+      }
+    }
+
+    // 2. FIVE-STORY PAGODA (Goju-no-To)
+    const px = 0, pz = -10, pBaseY = 14;
+
+    function buildPagodaFloor(story, baseHeight, width, wallColor, roofWidth) {
+      const h = 7;
+      const startY = baseHeight;
+
+      for (let y = startY; y < startY + h; y++) {
+        for (let dx = -width; dx <= width; dx++) {
+          for (let dz = -width; dz <= width; dz++) {
+            const isEdge = Math.abs(dx) === width || Math.abs(dz) === width;
+            const isCorner = Math.abs(dx) === width && Math.abs(dz) === width;
+
+            if (isEdge) {
+              let c = isCorner ? PALETTE.teak : wallColor;
+              // Doors on story 1 front
+              let isDoor = false;
+              if (story === 1 && dz === width && Math.abs(dx) <= 2 && y < startY + 5) {
+                c = PALETTE.teakDark;
+                isDoor = true;
+              }
+              // Window lattices
+              if (!isCorner && !isDoor && y >= startY + 2 && y <= startY + 4 && Math.abs(dx) % 2 === 0) {
+                c = PALETTE.gold; // Glow lattices
+              }
+              grid.set(px + dx, y, pz + dz, c, 'static');
+              pagodaVoxelCount++;
+            }
+          }
+        }
+      }
+
+      // Upturned Jade-Teal Roof & Eaves
+      const roofY = startY + h;
+      for (let rx = -roofWidth; rx <= roofWidth; rx++) {
+        for (let rz = -roofWidth; rz <= roofWidth; rz++) {
+          const maxD = Math.max(Math.abs(rx), Math.abs(rz));
+          if (maxD >= width - 1) {
+            let ry = roofY - Math.floor((roofWidth - maxD) * 0.4);
+            // Upturned eaves at far corners
+            if (Math.abs(rx) === roofWidth && Math.abs(rz) === roofWidth) ry += 1;
+
+            grid.set(px + rx, ry, pz + rz, PALETTE.jadeTeal, 'static', { isRoof: true });
+            pagodaVoxelCount++;
+
+            // Bracket gold trim under roof edge
+            if (maxD === roofWidth - 1) {
+              grid.set(px + rx, ry - 1, pz + rz, PALETTE.gold, 'static');
+              pagodaVoxelCount++;
+            }
+          }
+        }
+      }
+      return roofY + 2;
+    }
+
+    let currentY = pBaseY + 1;
+    currentY = buildPagodaFloor(1, currentY, 8, PALETTE.vermillion, 11);
+    currentY = buildPagodaFloor(2, currentY, 7, PALETTE.vermillion, 10);
+    currentY = buildPagodaFloor(3, currentY, 6, PALETTE.vermillion, 9);
+    currentY = buildPagodaFloor(4, currentY, 5, PALETTE.vermillion, 8);
+    currentY = buildPagodaFloor(5, currentY, 4, PALETTE.vermillion, 7);
+
+    // Gold Sorin Spire
+    for (let sy = currentY - 1; sy <= currentY + 22; sy++) {
+      const relY = sy - currentY;
+      let spireWidth = 0;
+      if (relY >= 3 && relY <= 17 && relY % 2 === 0) spireWidth = 2; // Stacked rings
+      if (relY === 20) spireWidth = 1; // Sacred Lotus / flame top
+
+      for (let sx = -spireWidth; sx <= spireWidth; sx++) {
+        for (let sz = -spireWidth; sz <= spireWidth; sz++) {
+          grid.set(px + sx, sy, pz + sz, PALETTE.gold, 'static');
+          pagodaVoxelCount++;
+        }
+      }
+    }
+
+    // 3. TORII GATE & FLOATING STAIRS
+    const tx = -35, tz = 38, ty = 5;
+    // Torii Posts
+    for (let py = ty; py <= ty + 10; py++) {
+      grid.set(tx - 5, py, tz, PALETTE.vermillion, 'static');
+      grid.set(tx + 5, py, tz, PALETTE.vermillion, 'static');
+    }
+    // Crossbeams
+    for (let cx = tx - 8; cx <= tx + 8; cx++) {
+      grid.set(cx, ty + 8, tz, PALETTE.vermillion, 'static');
+      grid.set(cx, ty + 10, tz, PALETTE.vermillionDark, 'static');
+      grid.set(cx, ty + 11, tz, 0x1A1A1A, 'static'); // Top lintel black cap
+    }
+
+    // Floating Stone Staircase descending into cloud sea
+    for (let step = 0; step < 14; step++) {
+      const sx = tx - Math.floor(step * 1.8);
+      const sz = tz + Math.floor(step * 2.2);
+      const sy = ty - Math.floor(step * 1.4);
+      for (let sw = -3; sw <= 3; sw++) {
+        for (let st = 0; st < 2; st++) {
+          grid.set(sx + sw, sy, sz + st, PALETTE.stone, 'static');
+        }
+      }
+    }
+
+    // 4. RED ARCHED BRIDGE over Koi Pond
+    const bx = 20, bz = 15, by = 3;
+    for (let step = -7; step <= 7; step++) {
+      const archY = by + Math.floor(Math.cos((step / 7) * (Math.PI / 2.2)) * 3.5);
+      const curZ = bz + step;
+      for (let bw = -2; bw <= 2; bw++) {
+        grid.set(bx + bw, archY, curZ, PALETTE.vermillion, 'static');
+      }
+      // Railings
+      grid.set(bx - 3, archY + 1, curZ, PALETTE.vermillionDark, 'static');
+      grid.set(bx + 3, archY + 1, curZ, PALETTE.vermillionDark, 'static');
+    }
+
+    // 5. TREES & VEGETATION (Sakura, Maples, Bonsai Pines, Weeping Willow, Bamboo)
+    function buildTree(tcx, tcy, tcz, type) {
+      const trunkH = type === 2 ? 5 : (type === 0 ? 8 : 7);
+      // Trunk
+      for (let y = tcy; y < tcy + trunkH; y++) {
+        grid.set(tcx, y, tcz, PALETTE.teak, 'static');
+      }
+      // Canopy Cloud
+      const r = type === 2 ? 4 : 5;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -2; dy <= r; dy++) {
+          for (let dz = -r; dz <= r; dz++) {
+            if (dx*dx + dy*dy + dz*dz <= r*r + Math.random()*2) {
+              const color = SEASON_COLORS.Spring[type];
+              grid.set(tcx + dx, tcy + trunkH + dy, tcz + dz, color, 'foliage', { foliageType: type });
+            }
+          }
+        }
+      }
+    }
+
+    // Sakura Trees around garden
+    buildTree(-15, 6, 20, 0);
+    buildTree(30, 4, -10, 0);
+    buildTree(-32, 6, -10, 0);
+
+    // Japanese Maples
+    buildTree(10, 5, -25, 1);
+    buildTree(-10, 15, -22, 1);
+
+    // Bonsai Pines on cliff & islets
+    buildTree(-38, 22, -30, 2);
+    buildTree(12, 15, 2, 2);
+
+    // Bamboo Grove
+    for (let bam = 0; bam < 14; bam++) {
+      const bx = -20 + Math.floor(Math.random()*8);
+      const bz = -5 + Math.floor(Math.random()*8);
+      const bh = 8 + Math.floor(Math.random()*6);
+      for (let by = 5; by < 5 + bh; by++) {
+        grid.set(bx, by, bz, 0x52B788, 'foliage', { foliageType: 3 });
+      }
+    }
+
+    // Stone Lanterns (Tōrō) & Point Lights Locations
+    const lanternPositions = [
+      { x: -28, y: 6, z: 32 },
+      { x: -10, y: 6, z: 15 },
+      { x: 14, y: 4, z: 25 },
+      { x: 26, y: 4, z: 8 },
+      { x: -5, y: 15, z: 5 },
+      { x: 5, y: 15, z: -22 }
+    ];
+
+    const lanternLights = [];
+    lanternPositions.forEach(pos => {
+      // Stone base & lantern housing
+      grid.set(pos.x, pos.y, pos.z, PALETTE.stoneDark, 'static');
+      grid.set(pos.x, pos.y + 1, pos.z, PALETTE.gold, 'static'); // Glow window
+      grid.set(pos.x, pos.y + 2, pos.z, PALETTE.stoneDark, 'static');
+
+      const pLight = new THREE.PointLight(0xFF9933, 0.0, 28);
+      pLight.position.set(pos.x, pos.y + 1.5, pos.z);
+      scene.add(pLight);
+      lanternLights.push(pLight);
+    });
+
+    // 6. SATELLITE ISLETS
+    const isletCoords = [
+      { x: -105, y: -8, z: 30, r: 8 },
+      { x: 110, y: 5, z: -40, r: 10 },
+      { x: 85, y: -12, z: 70, r: 7 },
+      { x: -90, y: 12, z: -65, r: 9 },
+      { x: -40, y: -15, z: 100, r: 8 },
+      { x: 50, y: -10, z: -95, r: 9 }
+    ];
+
+    isletCoords.forEach(islet => {
+      for (let ix = -islet.r; ix <= islet.r; ix++) {
+        for (let iz = -islet.r; iz <= islet.r; iz++) {
+          if (ix*ix + iz*iz <= islet.r * islet.r) {
+            const topY = islet.y;
+            const depth = Math.floor((1 - Math.sqrt(ix*ix + iz*iz)/islet.r) * 14);
+            for (let iy = topY - depth; iy <= topY; iy++) {
+              const c = iy === topY ? PALETTE.moss : PALETTE.stoneDark;
+              grid.set(islet.x + ix, iy, islet.z + iz, c, iy === topY ? 'foliage' : 'static', { foliageType: 4 });
+            }
+          }
+        }
+      }
+      buildTree(islet.x, islet.y + 1, islet.z, Math.floor(Math.random()*3));
+    });
+
+    // 7. KARST STONE PILLARS (Distant mist towers)
+    const pillarCoords = [
+      { x: -180, z: -120, r: 18, h: 140 },
+      { x: 210, z: -150, r: 22, h: 160 },
+      { x: -240, z: 100, r: 20, h: 130 },
+      { x: 190, z: 140, r: 16, h: 150 },
+      { x: -130, z: 220, r: 24, h: 170 },
+      { x: 250, z: 30, r: 18, h: 140 },
+      { x: 0, z: -260, r: 25, h: 180 },
+      { x: -270, z: -80, r: 19, h: 135 },
+      { x: 280, z: -70, r: 17, h: 145 },
+      { x: -60, z: -290, r: 21, h: 165 }
+    ];
+
+    pillarCoords.forEach(p => {
+      for (let px = -p.r; px <= p.r; px++) {
+        for (let pz = -p.r; pz <= p.r; pz++) {
+          if (px*px + pz*pz <= p.r * p.r) {
+            for (let py = -40; py <= -40 + p.h; py++) {
+              const isTop = py === -40 + p.h;
+              const c = isTop ? PALETTE.moss : (py % 8 < 4 ? PALETTE.stoneDark : PALETTE.stone);
+              grid.set(p.x + px, py, p.z + pz, c, 'static');
+            }
+          }
+        }
+      }
+    });
+
+    // 8. CLOUD SEA BLANKET (Instanced cloud puffs below island)
+    const cloudPositions = [];
+    for (let cx = -420; cx <= 420; cx += 16) {
+      for (let cz = -420; cz += 16) {
+        if (cx*cx + cz*cz > 45*45 && cx*cx + cz*cz < 480*480) {
+          const cy = -35 + Math.sin(cx * 0.03) * 6 + Math.cos(cz * 0.03) * 6;
+          grid.set(cx, Math.floor(cy), cz, PALETTE.cloudWhite, 'cloud');
+        }
+      }
+    }
+
+    console.timeEnd("Voxel Generation");
+
+    // --- INSTANCED MESH ASSEMBLY ---
+    console.time("Mesh Assembly");
+
+    const categoryLists = {
+      static: [],
+      foliage: [],
+      water: [],
+      cloud: []
+    };
+
+    const snowVoxels = []; // Snow caps on top exposed surfaces
+
+    let totalVisibleVoxels = 0;
+
+    grid.data.forEach(v => {
+      // Face culling: skip fully enclosed voxels
+      if (grid.isEnclosed(v.x, v.y, v.z)) return;
+
+      totalVisibleVoxels++;
+      const ao = grid.getAO(v.x, v.y, v.z);
+      v.ao = ao;
+
+      if (categoryLists[v.category]) {
+        categoryLists[v.category].push(v);
+      } else {
+        categoryLists.static.push(v);
+      }
+
+      // Generate snow voxel cap candidate if exposed from above
+      if (v.category !== 'cloud' && v.category !== 'water' && !grid.has(v.x, v.y + 1, v.z)) {
+        snowVoxels.push({ x: v.x, y: v.y + 1, z: v.z, ao: ao });
+      }
+    });
+
+    window.__VOXEL__.voxelCount = totalVisibleVoxels;
+
+    const baseBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const dummy = new THREE.Object3D();
+    const tempColor = new THREE.Color();
+
+    // Standard Static Mesh
+    const matStatic = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.1 });
+    const meshStatic = new THREE.InstancedMesh(baseBoxGeo, matStatic, categoryLists.static.length);
+    meshStatic.castShadow = true;
+    meshStatic.receiveShadow = true;
+
+    categoryLists.static.forEach((v, i) => {
+      dummy.position.set(v.x, v.y, v.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      meshStatic.setMatrixAt(i, dummy.matrix);
+
+      tempColor.setHex(v.color).multiplyScalar(v.ao);
+      meshStatic.setColorAt(i, tempColor);
+    });
+    scene.add(meshStatic);
+
+    // Dynamic Foliage Mesh (Seasons recolor)
+    const matFoliage = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.0 });
+    const meshFoliage = new THREE.InstancedMesh(baseBoxGeo, matFoliage, categoryLists.foliage.length);
+    meshFoliage.castShadow = true;
+    meshFoliage.receiveShadow = true;
+
+    // Save initial color data for smooth season interpolation
+    const foliageInstanceData = categoryLists.foliage.map((v, i) => {
+      dummy.position.set(v.x, v.y, v.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      meshFoliage.setMatrixAt(i, dummy.matrix);
+
+      const type = v.foliageType !== undefined ? v.foliageType : 0;
+      return {
+        index: i,
+        type: type,
+        ao: v.ao,
+        currentHex: SEASON_COLORS.Spring[type]
+      };
+    });
+
+    function updateFoliageColors(seasonName) {
+      const palette = SEASON_COLORS[seasonName];
+      foliageInstanceData.forEach(item => {
+        const targetHex = palette[item.type];
+        item.currentHex = targetHex;
+        tempColor.setHex(targetHex).multiplyScalar(item.ao);
+        meshFoliage.setColorAt(item.index, tempColor);
+      });
+      meshFoliage.instanceColor.needsUpdate = true;
+    }
+    updateFoliageColors('Spring');
+    scene.add(meshFoliage);
+
+    // Snow Mesh Layer
+    const matSnow = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0.0, color: 0xFFFFFF });
+    const meshSnow = new THREE.InstancedMesh(baseBoxGeo, matSnow, snowVoxels.length);
+    snowVoxels.forEach((v, i) => {
+      dummy.position.set(v.x, v.y, v.z);
+      dummy.scale.set(1, 0.25, 1); // Thin snow cap
+      dummy.updateMatrix();
+      meshSnow.setMatrixAt(i, dummy.matrix);
+
+      tempColor.setHex(PALETTE.snowWhite).multiplyScalar(v.ao);
+      meshSnow.setColorAt(i, tempColor);
+    });
+    meshSnow.visible = false; // Turned on during Winter
+    scene.add(meshSnow);
+
+    // Translucent Water Surface Mesh
+    const matWater = new THREE.MeshStandardMaterial({
+      color: PALETTE.water,
+      roughness: 0.1,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.82
+    });
+    const meshWater = new THREE.InstancedMesh(baseBoxGeo, matWater, categoryLists.water.length);
+    categoryLists.water.forEach((v, i) => {
+      dummy.position.set(v.x, v.y - 0.1, v.z);
+      dummy.scale.set(1, 0.8, 1);
+      dummy.updateMatrix();
+      meshWater.setMatrixAt(i, dummy.matrix);
+      tempColor.setHex(PALETTE.water).multiplyScalar(v.ao);
+      meshWater.setColorAt(i, tempColor);
+    });
+    scene.add(meshWater);
+
+    // Soft Cloud Sea Mesh
+    const matCloud = new THREE.MeshStandardMaterial({
+      color: PALETTE.cloudWhite,
+      roughness: 1.0,
+      metalness: 0.0
+    });
+    const meshCloud = new THREE.InstancedMesh(baseBoxGeo, matCloud, categoryLists.cloud.length);
+    categoryLists.cloud.forEach((v, i) => {
+      dummy.position.set(v.x, v.y, v.z);
+      dummy.scale.set(16, 8, 16); // Big soft voxel blocks
+      dummy.updateMatrix();
+      meshCloud.setMatrixAt(i, dummy.matrix);
+      tempColor.setHex(PALETTE.cloudWhite);
+      meshCloud.setColorAt(i, tempColor);
+    });
+    scene.add(meshCloud);
+
+    console.timeEnd("Mesh Assembly");
+
+    // --- ANIMATED PARTICLES & WILDLIFE ---
+
+    // 1. WATERFALL STREAMS & MIST PARTICLES
+    const waterfallParticlesGeo = new THREE.BufferGeometry();
+    const wfCount = 350;
+    const wfPos = new Float32Array(wfCount * 3);
+    for (let i = 0; i < wfCount; i++) {
+      // 2 waterfalls: East spillway & West spillway
+      const isWest = i % 2 === 0;
+      wfPos[i * 3] = isWest ? -38 + (Math.random() - 0.5) * 4 : 35 + (Math.random() - 0.5) * 4;
+      wfPos[i * 3 + 1] = 2 - Math.random() * 40; // Fall distance down to clouds
+      wfPos[i * 3 + 2] = isWest ? -15 + (Math.random() - 0.5) * 4 : 20 + (Math.random() - 0.5) * 4;
+    }
+    waterfallParticlesGeo.setAttribute('position', new THREE.BufferAttribute(wfPos, 3));
+    const wfMat = new THREE.PointsMaterial({ color: 0xFFFFFF, size: 1.2, transparent: true, opacity: 0.85 });
+    const waterfallParticles = new THREE.Points(waterfallParticlesGeo, wfMat);
+    scene.add(waterfallParticles);
+
+    // 2. SEASON WEATHER PARTICLES (Sakura Petals / Autumn Leaves / Snowflakes)
+    const weatherCount = 400;
+    const weatherGeo = new THREE.BufferGeometry();
+    const weatherPos = new Float32Array(weatherCount * 3);
+    const weatherVel = [];
+    for (let i = 0; i < weatherCount; i++) {
+      weatherPos[i * 3] = (Math.random() - 0.5) * 160;
+      weatherPos[i * 3 + 1] = Math.random() * 60 + 10;
+      weatherPos[i * 3 + 2] = (Math.random() - 0.5) * 160;
+      weatherVel.push({
+        x: (Math.random() - 0.5) * 0.15,
+        y: -0.1 - Math.random() * 0.15,
+        z: (Math.random() - 0.5) * 0.15,
+        sway: Math.random() * Math.PI * 2
+      });
+    }
+    weatherGeo.setAttribute('position', new THREE.BufferAttribute(weatherPos, 3));
+    const weatherMat = new THREE.PointsMaterial({ color: 0xFFB7C5, size: 0.8, transparent: true, opacity: 0.9 });
+    const weatherParticles = new THREE.Points(weatherGeo, weatherMat);
+    scene.add(weatherParticles);
+
+    // 3. ANIMATED KOI FISH IN POND
+    const koiGroup = new THREE.Group();
+    const koiFish = [];
+    const koiGeo = new THREE.BoxGeometry(1.2, 0.4, 0.5);
+    const koiColors = [0xD90429, 0xFF7F00, 0xFFFFFF, 0xD90429];
+
+    for (let i = 0; i < 6; i++) {
+      const kMat = new THREE.MeshStandardMaterial({ color: koiColors[i % koiColors.length], roughness: 0.3 });
+      const fish = new THREE.Mesh(koiGeo, kMat);
+      const angle = (i / 6) * Math.PI * 2;
+      fish.position.set(20 + Math.cos(angle) * 7, 2.7, 15 + Math.sin(angle) * 7);
+      koiGroup.add(fish);
+      koiFish.push({ mesh: fish, angle: angle, speed: 0.008 + Math.random() * 0.006, radius: 6 + Math.random() * 3 });
+    }
+    scene.add(koiGroup);
+
+    // 4. ANIMATED FLYING WHITE CRANES
+    const craneGroup = new THREE.Group();
+    const cranes = [];
+    for (let i = 0; i < 4; i++) {
+      const crane = new THREE.Group();
+      const bodyMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+      const wingMat = new THREE.MeshBasicMaterial({ color: 0x1A1A1A });
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.6), bodyMat);
+      crane.add(body);
+
+      const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 2.0), wingMat);
+      wingL.position.set(0, 0, 1.0);
+      crane.add(wingL);
+
+      const wingR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 2.0), wingMat);
+      wingR.position.set(0, 0, -1.0);
+      crane.add(wingR);
+
+      crane.position.set(0, 45 + i * 5, 0);
+      craneGroup.add(crane);
+
+      cranes.push({
+        group: crane,
+        wingL: wingL,
+        wingR: wingR,
+        angle: (i / 4) * Math.PI * 2,
+        speed: 0.005 + i * 0.001,
+        radius: 110 + i * 15,
+        height: 45 + i * 6
+      });
+    }
+    scene.add(craneGroup);
+
+    // --- TIME OF DAY & SEASONS CONTROLLER ---
+
+    const TIME_PRESETS = {
+      Dawn: {
+        sunPos: [-140, 35, -90],
+        sunColor: 0xFFB085,
+        sunIntensity: 1.8,
+        skyTop: 0x3D5A80,
+        skyBottom: 0xF4A261,
+        fogColor: 0xE0A96D,
+        fogDensity: 0.0035,
+        lanterns: 0.3
+      },
+      Day: {
+        sunPos: [100, 180, 80],
+        sunColor: 0xFFFDF0,
+        sunIntensity: 2.3,
+        skyTop: 0x4EA8DE,
+        skyBottom: 0xD8F3DC,
+        fogColor: 0xC6E2E9,
+        fogDensity: 0.0028,
+        lanterns: 0.0
+      },
+      Sunset: {
+        sunPos: [160, 25, -60],
+        sunColor: 0xFF4500,
+        sunIntensity: 2.0,
+        skyTop: 0x2B1E3A,
+        skyBottom: 0xFF7B00,
+        fogColor: 0xD94E34,
+        fogDensity: 0.0036,
+        lanterns: 0.8
+      },
+      Night: {
+        sunPos: [-80, 120, -120],
+        sunColor: 0x7090E0,
+        sunIntensity: 0.6,
+        skyTop: 0x0B132B,
+        skyBottom: 0x1C2541,
+        fogColor: 0x141C3A,
+        fogDensity: 0.0042,
+        lanterns: 2.0
+      }
+    };
+
+    let currentTOD = 'Day';
+    let currentSeason = 'Spring';
+    let isCycleActive = true;
+    let cycleTime = 12.0; // 0 to 24 hours
+
+    function setTimeOfDay(presetKey) {
+      currentTOD = presetKey;
+      window.__VOXEL__.timeOfDay = presetKey;
+      const p = TIME_PRESETS[presetKey];
+
+      dirLight.position.set(...p.sunPos);
+      dirLight.color.setHex(p.sunColor);
+      dirLight.intensity = p.sunIntensity;
+
+      skyMat.uniforms.topColor.value.setHex(p.skyTop);
+      skyMat.uniforms.bottomColor.value.setHex(p.skyBottom);
+      scene.fog.color.setHex(p.fogColor);
+      scene.fog.density = p.fogDensity;
+
+      lanternLights.forEach(l => l.intensity = p.lanterns);
+
+      // UI button active update
+      document.querySelectorAll('#tod-group .pill-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tod === presetKey);
+      });
+    }
+
+    function setSeason(seasonName) {
+      currentSeason = seasonName;
+      window.__VOXEL__.season = seasonName;
+      updateFoliageColors(seasonName);
+
+      // Snow visibility
+      meshSnow.visible = (seasonName === 'Winter');
+
+      // Update weather particle color
+      if (seasonName === 'Spring') weatherMat.color.setHex(0xFFB7C5); // Sakura Pink
+      else if (seasonName === 'Autumn') weatherMat.color.setHex(0xD90429); // Crimson Leaf
+      else if (seasonName === 'Winter') weatherMat.color.setHex(0xFFFFFF); // White Snow
+      else weatherMat.color.setHex(0xFFD166); // Summer Fireflies / Pollen
+
+      document.querySelectorAll('#season-group .pill-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.season === seasonName);
+      });
+    }
+
+    // --- CAMERA VIEWS & INTRO ANIMATION ---
+
+    const CAMERA_VIEWS = {
+      Overview: { pos: [85, 50, 115], target: [0, 12, 0] },
+      Pagoda: { pos: [28, 35, 35], target: [0, 35, -10] },
+      Torii: { pos: [-55, 18, 65], target: [-35, 8, 38] },
+      Bridge: { pos: [32, 12, 32], target: [20, 5, 15] },
+      Waterfall: { pos: [-65, 16, -35], target: [-35, 5, -15] }
+    };
+
+    let camTween = null;
+
+    function flyToCameraView(viewKey) {
+      const v = CAMERA_VIEWS[viewKey];
+      if (!v) return;
+
+      const startPos = camera.position.clone();
+      const startTarget = controls.target.clone();
+      const endPos = new THREE.Vector3(...v.pos);
+      const endTarget = new THREE.Vector3(...v.target);
+
+      let startTime = performance.now();
+      const duration = 2000; // ms
+
+      camTween = function (now) {
+        let elapsed = now - startTime;
+        let progress = Math.min(1, elapsed / duration);
+        // Ease In Out Cubic
+        let ease = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+        camera.position.lerpVectors(startPos, endPos, ease);
+        controls.target.lerpVectors(startTarget, endTarget, ease);
+        controls.update();
+
+        if (progress < 1) {
+          requestAnimationFrame(camTween);
+        } else {
+          camTween = null;
+        }
+      };
+      requestAnimationFrame(camTween);
+    }
+
+    // 2.5s Opening Sweep Intro
+    function runCameraIntro() {
+      const startPos = new THREE.Vector3(0, 8, 230);
+      const endPos = new THREE.Vector3(...CAMERA_VIEWS.Overview.pos);
+      const startTarget = new THREE.Vector3(0, 5, 0);
+      const endTarget = new THREE.Vector3(...CAMERA_VIEWS.Overview.target);
+
+      let startTime = performance.now();
+      const duration = 2500;
+
+      function introFrame(now) {
+        let elapsed = now - startTime;
+        let progress = Math.min(1, elapsed / duration);
+        let ease = 1 - Math.pow(1 - progress, 3); // Ease Out
+
+        camera.position.lerpVectors(startPos, endPos, ease);
+        controls.target.lerpVectors(startTarget, endTarget, ease);
+        controls.update();
+
+        if (progress < 1) {
+          requestAnimationFrame(introFrame);
+        }
+      }
+      requestAnimationFrame(introFrame);
+    }
+    runCameraIntro();
+
+    // --- UI INTERACTION BINDINGS ---
+
+    document.getElementById('camera-select').addEventListener('change', (e) => {
+      flyToCameraView(e.target.value);
+    });
+
+    document.getElementById('season-group').addEventListener('click', (e) => {
+      if (e.target.dataset.season) {
+        setSeason(e.target.dataset.season);
+      }
+    });
+
+    document.getElementById('tod-group').addEventListener('click', (e) => {
+      if (e.target.dataset.tod) {
+        isCycleActive = false;
+        document.getElementById('toggle-cycle').checked = false;
+        setTimeOfDay(e.target.dataset.tod);
+      }
+    });
+
+    const morePanel = document.getElementById('more-panel');
+    document.getElementById('btn-more').addEventListener('click', () => {
+      morePanel.classList.toggle('open');
+    });
+
+    document.getElementById('toggle-autorotate').addEventListener('change', (e) => {
+      controls.autoRotate = e.target.checked;
+      controls.autoRotateSpeed = 0.8;
+    });
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.8;
+
+    document.getElementById('toggle-cycle').addEventListener('change', (e) => {
+      isCycleActive = e.target.checked;
+    });
+
+    const timeSlider = document.getElementById('slider-time');
+    timeSlider.addEventListener('input', (e) => {
+      isCycleActive = false;
+      document.getElementById('toggle-cycle').checked = false;
+      cycleTime = parseFloat(e.target.value);
+      updateCycleTOD(cycleTime);
+    });
+
+    function updateCycleTOD(hrs) {
+      if (hrs >= 5 && hrs < 9) setTimeOfDay('Dawn');
+      else if (hrs >= 9 && hrs < 17) setTimeOfDay('Day');
+      else if (hrs >= 17 && hrs < 20) setTimeOfDay('Sunset');
+      else setTimeOfDay('Night');
+    }
+
+    // --- MAIN ANIMATION LOOP ---
+
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fps = 60;
+    const statsReadout = document.getElementById('stats-readout');
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      const delta = (now - lastTime) / 1000;
+      frameCount++;
+
+      if (now - lastTime >= 1000) {
+        fps = Math.round((frameCount * 1000) / (now - lastTime));
+        window.__VOXEL__.fps = fps;
+        statsReadout.innerText = `${totalVisibleVoxels.toLocaleString()} voxels | ${fps} FPS`;
+        frameCount = 0;
+        lastTime = now;
+      }
+
+      const t = now * 0.001;
+
+      // Controls update
+      controls.update();
+
+      // Continuous 90-second Time of Day Cycle
+      if (isCycleActive) {
+        cycleTime = (cycleTime + (delta / 90.0) * 24.0) % 24.0;
+        timeSlider.value = cycleTime;
+        updateCycleTOD(cycleTime);
+      }
+
+      // Lantern subtle flicker at dusk/night
+      if (currentTOD === 'Night' || currentTOD === 'Sunset') {
+        lanternLights.forEach((l, idx) => {
+          l.intensity = TIME_PRESETS[currentTOD].lanterns + Math.sin(t * 8 + idx) * 0.15;
+        });
+      }
+
+      // 1. Animate Waterfalls
+      const wfArray = waterfallParticlesGeo.attributes.position.array;
+      for (let i = 0; i < wfCount; i++) {
+        wfArray[i * 3 + 1] -= 0.6 + Math.random() * 0.3;
+        if (wfArray[i * 3 + 1] < -38) {
+          wfArray[i * 3 + 1] = 2; // Reset to top rim
+        }
+      }
+      waterfallParticlesGeo.attributes.position.needsUpdate = true;
+
+      // 2. Animate Weather Particles
+      const wArray = weatherGeo.attributes.position.array;
+      for (let i = 0; i < weatherCount; i++) {
+        const v = weatherVel[i];
+        wArray[i * 3] += Math.sin(t + v.sway) * 0.08;
+        wArray[i * 3 + 1] += v.y;
+        wArray[i * 3 + 2] += Math.cos(t + v.sway) * 0.08;
+
+        if (wArray[i * 3 + 1] < -15) {
+          wArray[i * 3 + 1] = 60;
+          wArray[i * 3] = (Math.random() - 0.5) * 160;
+          wArray[i * 3 + 2] = (Math.random() - 0.5) * 160;
+        }
+      }
+      weatherGeo.attributes.position.needsUpdate = true;
+
+      // 3. Animate Koi Swimming
+      koiFish.forEach((k) => {
+        k.angle += k.speed;
+        k.mesh.position.x = 20 + Math.cos(k.angle) * k.radius;
+        k.mesh.position.z = 15 + Math.sin(k.angle) * k.radius;
+        k.mesh.rotation.y = -k.angle + Math.PI / 2;
+      });
+
+      // 4. Animate Cranes Flapping & Orbiting
+      cranes.forEach((c) => {
+        c.angle += c.speed;
+        c.group.position.x = Math.cos(c.angle) * c.radius;
+        c.group.position.z = Math.sin(c.angle) * c.radius;
+        c.group.position.y = c.height + Math.sin(t * 2 + c.angle) * 3;
+        c.group.rotation.y = -c.angle + Math.PI;
+
+        const flap = Math.sin(t * 9 + c.angle) * 0.4;
+        c.wingL.rotation.x = flap;
+        c.wingR.rotation.x = -flap;
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    requestAnimationFrame(animate);
+
+    // Window Resize Handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+  </script>
+</body>
+</html>
