@@ -192,6 +192,38 @@ controls.maxDistance = 4200;
 controls.target.set(0, 0, -160);
 
 /* =========================================================================
+   LIGHTS & SCENE CONTENT
+   ========================================================================= */
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dirLight.position.set(100, 150, 80);
+dirLight.castShadow = true;
+dirLight.shadow.camera.left = -200;
+dirLight.shadow.camera.right = 200;
+dirLight.shadow.camera.top = 200;
+dirLight.shadow.camera.bottom = -200;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
+scene.add(dirLight);
+
+// Ground / dock plane
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.8 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Terminal block
+const termMat = new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.6 });
+const terminal = new THREE.Mesh(new THREE.BoxGeometry(120, 30, 60), termMat);
+terminal.position.set(0, 15, -120);
+terminal.castShadow = true;
+terminal.receiveShadow = true;
+scene.add(terminal);
+
+/* =========================================================================
    HELPERS
    ========================================================================= */
 const V3 = (x,y,z)=>new THREE.Vector3(x,y,z);
@@ -250,7 +282,8 @@ function makeBox(w,h,d,mat){ const g = new THREE.BoxGeometry(w,h,d); return new 
 const RenderComposer = (function(){
   const rt = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
   const down = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
-  const blurAB = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
+  const blurA = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
+  const blurB = new THREE.WebGLRenderTarget(1,1,{ type:THREE.HalfFloatType, minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter });
 
   const vs = `
     varying vec2 vUv;
@@ -330,6 +363,38 @@ const RenderComposer = (function(){
     if (m.uniforms.tDiffuse) m.uniforms.tDiffuse.value = rt.texture;
   }
 })();
+
+/* =========================================================================
+   RENDER LOOP
+   ========================================================================= */
+renderer.setClearColor(scene.fog.color);
+RenderComposer.resize(window.innerWidth, window.innerHeight);
+
+const loaderEl = document.getElementById('loader');
+let started = false;
+
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  if (!started){
+    started = true;
+    loaderEl.classList.add('gone');
+    setTimeout(() => { loaderEl.style.display = 'none'; }, 700);
+  }
+}
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(DPR);
+  RenderComposer.resize(w, h);
+});
+
+animate();
 </script>
 </body>
 </html>
