@@ -27,7 +27,159 @@ canvas{display:block}
 </div>
 <div id="hint">Drag to orbit · Scroll to zoom · Space: walk</div>
 <script type="module">
-...
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x071018);
+scene.fog = new THREE.FogExp2(0x071018, 0.015);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 2000);
+camera.position.set(0, 8, 28);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 2, 0);
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.35);
+scene.add(ambient);
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(10, 25, 10);
+sun.castShadow = true;
+scene.add(sun);
+
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshStandardMaterial({ color: 0x0b2a4a, roughness: 0.1, metalness: 0.3 })
+);
+water.rotation.x = -Math.PI / 2;
+scene.add(water);
+
+const ship = new THREE.Group();
+const hull = new THREE.Mesh(
+  new THREE.BoxGeometry(22, 9, 70),
+  new THREE.MeshStandardMaterial({ color: 0xffffff })
+);
+hull.position.y = 1.5;
+ship.add(hull);
+const stripe = new THREE.Mesh(
+  new THREE.BoxGeometry(22.02, 1.1, 70),
+  new THREE.MeshStandardMaterial({ color: 0x005ea6 })
+);
+stripe.position.set(0, 4.6, 0);
+ship.add(stripe);
+for (let d = 0; d < 6; d++) {
+  const deck = new THREE.Mesh(
+    new THREE.BoxGeometry(20.4, 0.6, 66),
+    new THREE.MeshStandardMaterial({ color: 0xdddddd })
+  );
+  deck.position.set(0, 6.2 + d * 1.7, 0);
+  ship.add(deck);
+}
+const bridge = new THREE.Mesh(
+  new THREE.BoxGeometry(14, 3.4, 16),
+  new THREE.MeshStandardMaterial({ color: 0xffffff })
+);
+bridge.position.set(0, 16.4, -16);
+ship.add(bridge);
+scene.add(ship);
+
+const rainCount = 5000;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(rainCount * 3);
+for (let i = 0; i < rainCount; i++) {
+  rainPos[i * 3] = (Math.random() - 0.5) * 300;
+  rainPos[i * 3 + 1] = Math.random() * 80;
+  rainPos[i * 3 + 2] = (Math.random() - 0.5) * 300;
+}
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainMat = new THREE.PointsMaterial({ color: 0x9fb3c8, size: 0.2, transparent: true, opacity: 0.5 });
+const rain = new THREE.Points(rainGeo, rainMat);
+rain.visible = false;
+scene.add(rain);
+
+let weather = 'auto';
+let autoWeather = true;
+let dayAuto = true;
+let time = 0;
+
+const buttons = document.querySelectorAll('#ui button');
+buttons.forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.dataset.w !== undefined) {
+      buttons.forEach(x => { if (x.dataset.w !== undefined) x.classList.remove('on'); });
+      b.classList.add('on');
+      autoWeather = false;
+      weather = { '0': 'auto', '1': 'clear', '2': 'rain', '3': 'fog', '4': 'storm' }[b.dataset.w];
+      if (weather === 'auto') autoWeather = true;
+    }
+    if (b.dataset.d !== undefined) {
+      buttons.forEach(x => { if (x.dataset.d !== undefined) x.classList.remove('on'); });
+      b.classList.add('on');
+      dayAuto = b.dataset.d === '0';
+    }
+  });
+});
+
+let walking = false;
+addEventListener('keydown', (e) => { if (e.code === 'Space') walking = true; });
+addEventListener('keyup', (e) => { if (e.code === 'Space') walking = false; });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function setWeather(name) {
+  rain.visible = name === 'rain' || name === 'storm';
+  if (name === 'fog') { scene.fog = new THREE.FogExp2(0x071018, 0.04); }
+  else { scene.fog = new THREE.FogExp2(0x071018, 0.015); }
+  if (name === 'storm') { ambient.intensity = 0.15; sun.intensity = 0.25; }
+  else { ambient.intensity = 0.35; sun.intensity = 1.1; }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.01;
+
+  if (autoWeather) {
+    const w = ['clear', 'rain', 'fog', 'storm'][Math.floor((time / 12) % 4)];
+    setWeather(w);
+  }
+
+  if (dayAuto) {
+    const phase = (time % 40) / 40;
+    const angle = phase * Math.PI * 2;
+    sun.position.set(Math.cos(angle) * 30, Math.max(0, Math.sin(angle)) * 30, Math.sin(angle) * 30);
+    const night = Math.sin(angle) < 0;
+    ambient.intensity = night ? 0.08 : ambient.intensity;
+    sun.intensity = night ? 0.05 : sun.intensity;
+    scene.background.setHex(night ? 0x02050a : 0x071018);
+  }
+
+  if (rain.visible) {
+    const pos = rainGeo.attributes.position.array;
+    for (let i = 1; i < pos.length; i += 3) {
+      pos[i] -= 0.8;
+      if (pos[i] < -2) pos[i] = 80 + Math.random() * 20;
+    }
+    rainGeo.attributes.position.needsUpdate = true;
+    rain.position.set(camera.position.x, camera.position.y + 30, camera.position.z);
+  }
+
+  if (walking) camera.translateZ(-0.12);
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+animate();
 </script>
 </body>
 </html>
